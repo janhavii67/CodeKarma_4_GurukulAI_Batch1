@@ -86,3 +86,34 @@ class ValidationError(AppError):
         details: Optional[Any] = None,
     ):
         super().__init__(code=code, message=message, status_code=422, details=details)
+
+
+class PayloadTooLargeError(AppError):
+    def __init__(
+        self,
+        code: str = "payload_too_large",
+        message: str = "The uploaded file exceeds the maximum allowed size limit.",
+        details: Optional[Any] = None,
+    ):
+        super().__init__(code=code, message=message, status_code=413, details=details)
+
+
+class UnsupportedMediaTypeError(AppError):
+    def __init__(
+        self,
+        code: str = "unsupported_media_type",
+        message: str = "The supplied media type or file format is not supported.",
+        details: Optional[Any] = None,
+    ):
+        super().__init__(code=code, message=message, status_code=415, details=details)
+
+
+class RangeNotSatisfiableError(AppError):
+    def __init__(
+        self,
+        code: str = "range_not_satisfiable",
+        message: str = "The requested range cannot be satisfied.",
+        details: Optional[Any] = None,
+    ):
+        super().__init__(code=code, message=message, status_code=416, details=details)
+

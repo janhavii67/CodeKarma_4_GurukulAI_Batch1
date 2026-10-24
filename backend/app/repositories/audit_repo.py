@@ -14,6 +14,7 @@ class AuditRepository:
         actor_id: Optional[str] = None,
         detail: Optional[Dict[str, Any]] = None,
         ip_address: Optional[str] = None,
+        commit: bool = True,
     ) -> AuditLog:
         log = AuditLog(
             actor_id=actor_id,
@@ -25,6 +26,10 @@ class AuditRepository:
             created_at=utc_now(),
         )
         db.add(log)
-        db.commit()
-        db.refresh(log)
+        if commit:
+            db.commit()
+            db.refresh(log)
+        else:
+            db.flush()
         return log
+

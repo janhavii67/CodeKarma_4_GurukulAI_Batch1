@@ -17,6 +17,7 @@ flowchart TD
   H -- ok --> I["Show answer + sources (title, version)"]
   I --> J["Trainee: follow-up, open source, give feedback"]
   J --> C
+  
 ```
 
 ## 2. Required tech stack and technologies

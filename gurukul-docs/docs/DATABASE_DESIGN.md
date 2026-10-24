@@ -67,9 +67,10 @@ sequenceDiagram
 
 ## 5. Steps (migrations, in order)
 1. `001_foundation`: roles, permissions, role_permissions, user_permissions, users, sessions, audit_logs
-2. `002_knowledge`: machines, knowledge_items, knowledge_versions, media_assets, approval_records, review_comments
-3. `003_voice`: processing_jobs, transcripts, transcript_segments
-4. `004_assistant`: knowledge_chunks (+ GIN index), chat_conversations, chat_messages, chat_message_sources
+2. `002_knowledge`: machines, knowledge_items, knowledge_versions (with circular FK from items)
+3. `003_media_assets`: media_assets (FK to versions ON DELETE RESTRICT, unique storage_key, CHECK constraints on kind and positive size, indexes on version_id and uploaded_by)
+4. `004_voice`: processing_jobs, transcripts, transcript_segments
+5. `005_assistant`: knowledge_chunks (+ GIN index), chat_conversations, chat_messages, chat_message_sources
 
 ## 6. Other information
 

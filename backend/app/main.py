@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.exceptions import AppError
+from app.core.exceptions import AppError, PayloadTooLargeError
 from app.core.logging import logger, setup_logging
 
 setup_logging(debug=settings.DEBUG)
@@ -27,8 +27,53 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Request-ID", "Content-Disposition"],
+    expose_headers=["X-Request-ID", "Content-Disposition", "Content-Range", "Accept-Ranges"],
 )
+
+
+@app.middleware("http")
+async def payload_size_limit_middleware(request: Request, call_next):
+    """Enforces body-size limits before and during multipart parsing."""
+    if request.method == "POST" and "/media" in request.url.path:
+        content_length_header = request.headers.get("content-length")
+        if content_length_header:
+            try:
+                cl = int(content_length_header)
+                if cl > settings.MAX_UPLOAD_BYTES + 65536:
+                    request_id = getattr(request.state, "request_id", None) or f"req_{uuid.uuid4().hex[:12]}"
+                    return JSONResponse(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        content={
+                            "error": {
+                                "code": "payload_too_large",
+                                "message": f"Upload size exceeds maximum allowed limit of {settings.MAX_UPLOAD_BYTES} bytes.",
+                                "details": None,
+                                "request_id": request_id,
+                            }
+                        },
+                    )
+            except ValueError:
+                pass
+
+        original_receive = request._receive
+        bytes_received = 0
+        max_allowed = settings.MAX_UPLOAD_BYTES + 65536
+
+        async def counting_receive():
+            nonlocal bytes_received
+            message = await original_receive()
+            if message["type"] == "http.request":
+                bytes_received += len(message.get("body", b""))
+                if bytes_received > max_allowed:
+                    raise PayloadTooLargeError(
+                        code="payload_too_large",
+                        message=f"Upload payload exceeds maximum allowed limit of {settings.MAX_UPLOAD_BYTES} bytes.",
+                    )
+            return message
+
+        request._receive = counting_receive
+
+    return await call_next(request)
 
 
 @app.middleware("http")

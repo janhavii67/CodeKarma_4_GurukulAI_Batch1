@@ -52,8 +52,11 @@ class Settings(BaseSettings):
         return v
 
     # Storage
+    MEDIA_ROOT: str = "./data/media"
     MEDIA_DIR: str = "./data/media"
     MAX_UPLOAD_MB: int = 100
+    MAX_UPLOAD_BYTES: int = 100 * 1024 * 1024  # 100 MB default
+    MAX_MEDIA_PER_VERSION: int = 20
 
     # Demo Seed Credentials
     EXPERT_A_EMAIL: str = "expert.a@demo.local"

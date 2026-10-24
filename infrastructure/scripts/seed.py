@@ -8,7 +8,7 @@ if backend_path not in sys.path:
 
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal, engine
-from app.models import Base, Role, Permission, RolePermission, User, UserPermission
+from app.models import Base, Role, Permission, RolePermission, User, UserPermission, Machine
 from app.core.config import settings
 from app.core.security import hash_password
 from app.core.logging import logger
@@ -134,7 +134,45 @@ def seed_database(db: Session) -> None:
         else:
             logger.info(f"User {u['email']} already exists, skipping creation.")
 
+    # 5. Seed Demo Machines (Module 01 - T2.1)
+    machines_to_seed = [
+        {
+            "name": "Demo Machine A (Lathe)",
+            "code": "DEMO-LATHE-01",
+            "category": "Turning",
+            "is_demo": True,
+        },
+        {
+            "name": "Demo Machine B (Press)",
+            "code": "DEMO-PRESS-02",
+            "category": "Forming",
+            "is_demo": True,
+        },
+        {
+            "name": "Demo Inspection Station",
+            "code": "DEMO-INSPECT-03",
+            "category": "Inspection",
+            "is_demo": True,
+        },
+    ]
+
+    for m_data in machines_to_seed:
+        existing_machine = db.query(Machine).filter(Machine.code == m_data["code"]).first()
+        if not existing_machine:
+            machine = Machine(
+                name=m_data["name"],
+                code=m_data["code"],
+                category=m_data["category"],
+                is_demo=m_data["is_demo"],
+            )
+            db.add(machine)
+            logger.info(f"Created demo machine: {m_data['name']} [{m_data['code']}]")
+        else:
+            logger.info(f"Machine {m_data['code']} already exists, skipping creation.")
+
+    db.commit()
     logger.info("Database seeding completed successfully.")
+
 
 
 if __name__ == "__main__":

@@ -114,6 +114,13 @@ def csrf_protect(
         if path.endswith("/auth/login") or path.endswith("/auth/register"):
             return
 
+        session_cookie = request.cookies.get(settings.SESSION_COOKIE_NAME)
+        if not session_cookie:
+            raise UnauthenticatedError(
+                code="unauthenticated",
+                message="No active session found. Please log in.",
+            )
+
         cookie_csrf = request.cookies.get(settings.CSRF_COOKIE_NAME)
         header_csrf = request.headers.get(settings.CSRF_HEADER_NAME)
 
@@ -122,6 +129,7 @@ def csrf_protect(
                 code="csrf_failed",
                 message="CSRF validation failed. Missing or mismatched X-CSRF-Token header.",
             )
+
 
 
 def require_permission(permission_id: str) -> Callable:

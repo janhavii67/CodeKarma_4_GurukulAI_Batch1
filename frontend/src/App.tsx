@@ -8,6 +8,8 @@ import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { ModulePlaceholderPage } from './features/placeholders/ModulePlaceholderPage';
+import { LibraryPage } from './features/knowledge-capture/LibraryPage';
+import { KnowledgeEditorPage } from './features/knowledge-capture/KnowledgeEditorPage';
 import { ForbiddenPage } from './features/errors/ForbiddenPage';
 import { NotFoundPage } from './features/errors/NotFoundPage';
 
@@ -48,10 +50,10 @@ export const App: React.FC = () => {
                 path="machines"
                 element={<ModulePlaceholderPage moduleKeyOverride="machines" />}
               />
-              <Route
-                path="knowledge"
-                element={<ModulePlaceholderPage moduleKeyOverride="knowledge" />}
-              />
+              <Route path="knowledge">
+                <Route index element={<LibraryPage />} />
+                <Route path=":id" element={<KnowledgeEditorPage />} />
+              </Route>
               <Route
                 path="reviews"
                 element={<ModulePlaceholderPage moduleKeyOverride="reviews" />}

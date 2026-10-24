@@ -1,6 +1,7 @@
 import os
 import sys
-from typing import Generator
+import tempfile
+from typing import Generator, Tuple
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -19,7 +20,11 @@ from app.db.base import Base
 from app.db.session import get_db
 from infrastructure.scripts.seed import seed_database
 
-# Use in-memory SQLite with StaticPool for fast, isolated testing
+# ---------------------------------------------------------------------------
+# Primary in-memory DB: used by the standard `client` + `db_session` fixtures.
+# StaticPool keeps one connection alive so the in-memory DB persists across
+# the session, but limits concurrent thread access to a single connection.
+# ---------------------------------------------------------------------------
 TEST_DATABASE_URL = "sqlite:///:memory:"
 
 test_engine = create_engine(
@@ -67,3 +72,66 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Threadsafe fixtures: use a temporary file-based SQLite DB so that each
+# request gets its own real connection (no StaticPool contention).
+# The fixture exposes both a TestClient AND a seeded Session so test setup
+# code can write directly to the same DB that the client reads from.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def threadsafe_env() -> Generator[Tuple[TestClient, Session], None, None]:
+    """Yields (client, db_session) both backed by the same file-based SQLite DB.
+
+    Use for concurrent / multi-threaded tests. The session yielded here is for
+    *test setup only* — do not share it with threads. The TestClient creates a
+    fresh session per request, which is thread-safe.
+    """
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    ts_db_url = f"sqlite:///{tmp.name}"
+
+    ts_engine = create_engine(
+        ts_db_url,
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(bind=ts_engine)
+    TsSession = sessionmaker(autocommit=False, autoflush=False, bind=ts_engine)
+
+    # Seed demo users, roles, permissions, machines
+    seed_db = TsSession()
+    try:
+        seed_database(seed_db)
+    finally:
+        seed_db.close()
+
+    # Session for test setup (single-threaded use only)
+    setup_session = TsSession()
+
+    def _override_get_db():
+        db = TsSession()  # fresh session per request
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = _override_get_db
+    with TestClient(app) as c:
+        yield c, setup_session
+
+    setup_session.close()
+    app.dependency_overrides.clear()
+    ts_engine.dispose()
+    try:
+        os.unlink(tmp.name)
+    except OSError:
+        pass
+
+
+@pytest.fixture
+def threadsafe_client(threadsafe_env) -> TestClient:
+    """Convenience alias: yields just the TestClient from threadsafe_env."""
+    client, _ = threadsafe_env
+    return client

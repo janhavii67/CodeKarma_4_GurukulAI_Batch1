@@ -41,10 +41,10 @@ Claude writes the task prompt, Antigravity implements, you run the tests, and re
 | T1.4 | 1 | B | Frontend skeleton: Vite, TS, Tailwind, router, API client | Tested |
 | T1.5 | 1 | B | Login/register UI, protected routes, layout, sidebar, 403/404, dashboards, placeholders for all modules | Tested |
 | T1.6 | 1 | A | Auth + permission tests, run and record results | Tested |
-| T2.1 | 2 | A | Migration 002, machines and knowledge item/version APIs | Not started |
-| T2.2 | 2 | A | Media upload + storage service + validation | Not started |
-| T2.3 | 2 | B | Knowledge library, create/edit form, step editor | Not started |
-| T2.4 | 2 | B | Upload and browser audio recording component | Not started |
+| T2.1 | 2 | A | Migration 002, machines and knowledge item/version APIs | Tested |
+| T2.2 | 2 | A | Media upload + storage service + validation | Tested |
+| T2.3 | 2 | B | Knowledge library, create/edit form, step editor | Tested |
+| T2.4 | 2 | B | Upload and browser audio recording component | Tested |
 | T3.1 | 3 | A | Review state machine, approve/reject/changes, publish/supersede/withdraw, audit | Not started |
 | T3.2 | 3 | A | M6 tests (self-approval block, concurrency, withdraw) | Not started |
 | T3.3 | 3 | B | Review queue, review page, comments, version history, status badges | Not started |

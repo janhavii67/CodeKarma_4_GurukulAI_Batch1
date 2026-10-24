@@ -47,8 +47,37 @@ Browser, then client wrapper, then router dependency chain (session, CSRF, permi
 | Auth | POST /auth/register (Trainee only), POST /auth/login, POST /auth/logout, GET /auth/me | public / session |
 | Machines | GET/POST /machines | read: any; write: `machine.manage` |
 | Knowledge | GET/POST /knowledge, GET/PATCH /knowledge/{id}, POST /knowledge/{id}/versions | `knowledge.create`, `knowledge.edit_own_draft` |
-| Media | POST /knowledge-versions/{vid}/media, GET /media/{id} | owner or published-access |
+| Media | POST /knowledge-versions/{vid}/media, GET /knowledge-versions/{vid}/media, GET /media/config, GET /media/{id}, DELETE /media/{id} | upload/delete: `knowledge.create` (owner); read: version visibility |
 | Review (M6) | POST /knowledge-versions/{vid}/submit-review, /approve, /request-changes, /reject, /withdraw; GET /reviews/queue; GET /knowledge/{id}/versions; POST /knowledge-versions/{vid}/comments | `knowledge.submit_review`, `knowledge.approve` |
 | Voice (M4) | POST /voice-captures, POST /voice-captures/{id}/upload, GET /processing-jobs/{id}, GET/PATCH /transcripts/{id}, PATCH /transcripts/{id}/segments/{sid}, POST /transcripts/{id}/structure | `knowledge.create` |
 | Assistant (M2) | POST /assistant/chat, GET /assistant/conversations, GET /assistant/conversations/{id}, POST /assistant/feedback | `assistant.use` |
 | Search | GET /knowledge/published (trainee-visible list) | any signed-in |
+
+### Media Endpoints (Module 01 - T2.2)
+
+1. `POST /api/v1/knowledge-versions/{vid}/media`
+   - Content-Type: `multipart/form-data` with `file` (required) and optional `kind` (`audio`, `video`, `image`, `document`).
+   - Requires session, `X-CSRF-Token`, and `knowledge.create` permission.
+   - Statuses: `201 Created`, `401 Unauthenticated`, `403 Forbidden` (no permission), `404 Not Found` (nonexistent or non-owned version), `409 Conflict` (`frozen_version` or `media_cap_reached`), `413 Payload Too Large`, `415 Unsupported Media Type`, `422 Unprocessable Content` (`empty_file` or `kind_mismatch`).
+   - Response: `MediaAssetResponse` with relative `url` (`/api/v1/media/{id}`). Never reveals `storage_key` or filesystem paths.
+
+2. `GET /api/v1/knowledge-versions/{vid}/media`
+   - Returns `List[MediaAssetResponse]` for all media attached to the specified version.
+   - Requires session. Visibility identical to version visibility (non-visible returns 404 without leaking existence).
+
+3. `GET /api/v1/media/config`
+   - Authenticated endpoint returning `max_upload_bytes`, `allowed_mime_types` per kind, and `max_media_per_version` so frontend mirrors server limits.
+
+4. `GET /api/v1/media/{id}`
+   - Streams media asset with chunked delivery and HTTP Range seeking support.
+   - Headers: `Range: bytes=start-end`, `bytes=start-`, `bytes=-N`.
+   - Returns `206 Partial Content` with `Content-Range: bytes {start}-{end}/{total_size}`, `Accept-Ranges: bytes`, and correct `Content-Length`.
+   - Unsatisfiable range returns `416 Range Not Satisfiable` with `Content-Range: bytes */{total_size}`.
+   - Multi-range requests ignore Range and return `200 OK` full payload per RFC 7233.
+   - Security headers: `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`, `Content-Disposition: inline` (RFC 5987/6266 filename encoding), and `Content-Security-Policy: sandbox` for PDFs.
+
+5. `DELETE /api/v1/media/{id}`
+   - Hard deletion of metadata row and storage file.
+   - Requires session, `X-CSRF-Token`, and `knowledge.create` permission on editable draft.
+   - Statuses: `204 No Content`, `401 Unauthenticated`, `403 Forbidden`, `404 Not Found`, `409 Conflict` (frozen version).
+

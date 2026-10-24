@@ -14,6 +14,7 @@ class AuditService:
         actor_id: Optional[str] = None,
         detail: Optional[Dict[str, Any]] = None,
         ip_address: Optional[str] = None,
+        commit: bool = True,
     ):
         try:
             clean_detail = {}
@@ -35,9 +36,11 @@ class AuditService:
                 actor_id=actor_id,
                 detail=clean_detail,
                 ip_address=ip_address,
+                commit=commit,
             )
             logger.info(
                 f"Audit: action={action} entity={entity_type}:{entity_id} actor={actor_id}"
             )
         except Exception as e:
             logger.error(f"Failed to record audit log: {e}")
+

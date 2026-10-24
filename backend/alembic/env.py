@@ -19,6 +19,9 @@ target_metadata = Base.metadata
 
 
 def get_url():
+    url = config.get_main_option("sqlalchemy.url")
+    if url:
+        return url
     return settings.DATABASE_URL
 
 
@@ -54,6 +57,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            render_as_batch=True,
         )
 
         with context.begin_transaction():
