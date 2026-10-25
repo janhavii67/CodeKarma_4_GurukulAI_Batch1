@@ -1,6 +1,6 @@
 # Module 06 — Knowledge Validation and Versioning
-
-**Status:** Planned · **Phase:** 2 · **Hackathon:** Build (Day 3)
+ 
+**Status:** In Progress (Sub-module 06A Implemented & Tested; 06B–06I Next) · **Phase:** 2 · **Hackathon:** Build (Day 3)
 
 ## 1. Full workflow diagram
 
@@ -79,7 +79,13 @@ sequenceDiagram
 
 **Rules:** frozen content during review; published content immutable; approval record stores the exact version ID; withdraw requires a reason; every transition writes an audit row.
 
-**Permissions:** submit = `knowledge.submit_review` (author only); approve/reject/changes/withdraw = `knowledge.approve` and not author.
+**Snapshot Architecture Design Change (06A):**
+- In the original schema, `title` and `machine_id` were stored only on `knowledge_items`. This allowed an unreviewed draft edit to alter the live SOP title visible to Trainees.
+- Under 06A, `title` and `machine_id` are stored directly on `knowledge_versions` as immutable snapshots. `knowledge_items.title` and `machine_id` mirror the currently published version.
+- When an author edits a draft SOP via `PATCH /knowledge/{id}`, changes are written only to their open editable version (`draft` or `changes_requested`). The item mirror is updated only upon formal publication approval.
+
+**Permissions:** submit = `knowledge.submit_review` (author only); approve/reject/changes/withdraw = `knowledge.approve` and not author (strict self-review prohibition: 403 `self_review_forbidden`).
+
 
 **Compare view:** step-by-step diff from saved snapshots (added, removed, changed). No AI summary in the hackathon.
 

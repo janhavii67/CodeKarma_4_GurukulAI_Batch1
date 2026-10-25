@@ -56,9 +56,9 @@ sequenceDiagram
   API->>S: create (author = session user)
   S->>DB: insert item + version 1 (status draft)
   API-->>UI: 201 {item, version}
-  UI->>API: PATCH /knowledge/{id} {summary, steps[]}
+  UI->>API: PATCH /knowledge/{id} {title, machine_id, summary, steps[]}
   S->>S: check owner + status in (draft, changes_requested)
-  S->>DB: update version.steps JSONB
+  S->>DB: update editable version snapshot (title, machine_id, summary, steps); item mirror unchanged
   UI->>API: POST /knowledge-versions/{vid}/media (file)
   S->>S: validate mime + size
   S->>FS: save under random key
@@ -80,7 +80,7 @@ sequenceDiagram
 
 **Permissions:** create/edit own draft: `knowledge.create`. Trainees see only published versions. Drafts are visible to the author and reviewers.
 
-**Rules:** editing allowed only in `draft` or `changes_requested`. Editing a published item creates a new draft version (v2) and leaves v1 live.
+**Rules:** editing allowed only in `draft` or `changes_requested`. `PATCH /knowledge/{id}` modifies `title`, `machine_id`, `summary`, and `steps` on the caller's open editable version only. The `knowledge_items` title and machine_id mirror remains untouched until formal publish, guaranteeing Trainees never see unreviewed draft changes. Editing a published item creates a new draft version (v2) and leaves v1 live.
 
 **Validation and errors:** missing title (422), unsupported file type (415), file too large (413), editing a frozen version (409), foreign draft (404).
 

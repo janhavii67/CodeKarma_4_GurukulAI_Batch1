@@ -7,6 +7,12 @@ import { AppLayout } from './layouts/AppLayout';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
+import { MachinesPage } from './features/machines/MachinesPage';
+import { KnowledgeLibraryPage } from './features/knowledge/KnowledgeLibraryPage';
+import { ReviewsPage } from './features/reviews/ReviewsPage';
+import { GuidedWorkflowsPage } from './features/workflows/GuidedWorkflowsPage';
+import { SoundAnalysisPage } from './features/audio/SoundAnalysisPage';
+import { VoiceToKnowledgePage } from './features/voice/VoiceToKnowledgePage';
 import { ModulePlaceholderPage } from './features/placeholders/ModulePlaceholderPage';
 import { ForbiddenPage } from './features/errors/ForbiddenPage';
 import { NotFoundPage } from './features/errors/NotFoundPage';
@@ -44,37 +50,21 @@ export const App: React.FC = () => {
               }
             >
               <Route index element={<DashboardPage />} />
-              <Route
-                path="machines"
-                element={<ModulePlaceholderPage moduleKeyOverride="machines" />}
-              />
-              <Route
-                path="knowledge"
-                element={<ModulePlaceholderPage moduleKeyOverride="knowledge" />}
-              />
-              <Route
-                path="reviews"
-                element={<ModulePlaceholderPage moduleKeyOverride="reviews" />}
-              />
-              <Route
-                path="voice-capture"
-                element={<ModulePlaceholderPage moduleKeyOverride="voice-capture" />}
-              />
+              <Route path="machines" element={<MachinesPage />} />
+              <Route path="knowledge" element={<KnowledgeLibraryPage />} />
+              <Route path="reviews" element={<ReviewsPage />} />
+              <Route path="guided-workflows" element={<GuidedWorkflowsPage />} />
+              <Route path="sound-analysis" element={<SoundAnalysisPage />} />
+
+              {/* Graceful Specifications & Placeholders for Future Expansion Modules */}
+              <Route path="voice-capture" element={<VoiceToKnowledgePage />} />
               <Route
                 path="assistant"
                 element={<ModulePlaceholderPage moduleKeyOverride="assistant" />}
               />
               <Route
-                path="guided-workflows"
-                element={<ModulePlaceholderPage moduleKeyOverride="guided-workflows" />}
-              />
-              <Route
                 path="troubleshooting"
                 element={<ModulePlaceholderPage moduleKeyOverride="troubleshooting" />}
-              />
-              <Route
-                path="sound-analysis"
-                element={<ModulePlaceholderPage moduleKeyOverride="sound-analysis" />}
               />
               <Route
                 path="knowledge-graph"

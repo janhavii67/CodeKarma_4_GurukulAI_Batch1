@@ -34,6 +34,17 @@ Browser, then client wrapper, then router dependency chain (session, CSRF, permi
 1. Prefix `/api/v1`, plural nouns, snake_case JSON.
 2. Identify the user from the session only. Never accept a user ID from the body for authorization.
 3. Error body: `{"error": {"code": "...", "message": "...", "details": null, "request_id": "..."}}`.
+   Standard Error Codes:
+   - `unauthenticated` (401): Missing or expired session.
+   - `csrf_failed` (403): Missing or invalid CSRF token on unsafe HTTP method.
+   - `forbidden` (403): Missing required permission or role capability.
+   - `self_review_forbidden` (403): Author attempting to approve, reject, or request changes on their own knowledge version.
+   - `not_found` (404): Resource does not exist or caller has no visibility permissions to know it exists.
+   - `invalid_state` (409): Lifecycle transition is illegal from current status or version is frozen.
+   - `open_version_exists` (409): An open version (`draft`, `changes_requested`, `in_review`) already exists for this item.
+   - `no_base_version` (409): Cannot create a revision without an existing eligible base version.
+   - `conflict` (409): Concurrent modification or database constraint violation.
+   - `validation_error` (422): Schema/payload validation failure.
 4. Lists: `?page=1&page_size=20` returning `{items, total, page, page_size}`.
 5. State changes are explicit `POST .../{action}` calls inside one transaction.
 6. Long jobs return `202` with a job ID, polled via `GET /processing-jobs/{id}`.

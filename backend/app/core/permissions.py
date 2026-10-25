@@ -25,10 +25,21 @@ PERM_MACHINE_MANAGE = "machine.manage"
 PERM_KNOWLEDGE_VIEW_PUBLISHED = "knowledge.view_published"
 PERM_ASSISTANT_USE = "assistant.use"
 PERM_AUDIT_VIEW = "audit.view"
+PERM_PROCEDURE_CREATE = "procedure.create"
+PERM_PROCEDURE_EXECUTE = "procedure.execute"
+PERM_TROUBLESHOOT_USE = "troubleshoot.use"
+PERM_AUDIO_MANAGE = "audio.manage"
+PERM_AUDIO_ANALYZE = "audio.analyze"
+PERM_SIMULATION_ATTEMPT = "simulation.attempt"
+PERM_LEARNING_MANAGE = "learning.manage"
+PERM_ADMIN_MANAGE = "admin.manage"
 
 # Role Constants
+ROLE_ADMIN = "ADMIN"
 ROLE_EXPERT = "EXPERT"
+ROLE_OPERATOR = "OPERATOR"
 ROLE_TRAINEE = "TRAINEE"
+
 
 
 @dataclass

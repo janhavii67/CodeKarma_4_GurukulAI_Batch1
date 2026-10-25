@@ -86,3 +86,34 @@ class ValidationError(AppError):
         details: Optional[Any] = None,
     ):
         super().__init__(code=code, message=message, status_code=422, details=details)
+
+
+class SelfReviewForbiddenError(ForbiddenError):
+    def __init__(
+        self,
+        code: str = "self_review_forbidden",
+        message: str = "Authors are strictly forbidden from approving or reviewing their own knowledge versions.",
+        details: Optional[Any] = None,
+    ):
+        super().__init__(code=code, message=message, details=details)
+
+
+class OpenVersionExistsError(AppError):
+    def __init__(
+        self,
+        code: str = "open_version_exists",
+        message: str = "An open version already exists for this knowledge item.",
+        details: Optional[Any] = None,
+    ):
+        super().__init__(code=code, message=message, status_code=409, details=details)
+
+
+class NoBaseVersionError(AppError):
+    def __init__(
+        self,
+        code: str = "no_base_version",
+        message: str = "No valid base version found for creating a revision.",
+        details: Optional[Any] = None,
+    ):
+        super().__init__(code=code, message=message, status_code=409, details=details)
+
