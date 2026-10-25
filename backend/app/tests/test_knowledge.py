@@ -471,10 +471,11 @@ def test_concurrency_revision_creation(threadsafe_env):
 
     # Fire 5 parallel revision creation requests
     results = []
+    item_id = str(item.id)
 
     def make_request(idx):
         return ts_client.post(
-            f"/api/v1/knowledge/{item.id}/versions",
+            f"/api/v1/knowledge/{item_id}/versions",
             headers={settings.CSRF_HEADER_NAME: csrf_b},
             json={"revision_reason": f"Parallel revision attempt {idx}"},
         )
