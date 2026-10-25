@@ -42,6 +42,15 @@ export const AppLayout: React.FC = () => {
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
+  // Module 01: Full-width medical light theme layout
+  if (location.pathname.startsWith('/app/knowledge')) {
+    return (
+      <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
+        <Outlet />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-steel-950 flex flex-col md:flex-row text-slate-100">
       {/* Sidebar for Desktop */}

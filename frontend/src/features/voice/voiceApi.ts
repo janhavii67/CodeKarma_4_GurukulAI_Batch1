@@ -1,4 +1,4 @@
-import { api, getCookie } from '../../lib/api/client';
+import { api, getCsrfToken } from '../../lib/api/client';
 
 export interface MediaAsset {
   id: string;
@@ -105,7 +105,7 @@ export async function uploadVoiceNarration(
   if (machineId) formData.append('machine_id', machineId);
   if (versionId) formData.append('version_id', versionId);
 
-  const csrfToken = getCookie('gk_csrf');
+  const csrfToken = getCsrfToken();
   const headers: HeadersInit = {};
   if (csrfToken) {
     headers['X-CSRF-Token'] = csrfToken;

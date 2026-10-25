@@ -13,7 +13,8 @@ import { GuidedWorkflowsPage } from './features/workflows/GuidedWorkflowsPage';
 import { SoundAnalysisPage } from './features/audio/SoundAnalysisPage';
 import { VoiceToKnowledgePage } from './features/voice/VoiceToKnowledgePage';
 import { ModulePlaceholderPage } from './features/placeholders/ModulePlaceholderPage';
-import { KnowledgeLibraryPage } from './features/knowledge/KnowledgeLibraryPage';
+import { LibraryPage } from './features/knowledge-capture/LibraryPage';
+import { KnowledgeEditorPage } from './features/knowledge-capture/KnowledgeEditorPage';
 import { ForbiddenPage } from './features/errors/ForbiddenPage';
 import { NotFoundPage } from './features/errors/NotFoundPage';
 
@@ -51,7 +52,9 @@ export const App: React.FC = () => {
             >
               <Route index element={<DashboardPage />} />
               <Route path="machines" element={<MachinesPage />} />
-              <Route path="knowledge" element={<KnowledgeLibraryPage />} />
+              <Route path="knowledge" element={<LibraryPage />} />
+              <Route path="knowledge/new" element={<KnowledgeEditorPage />} />
+              <Route path="knowledge/:id" element={<KnowledgeEditorPage />} />
               <Route path="reviews" element={<ReviewsPage />} />
               <Route path="guided-workflows" element={<GuidedWorkflowsPage />} />
               <Route path="sound-analysis" element={<SoundAnalysisPage />} />

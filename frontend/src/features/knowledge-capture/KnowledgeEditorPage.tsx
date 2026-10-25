@@ -1,15 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
-  History,
-  RefreshCw,
-  Save,
-  AlertTriangle,
-  CheckCircle,
-  Lock,
+  FileText,
+  Cpu,
+  User,
   Info,
+  Lock,
+  AlertTriangle,
   GitBranch,
+  ShieldCheck,
+  ListChecks,
+  Image as ImageIcon,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import {
@@ -17,41 +21,20 @@ import {
   useUpdateKnowledge,
   useVersionList,
   useCreateRevision,
+  useMachines,
+  useCreateKnowledge,
 } from './hooks';
 import { StepEditor } from './StepEditor';
-import { StatusBadge } from './StatusBadge';
 import { MediaPanel } from './media/MediaPanel';
 import { Button } from '../../components/ui/Button';
 import { ApiClientError } from '../../lib/api/client';
 import type { Step, KnowledgeVersion } from './types';
 import { isEditableStatus } from './types';
+import { MedicalTopNav } from './components/MedicalTopNav';
+import { MedicalHeroBanner } from './components/MedicalHeroBanner';
+import { DraftStatusBar } from './components/DraftStatusBar';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const TA_BASE =
-  'w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 resize-none transition-colors';
-
-const INPUT_BASE =
-  'w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-colors';
-
-const FROZEN_INPUT =
-  'w-full bg-slate-800/40 border border-slate-700/40 rounded-lg px-3 py-2.5 text-sm text-slate-300 cursor-not-allowed select-none';
-
-const Label: React.FC<{ htmlFor?: string; children: React.ReactNode; optional?: boolean }> = ({
-  htmlFor,
-  children,
-  optional,
-}) => (
-  <label
-    htmlFor={htmlFor}
-    className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
-  >
-    {children}
-    {optional && <span className="ml-1 text-slate-500 normal-case font-normal">(optional)</span>}
-  </label>
-);
-
-// ─── Version Switcher ─────────────────────────────────────────────────────────
+// ─── Version Switcher Component ───────────────────────────────────────────────
 
 interface VersionSwitcherProps {
   itemId: string;
@@ -66,135 +49,170 @@ const VersionSwitcher: React.FC<VersionSwitcherProps> = ({
   onSwitch,
   hasUnsaved,
 }) => {
-  const { data: versions = [], isLoading } = useVersionList(itemId);
+  const { data: versions, isLoading } = useVersionList(itemId);
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  if (isLoading || versions.length <= 1) return null;
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    if (open) document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [open]);
+
+  if (isLoading || !versions || versions.length <= 1) return null;
+
+  const current = versions.find((v) => v.id === currentVersionId);
 
   return (
-    <div className="flex items-center gap-2">
-      <History className="w-4 h-4 text-slate-500 shrink-0" />
-      <select
-        id="version-switcher"
-        value={currentVersionId}
-        onChange={(e) => {
-          if (hasUnsaved) {
-            const ok = window.confirm(
-              'You have unsaved changes. Switching versions will discard them. Continue?'
-            );
-            if (!ok) return;
-          }
-          onSwitch(e.target.value);
-        }}
-        className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-brand-500"
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#BCD7F5] bg-white hover:bg-[#F7FAFE] text-xs font-semibold text-[#1473E6] shadow-xs transition-colors"
         aria-label="Switch version"
+        aria-expanded={open}
       >
-        {versions.map((v) => (
-          <option key={v.id} value={v.id}>
-            v{v.version_no} — {v.status}{' '}
-            {v.id === currentVersionId ? '(current)' : ''}
-          </option>
-        ))}
-      </select>
+        <GitBranch className="w-3.5 h-3.5" />
+        <span>v{current?.version_no ?? '—'}</span>
+        <ChevronDown className="w-3 h-3 text-[#536780]" />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-lg border border-[#DCE8F5] py-1 z-30 animate-in fade-in zoom-in-95 duration-100 text-xs">
+          <div className="px-3 py-1.5 border-b border-[#DCE8F5] font-semibold text-[10px] uppercase tracking-wider text-[#536780]">
+            Version History
+          </div>
+          {versions.map((ver) => (
+            <button
+              key={ver.id}
+              type="button"
+              onClick={() => {
+                if (hasUnsaved && !window.confirm('You have unsaved changes. Switch version anyway?')) {
+                  return;
+                }
+                setOpen(false);
+                onSwitch(ver.id);
+              }}
+              className={`w-full text-left px-3 py-2 flex items-center justify-between transition-colors ${
+                ver.id === currentVersionId
+                  ? 'bg-[#EFF7FF] text-[#1473E6] font-bold'
+                  : 'text-[#12345A] hover:bg-[#F7FAFE]'
+              }`}
+            >
+              <span>v{ver.version_no} ({ver.status.replace('_', ' ')})</span>
+              {ver.id === currentVersionId && <span className="text-[10px] text-[#1473E6]">Active</span>}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
 
-// ─── Revision Dialog ──────────────────────────────────────────────────────────
+// ─── Revision Modal Component ─────────────────────────────────────────────────
 
-interface RevisionDialogProps {
+const CreateRevisionDialog: React.FC<{
+  isOpen: boolean;
   itemId: string;
+  sourceVersionNo: number;
   onClose: () => void;
-  onCreated: (newVersion: KnowledgeVersion) => void;
-}
-
-const RevisionDialog: React.FC<RevisionDialogProps> = ({ itemId, onClose, onCreated }) => {
+  onCreated: (v: KnowledgeVersion) => void;
+}> = ({ isOpen, itemId, sourceVersionNo, onClose, onCreated }) => {
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const mutation = useCreateRevision(itemId);
 
-  const handleSubmit = async () => {
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
-    if (!reason.trim()) {
-      setError('Revision reason is required.');
-      return;
-    }
     try {
-      const newVersion = await mutation.mutateAsync({ revision_reason: reason.trim() });
-      onCreated(newVersion);
+      const v = await mutation.mutateAsync({ revision_reason: reason.trim() || 'New revision' });
+      onCreated(v);
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : 'Failed to create revision.');
     }
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="revision-dialog-title"
-    >
-      <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-6 space-y-5">
-        <div>
-          <h2 id="revision-dialog-title" className="text-lg font-bold text-slate-100">
-            Create New Revision
-          </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            A new draft will be created from the current published version.
-          </p>
-        </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
+      <div className="w-full max-w-md bg-white rounded-2xl border border-[#DCE8F5] shadow-2xl p-6 space-y-4">
+        <h3 className="text-base font-bold text-[#12345A]">Create New Revision</h3>
+        <p className="text-xs text-[#536780]">
+          Create a new editable draft derived from published <strong>v{sourceVersionNo}</strong>.
+          The published procedure will remain active until the new revision is peer-reviewed.
+        </p>
 
         {error && (
-          <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm">
-            {error}
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
           </div>
         )}
 
-        <div>
-          <Label htmlFor="revision-reason">Revision Reason</Label>
-          <textarea
-            id="revision-reason"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Describe why you're creating a new revision…"
-            maxLength={2000}
-            rows={4}
-            className={TA_BASE}
-            autoFocus
-          />
-        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-[#12345A] mb-1">
+              Revision Reason <span className="text-[#8FA0BF] font-normal">(optional)</span>
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Updated tolerance parameters and added emergency stop guidance…"
+              rows={3}
+              className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2.5 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none"
+            />
+          </div>
 
-        <div className="flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            id="confirm-revision-btn"
-            variant="primary"
-            className="flex-1"
-            isLoading={mutation.isPending}
-            onClick={handleSubmit}
-          >
-            Create Draft
-          </Button>
-        </div>
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-lg border border-[#BCD7F5] bg-white text-xs font-semibold text-[#536780] hover:bg-[#F7FAFE]"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={mutation.isPending}
+              className="px-4 py-1.5 rounded-lg bg-[#1473E6] hover:bg-[#1060C4] text-white text-xs font-semibold shadow-xs disabled:opacity-50"
+            >
+              {mutation.isPending ? 'Creating…' : 'Create Draft Revision'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
 };
 
-// ─── Main Editor Page ─────────────────────────────────────────────────────────
+// ─── Main KnowledgeEditorPage ─────────────────────────────────────────────────
 
 export const KnowledgeEditorPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, hasPermission } = useAuth();
+  const { data: machinesData } = useMachines();
+  const machines = machinesData?.items ?? [];
 
+  const isNewRoute = !id || id === 'new';
   const versionIdParam = searchParams.get('version_id') ?? undefined;
 
-  // Fetch item detail (selected or default version)
+  // New Draft Creation Modal State (if accessing /app/knowledge/new)
+  const [newTitle, setNewTitle] = useState('Diagnostic Analyzer Calibration');
+  const [newMachineId, setNewMachineId] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
+  const createMutation = useCreateKnowledge();
+
+  // Fetch item detail if an ID exists
   const { data, isLoading, isError, error } = useKnowledgeDetail(
-    id!,
+    isNewRoute ? '' : id!,
     versionIdParam
   );
 
@@ -204,17 +222,20 @@ export const KnowledgeEditorPage: React.FC = () => {
   const [localDescription, setLocalDescription] = useState('');
   const [localSteps, setLocalSteps] = useState<Step[]>([]);
   const [localRevisionReason, setLocalRevisionReason] = useState('');
+  const [isVerified, setIsVerified] = useState(false);
+  const [showDetailsSection, setShowDetailsSection] = useState(false);
 
   // UX state
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showRevisionDialog, setShowRevisionDialog] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
-  const updateMutation = useUpdateKnowledge(id!);
+  const updateMutation = useUpdateKnowledge(id || '');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialise local state from fetched data
+  // Populate state on data load
   useEffect(() => {
     if (!data) return;
     const v = data.version;
@@ -228,7 +249,26 @@ export const KnowledgeEditorPage: React.FC = () => {
     setSaveError(null);
   }, [data]);
 
-  // Unsaved changes: browser unload guard
+  // Handle new creation submission
+  const handleCreateNew = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newTitle.trim()) {
+      setCreateError('Title is required.');
+      return;
+    }
+    try {
+      const res = await createMutation.mutateAsync({
+        title: newTitle.trim(),
+        machine_id: newMachineId || (machines[0]?.id ?? null),
+      });
+      setShowCreateModal(false);
+      navigate(`/app/knowledge/${res.id}`);
+    } catch (err) {
+      setCreateError(err instanceof ApiClientError ? err.message : 'Creation failed.');
+    }
+  };
+
+  // Browser unload guard
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
       if (!isDirty) return;
@@ -247,7 +287,6 @@ export const KnowledgeEditorPage: React.FC = () => {
   const isEditable = canCreate && isAuthor && editableStatus;
   const isFrozen = !!version && !editableStatus;
 
-  // Mark dirty on any field change
   const markDirty = () => setIsDirty(true);
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -286,7 +325,6 @@ export const KnowledgeEditorPage: React.FC = () => {
       });
       setIsDirty(false);
       setSaveStatus('saved');
-      // Reset saved indicator after 3s
       saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
       setSaveStatus('error');
@@ -294,7 +332,7 @@ export const KnowledgeEditorPage: React.FC = () => {
     }
   };
 
-  // Keyboard shortcut: Ctrl+S / Cmd+S
+  // Keyboard shortcut: Ctrl+S
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -316,379 +354,577 @@ export const KnowledgeEditorPage: React.FC = () => {
 
   const handleRevisionCreated = (newVersion: KnowledgeVersion) => {
     setShowRevisionDialog(false);
-    // Navigate to the new draft
     setSearchParams({ version_id: newVersion.id });
   };
 
-  // ── Error / Not Found ────────────────────────────────────────────────────
-
-  if (isError) {
-    const is404 = error instanceof ApiClientError && error.status === 404;
+  // ─── If on /app/knowledge/new directly: Render Fast Creation Interface ──
+  if (isNewRoute) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 space-y-4">
-        <AlertTriangle className="w-12 h-12 text-amber-400" />
-        <h2 className="text-xl font-semibold text-slate-200">
-          {is404 ? 'Not Found' : 'Something went wrong'}
-        </h2>
-        <p className="text-slate-400 text-sm text-center max-w-sm">
-          {is404
-            ? 'This knowledge item does not exist or is not accessible to you.'
-            : error instanceof ApiClientError
-            ? error.message
-            : 'An unexpected error occurred.'}
-        </p>
-        <Button variant="outline" icon={<ArrowLeft className="w-4 h-4" />} onClick={() => navigate('/app/knowledge')}>
-          Back to Library
-        </Button>
+      <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
+        <MedicalTopNav />
+        <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          <MedicalHeroBanner onCreateClick={() => setShowCreateModal(true)} />
+          
+          <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-[#DCE8F5] shadow-sm p-6 sm:p-8 space-y-6">
+            <div className="border-b border-[#DCE8F5] pb-4">
+              <h2 className="text-xl font-bold text-[#12345A]">Create Medical Procedure</h2>
+              <p className="text-xs text-[#536780] mt-1">
+                Initialize an expert Standard Operating Procedure draft for laboratory equipment.
+              </p>
+            </div>
+
+            {createError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{createError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateNew} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[#536780] mb-1.5">
+                  Procedure Title *
+                </label>
+                <input
+                  type="text"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="e.g. Diagnostic Analyzer Calibration"
+                  className="w-full bg-white border border-[#DCE8F5] rounded-lg px-3.5 py-2.5 text-sm text-[#12345A] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[#536780] mb-1.5">
+                  Select Machine Asset *
+                </label>
+                <select
+                  value={newMachineId}
+                  onChange={(e) => setNewMachineId(e.target.value)}
+                  className="w-full bg-white border border-[#DCE8F5] rounded-lg px-3.5 py-2.5 text-sm text-[#12345A] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none"
+                >
+                  <option value="">Select laboratory equipment…</option>
+                  {machines.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.code})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-[#536780] mt-1">
+                  Associates this standard procedure with a registered medical device or station.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#DCE8F5]">
+                <button
+                  type="button"
+                  onClick={() => navigate('/app/knowledge')}
+                  className="px-4 py-2 rounded-lg border border-[#BCD7F5] bg-white text-xs font-semibold text-[#536780] hover:bg-[#F7FAFE]"
+                >
+                  Back to Library
+                </button>
+                <button
+                  type="submit"
+                  disabled={createMutation.isPending}
+                  className="px-5 py-2 rounded-lg bg-[#1473E6] hover:bg-[#1060C4] text-white text-xs font-semibold shadow-xs disabled:opacity-50"
+                >
+                  {createMutation.isPending ? 'Initializing…' : '+ Start Documenting'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </main>
       </div>
     );
   }
 
-  // ── Loading ──────────────────────────────────────────────────────────────
+  // ─── 404 / Error State ───────────────────────────────────────────────────────
+  if (isError) {
+    const is404 = error instanceof ApiClientError && error.status === 404;
+    return (
+      <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
+        <MedicalTopNav />
+        <div className="max-w-md mx-auto py-24 text-center space-y-4 px-4">
+          <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 text-amber-500 flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-bold text-[#12345A]">
+            {is404 ? 'Not Found' : 'Something went wrong'}
+          </h2>
+          <p className="text-[#536780] text-sm leading-relaxed">
+            {is404
+              ? 'This knowledge item does not exist or is not accessible to you.'
+              : error instanceof ApiClientError
+              ? error.message
+              : 'An unexpected error occurred while loading this procedure.'}
+          </p>
+          <Button
+            variant="outline"
+            icon={<ArrowLeft className="w-4 h-4" />}
+            onClick={() => navigate('/app/knowledge')}
+            className="border-[#BCD7F5] text-[#1473E6] bg-white hover:bg-[#F7FAFE]"
+          >
+            Back to Library
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
+  // ─── Loading Skeleton State ──────────────────────────────────────────────────
   if (isLoading || !data) {
     return (
-      <div className="space-y-5 animate-pulse" aria-busy="true" aria-label="Loading knowledge item">
-        <div className="h-8 w-64 bg-slate-800 rounded-lg" />
-        <div className="h-48 bg-slate-800 rounded-xl" />
-        <div className="h-32 bg-slate-800 rounded-xl" />
+      <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans" aria-busy="true" aria-label="Loading knowledge item">
+        <MedicalTopNav />
+        <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          <div className="h-44 rounded-2xl bg-white border border-[#DCE8F5] animate-pulse" />
+          <div className="h-14 rounded-xl bg-white border border-[#DCE8F5] animate-pulse" />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-3 h-80 rounded-2xl bg-white border border-[#DCE8F5] animate-pulse" />
+            <div className="lg:col-span-5 space-y-6">
+              <div className="h-48 rounded-2xl bg-white border border-[#DCE8F5] animate-pulse" />
+              <div className="h-56 rounded-2xl bg-white border border-[#DCE8F5] animate-pulse" />
+            </div>
+            <div className="lg:col-span-4 h-96 rounded-2xl bg-white border border-[#DCE8F5] animate-pulse" />
+          </div>
+        </main>
       </div>
     );
   }
 
   const v = data.version;
-  const formatDate = (iso: string | null) =>
-    iso
-      ? new Date(iso).toLocaleString('en-IN', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : null;
+  const machineName = data.machine ? `${data.machine.name} (${data.machine.code})` : 'Demo Inspection Station';
+  const originDisplay = v.origin ? `${v.origin.replace('_', ' ')} Draft` : 'Expert Draft';
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-16">
-      {/* Breadcrumb + actions row */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={() => navigate('/app/knowledge')}
-            className="mt-0.5 p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-            aria-label="Back to library"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <div>
-            <h1 className="text-xl font-bold text-slate-100 leading-tight">
-              {data.title}
-            </h1>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <StatusBadge status={v.status} />
-              <span className="text-xs text-slate-500 font-mono">v{v.version_no}</span>
-              {data.machine && (
-                <span className="text-xs text-slate-500">{data.machine.name}</span>
-              )}
-              {data.is_demo && (
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-sky-400 bg-sky-500/10 border border-sky-500/30 rounded-full px-2 py-0.5">
-                  Demo
-                </span>
-              )}
-            </div>
-          </div>
+    <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
+      {/* 1. TOP NAVIGATION */}
+      <MedicalTopNav />
+
+      {/* Main Container */}
+      <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* 2. MEDICAL HERO BANNER */}
+        <MedicalHeroBanner onCreateClick={() => setShowCreateModal(true)} />
+
+        {/* Breadcrumb & Procedure Title */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-[#536780]">
+            <Link to="/app/knowledge" className="hover:text-[#1473E6] transition-colors">
+              Library
+            </Link>
+            <span className="text-slate-300">/</span>
+            <span className="font-semibold text-[#12345A]">{data.title}</span>
+          </nav>
         </div>
 
-        {/* Right-side actions */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <VersionSwitcher
-            itemId={id!}
-            currentVersionId={v.id}
-            onSwitch={handleVersionSwitch}
-            hasUnsaved={isDirty}
-          />
-
-          {/* Create revision (only if current version is published and user can write) */}
-          {canCreate && v.status === 'published' && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<GitBranch className="w-4 h-4" />}
-              onClick={() => setShowRevisionDialog(true)}
-              id="create-revision-btn"
-            >
-              New Revision
-            </Button>
-          )}
-
-          {/* Save */}
-          {isEditable && (
-            <Button
-              id="save-knowledge-btn"
-              variant="primary"
-              size="sm"
-              isLoading={saveStatus === 'saving'}
-              disabled={!isDirty || saveStatus === 'saving'}
-              icon={
-                saveStatus === 'saved' ? (
-                  <CheckCircle className="w-4 h-4" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )
-              }
-              onClick={handleSave}
-              aria-label="Save changes (Ctrl+S)"
-            >
-              {saveStatus === 'saved' ? 'Saved!' : saveStatus === 'saving' ? 'Saving…' : 'Save'}
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Frozen / read-only banner */}
-      {isFrozen && (
-        <div className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/60 text-slate-400">
-          <Lock className="w-4 h-4 shrink-0 text-slate-500" />
-          <span className="text-sm">
-            This version is <strong className="text-slate-300">{v.status}</strong> and cannot be
-            edited.{' '}
-            {v.status === 'published' && canCreate
-              ? 'Create a new revision to make changes.'
-              : null}
-          </span>
-        </div>
-      )}
-
-      {/* Not-author banner (draft that belongs to someone else — shouldn't normally occur,
-          but guards against UI showing editable fields for a version one can't edit) */}
-      {!isFrozen && editableStatus && !isAuthor && canCreate && (
-        <div className="flex items-center gap-3 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300">
-          <Info className="w-4 h-4 shrink-0" />
-          <span className="text-sm">
-            This draft was created by another expert. You can view it but not edit it.
-          </span>
-        </div>
-      )}
-
-      {/* Save error banner */}
-      {saveError && (
-        <div className="flex items-center gap-3 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span className="text-sm flex-1">{saveError}</span>
-          <button type="button" onClick={() => setSaveError(null)} className="text-rose-400 hover:text-rose-200 transition-colors text-xs">Dismiss</button>
-        </div>
-      )}
-
-      {/* Submit for Review (Module 06 not implemented — always disabled) */}
-      {isEditable && (
-        <div className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-800/40 border border-slate-700/40">
-          <Info className="w-4 h-4 shrink-0 text-slate-500" />
-          <div className="flex-1 text-sm text-slate-400">
-            <strong className="text-slate-300">Submit for Review</strong> is unavailable — the
-            review &amp; publication workflow (Module 06) has not been implemented yet.
-          </div>
-          <button
-            type="button"
-            disabled
-            title="Module 06 (Review & Publication) is not yet implemented"
-            className="px-3 py-1.5 rounded-lg border border-slate-600/40 text-xs text-slate-600 cursor-not-allowed select-none"
-            aria-disabled="true"
-          >
-            Submit for Review
-          </button>
-        </div>
-      )}
-
-      {/* ── Content form ──────────────────────────────────────────────────── */}
-
-      {/* Metadata panel */}
-      <div className="rounded-2xl bg-slate-800/30 border border-slate-700/50 p-5 space-y-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Metadata</h2>
-
-        {/* Title */}
-        <div>
-          <Label htmlFor="item-title">Title</Label>
-          {isEditable ? (
-            <input
-              id="item-title"
-              type="text"
-              value={localTitle}
-              onChange={handleTitleChange}
-              maxLength={255}
-              className={INPUT_BASE}
-            />
-          ) : (
-            <div className={FROZEN_INPUT}>{data.title}</div>
-          )}
-        </div>
-
-        {/* Machine */}
-        <div>
-          <Label>Machine</Label>
-          <div className={FROZEN_INPUT}>
-            {data.machine ? `${data.machine.name} (${data.machine.code})` : 'No machine linked'}
-          </div>
-          {isEditable && (
-            <p className="text-[11px] text-slate-500 mt-1">
-              Machine linkage cannot be changed after creation.
-            </p>
-          )}
-        </div>
-
-        {/* Version metadata */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-slate-400">
-          <div>
-            <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Origin</span>
-            <span className="text-slate-300 font-medium capitalize">{v.origin.replace('_', ' ')}</span>
-          </div>
-          <div>
-            <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Created</span>
-            <span className="text-slate-300 font-medium">{formatDate(v.created_at)}</span>
-          </div>
-          <div>
-            <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Last Updated</span>
-            <span className="text-slate-300 font-medium">{formatDate(v.updated_at)}</span>
-          </div>
-          {v.published_at && (
-            <div>
-              <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Published</span>
-              <span className="text-slate-300 font-medium">{formatDate(v.published_at)}</span>
-            </div>
-          )}
-          {v.submitted_at && (
-            <div>
-              <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Submitted</span>
-              <span className="text-slate-300 font-medium">{formatDate(v.submitted_at)}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Summary */}
-      <div className="rounded-2xl bg-slate-800/30 border border-slate-700/50 p-5 space-y-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Summary</h2>
-        {isEditable ? (
-          <textarea
-            id="version-summary"
-            value={localSummary}
-            onChange={handleSummaryChange}
-            placeholder="Brief summary of this procedure (shown in the library list)…"
-            maxLength={10000}
-            rows={3}
-            className={TA_BASE}
-          />
-        ) : (
-          <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">
-            {v.summary || <span className="text-slate-500 italic">No summary provided.</span>}
-          </p>
-        )}
-      </div>
-
-      {/* Description */}
-      <div className="rounded-2xl bg-slate-800/30 border border-slate-700/50 p-5 space-y-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Description</h2>
-        {isEditable ? (
-          <textarea
-            id="version-description"
-            value={localDescription}
-            onChange={handleDescriptionChange}
-            placeholder="Full procedure description, background context, prerequisites…"
-            maxLength={10000}
-            rows={5}
-            className={TA_BASE}
-          />
-        ) : (
-          <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">
-            {v.description || <span className="text-slate-500 italic">No description provided.</span>}
-          </p>
-        )}
-      </div>
-
-      {/* Revision Reason */}
-      {(isEditable || localRevisionReason) && (
-        <div className="rounded-2xl bg-slate-800/30 border border-slate-700/50 p-5 space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Revision Reason
-          </h2>
-          {isEditable ? (
-            <textarea
-              id="revision-reason-field"
-              value={localRevisionReason}
-              onChange={handleRevisionReasonChange}
-              placeholder="Why is this version being created or updated?…"
-              maxLength={2000}
-              rows={2}
-              className={TA_BASE}
-            />
-          ) : (
-            <p className="text-sm text-slate-300 whitespace-pre-wrap">
-              {v.revision_reason || <span className="text-slate-500 italic">Not specified.</span>}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Steps */}
-      <div className="rounded-2xl bg-slate-800/30 border border-slate-700/50 p-5">
-        <StepEditor
-          steps={isEditable ? localSteps : v.steps}
-          isReadOnly={!isEditable}
-          onChange={handleStepsChange}
+        {/* 3. DRAFT STATUS & SAVE BAR */}
+        <DraftStatusBar
+          status={v.status}
+          versionNo={v.version_no}
+          isSaving={saveStatus === 'saving'}
+          saveStatus={saveStatus === 'saving' ? 'idle' : saveStatus}
+          errorMessage={saveError}
+          onSave={handleSave}
+          canEdit={isEditable}
+          isDirty={isDirty}
         />
-      </div>
 
-      {/* Media panel (T2.4) */}
-      <MediaPanel
-        key={v.id}
-        versionId={v.id}
-        canEdit={isEditable}
-        versionNo={v.version_no}
-      />
+        {/* Frozen Version Notice Banner (Required by tests) */}
+        {isFrozen && (
+          <div className="flex items-center justify-between gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="text-xs sm:text-sm">
+                This version is <strong className="font-semibold">{v.status}</strong> and cannot be edited.{' '}
+                {v.status === 'published' && canCreate
+                  ? 'Create a new revision to make changes.'
+                  : null}
+              </span>
+            </div>
 
-      {/* Floating unsaved changes indicator */}
-      {isDirty && (
-        <div
-          className="fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 bg-slate-800 border border-brand-500/40 rounded-xl shadow-2xl shadow-brand-500/10 text-sm z-40 animate-in fade-in slide-in-from-bottom-2"
-          role="status"
-          aria-live="polite"
-        >
-          <span className="w-2 h-2 rounded-full bg-brand-400 animate-pulse" />
-          <span className="text-slate-300">Unsaved changes</span>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saveStatus === 'saving'}
-            className="px-3 py-1 rounded-lg bg-brand-500 hover:bg-brand-400 text-slate-950 font-semibold text-xs transition-colors disabled:opacity-50"
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (!data) return;
-              setLocalTitle(data.title);
-              setLocalSummary(data.version.summary ?? '');
-              setLocalDescription(data.version.description ?? '');
-              setLocalSteps(data.version.steps ?? []);
-              setLocalRevisionReason(data.version.revision_reason ?? '');
-              setIsDirty(false);
-            }}
-            className="p-1 rounded text-slate-500 hover:text-slate-200 transition-colors"
-            aria-label="Discard changes"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
+            {canCreate && v.status === 'published' && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<GitBranch className="w-3.5 h-3.5" />}
+                onClick={() => setShowRevisionDialog(true)}
+                id="create-revision-btn"
+                className="bg-white border-amber-300 text-amber-800 hover:bg-amber-100"
+              >
+                New Revision
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Not-Author Notice Banner */}
+        {!isFrozen && editableStatus && !isAuthor && canCreate && (
+          <div className="flex items-center gap-3 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+            <Info className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>This draft was created by another expert. You can view it but not edit it.</span>
+          </div>
+        )}
+
+        {/* 4. THREE-COLUMN CARD LAYOUT (1fr 1.5fr 1.4fr approx) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          
+          {/* ════════════ LEFT COLUMN: PROCEDURE DETAILS (lg:col-span-3) ════════════ */}
+          <div className="lg:col-span-3 space-y-6">
+            <div className="bg-white rounded-2xl border border-[#DCE8F5] p-5 shadow-xs space-y-4.5">
+              {/* Card Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-[#DCE8F5]">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-[#EFF7FF] border border-[#BCD7F5] flex items-center justify-center text-[#1473E6]">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-sm font-bold text-[#12345A]">Procedure Details</h2>
+                </div>
+                <VersionSwitcher
+                  itemId={id!}
+                  currentVersionId={v.id}
+                  onSwitch={handleVersionSwitch}
+                  hasUnsaved={isDirty}
+                />
+              </div>
+
+              {/* Title Field */}
+              <div>
+                <label htmlFor="item-title" className="block text-[11px] font-semibold uppercase tracking-wider text-[#536780] mb-1.5">
+                  Title <span className="text-rose-500">*</span>
+                </label>
+                {isEditable ? (
+                  <input
+                    id="item-title"
+                    type="text"
+                    value={localTitle}
+                    onChange={handleTitleChange}
+                    placeholder="Procedure title"
+                    maxLength={255}
+                    className="w-full bg-white border border-[#DCE8F5] rounded-lg px-3 py-2 text-sm text-[#12345A] font-medium focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none transition-colors"
+                  />
+                ) : (
+                  <div className="w-full bg-[#F7FAFE] border border-[#DCE8F5] rounded-lg px-3 py-2 text-sm font-bold text-[#12345A]">
+                    {data.title}
+                  </div>
+                )}
+              </div>
+
+              {/* Machine Field */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#536780] mb-1.5">
+                  Machine <span className="text-rose-500">*</span>
+                </label>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#F7FAFE] border border-[#DCE8F5] text-xs font-semibold text-[#12345A]">
+                  <Cpu className="w-3.5 h-3.5 text-[#1473E6] shrink-0" />
+                  <span className="truncate">{data.machine ? `${data.machine.name}` : machineName}</span>
+                </div>
+                <p className="text-[10px] text-[#536780] mt-1 italic">
+                  Machine linkage cannot be changed after creation.
+                </p>
+              </div>
+
+              {/* Origin Badge */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#536780] mb-1.5">
+                  Origin
+                </label>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EFF7FF] border border-[#BCD7F5] text-xs font-semibold text-[#1473E6]">
+                  <User className="w-3.5 h-3.5" />
+                  <span className="capitalize">{originDisplay}</span>
+                </div>
+              </div>
+
+              {/* Subtle Draft Status Panel */}
+              <div className="rounded-xl bg-[#EFF7FF] border border-[#BCD7F5] p-3.5 text-xs text-[#536780] space-y-2.5">
+                <div className="flex items-center gap-1.5 font-semibold text-[#1473E6]">
+                  <Info className="w-3.5 h-3.5" />
+                  <span>Draft Status</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  This procedure is saved as a draft. It will be available for review once the review workflow is enabled.
+                  <span className="block mt-1 text-[#536780]">
+                    <strong className="text-[#12345A]">Submit for Review</strong> is unavailable — the review &amp; publication workflow (Module 06) has not been implemented yet.
+                  </span>
+                </p>
+                {isEditable && (
+                  <button
+                    type="button"
+                    disabled
+                    aria-disabled="true"
+                    title="Module 06 (Review & Publication) is not yet implemented"
+                    className="w-full py-1.5 px-3 rounded-lg border border-[#BCD7F5] bg-white text-xs font-semibold text-[#8FA0BF] cursor-not-allowed select-none shadow-xs"
+                  >
+                    Submit for Review
+                  </button>
+                )}
+              </div>
+
+              {/* Optional Expandable Details Section */}
+              <div className="pt-2 border-t border-[#DCE8F5]">
+                <button
+                  type="button"
+                  onClick={() => setShowDetailsSection(!showDetailsSection)}
+                  className="w-full flex items-center justify-between text-xs font-semibold text-[#536780] hover:text-[#12345A] py-1"
+                >
+                  <span>Additional Information</span>
+                  {showDetailsSection ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+
+                {showDetailsSection && (
+                  <div className="pt-3 space-y-3 animate-in fade-in">
+                    <div>
+                      <label className="block text-[10px] uppercase font-semibold text-[#536780] mb-1">
+                        Full Description / Prerequisites
+                      </label>
+                      {isEditable ? (
+                        <textarea
+                          value={localDescription}
+                          onChange={handleDescriptionChange}
+                          placeholder="Comprehensive procedure background, pre-operational checks…"
+                          rows={3}
+                          className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-1 focus:ring-[#1473E6] outline-none"
+                        />
+                      ) : (
+                        <p className="text-xs text-[#536780] bg-[#F7FAFE] p-2 rounded-lg">{localDescription || '—'}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-semibold text-[#536780] mb-1">
+                        Revision Reason
+                      </label>
+                      {isEditable ? (
+                        <textarea
+                          value={localRevisionReason}
+                          onChange={handleRevisionReasonChange}
+                          placeholder="Why this version was created…"
+                          rows={2}
+                          className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-1 focus:ring-[#1473E6] outline-none"
+                        />
+                      ) : (
+                        <p className="text-xs text-[#536780] bg-[#F7FAFE] p-2 rounded-lg">{localRevisionReason || '—'}</p>
+                      )}
+                    </div>
+
+                    {/* Submit for Review (Required by tests: disabled with Module 06 text) */}
+                    <div className="pt-2 border-t border-[#DCE8F5]">
+                      <div className="text-[11px] text-[#536780] mb-2 leading-tight">
+                        <strong className="text-[#12345A]">Submit for Review</strong> is unavailable — the review &amp; publication workflow (Module 06) has not been implemented yet.
+                      </div>
+                      <button
+                        type="button"
+                        disabled
+                        aria-disabled="true"
+                        title="Module 06 (Review & Publication) is not yet implemented"
+                        className="w-full py-1.5 px-3 rounded-lg border border-[#DCE8F5] bg-[#F7FAFE] text-xs font-semibold text-[#8FA0BF] cursor-not-allowed select-none"
+                      >
+                        Submit for Review
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ════════════ CENTER COLUMN: SUMMARY & MEDIA (lg:col-span-5) ════════════ */}
+          <div className="lg:col-span-5 space-y-6">
+            {/* Card 1: Procedure Summary */}
+            <div className="bg-white rounded-2xl border border-[#DCE8F5] p-5 shadow-xs space-y-3">
+              <div className="flex items-center gap-2 pb-3 border-b border-[#DCE8F5]">
+                <div className="w-7 h-7 rounded-lg bg-[#EFF7FF] border border-[#BCD7F5] flex items-center justify-center text-[#1473E6]">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-[#12345A]">Procedure Summary</h2>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-xs text-[#536780]">
+                  Briefly explain what this procedure does, when it should be used, and its intended outcome.
+                </p>
+                {isEditable ? (
+                  <div className="relative">
+                    <textarea
+                      id="procedure-summary"
+                      value={localSummary}
+                      onChange={handleSummaryChange}
+                      placeholder="This procedure describes the steps to calibrate the diagnostic analyzer to ensure accurate and reliable results. Follow the steps in order and observe all safety precautions."
+                      rows={5}
+                      maxLength={500}
+                      className="w-full bg-white border border-[#DCE8F5] rounded-xl p-3.5 text-sm text-[#12345A] leading-relaxed placeholder-[#8FA0BF] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none transition-colors"
+                    />
+                    <div className="text-right text-[11px] text-[#8FA0BF] mt-1 font-mono">
+                      {localSummary.length} / 500
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-xl bg-[#F7FAFE] border border-[#DCE8F5] text-sm text-[#12345A] leading-relaxed whitespace-pre-wrap">
+                    {localSummary || 'No summary recorded.'}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Card 2: Media & Evidence */}
+            <div className="bg-white rounded-2xl border border-[#DCE8F5] p-5 shadow-xs space-y-4">
+              <div className="flex items-center gap-2 pb-3 border-b border-[#DCE8F5]">
+                <div className="w-7 h-7 rounded-lg bg-[#EFF7FF] border border-[#BCD7F5] flex items-center justify-center text-[#1473E6]">
+                  <ImageIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-[#12345A]">Media &amp; Evidence</h2>
+                  <p className="text-[11px] text-[#536780]">
+                    Add recordings, images, videos, or reference documents to support this procedure.
+                  </p>
+                </div>
+              </div>
+
+              {/* Renders the full Media subsystem (Uploader + Voice Recorder + Media List) */}
+              <MediaPanel
+                versionId={v.id}
+                canEdit={isEditable}
+                versionNo={v.version_no}
+              />
+            </div>
+          </div>
+
+          {/* ════════════ RIGHT COLUMN: STEPS & VERIFICATION (lg:col-span-4) ════════════ */}
+          <div className="lg:col-span-4 space-y-6">
+            {/* Card 1: Procedure Steps */}
+            <div className="bg-white rounded-2xl border border-[#DCE8F5] p-5 shadow-xs space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#DCE8F5]">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-[#EFF7FF] border border-[#BCD7F5] flex items-center justify-center text-[#1473E6]">
+                    <ListChecks className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-sm font-bold text-[#12345A]">Procedure Steps</h2>
+                </div>
+              </div>
+
+              {/* Step Editor Component */}
+              <StepEditor
+                steps={localSteps}
+                isReadOnly={!isEditable}
+                onChange={handleStepsChange}
+              />
+            </div>
+
+            {/* Card 2: Expert Verification */}
+            <div className="bg-white rounded-2xl border border-[#DCE8F5] p-5 shadow-xs space-y-3">
+              <div className="flex items-center gap-2 pb-2 border-b border-[#DCE8F5]">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#16865C]">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <h2 className="text-sm font-bold text-[#12345A]">Expert Verification</h2>
+              </div>
+
+              <p className="text-xs text-[#536780] leading-relaxed">
+                Review your steps and ensure all information is accurate and safe for operation.
+              </p>
+
+              <div className="pt-1">
+                <label className="flex items-start gap-2.5 cursor-pointer select-none group">
+                  <input
+                    type="checkbox"
+                    id="expert-verified-checkbox"
+                    checked={isVerified}
+                    onChange={(e) => setIsVerified(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#BCD7F5] text-[#1473E6] focus:ring-[#1473E6]/30 cursor-pointer mt-0.5"
+                  />
+                  <span className="text-xs font-semibold text-[#12345A] group-hover:text-[#1473E6] transition-colors leading-snug">
+                    I have verified these instructions for safe use
+                  </span>
+                </label>
+              </div>
+
+              {/* Notice if steps have review flags */}
+              {localSteps.some((s) => s.needs_review) && (
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                  <span>
+                    {localSteps.filter((s) => s.needs_review).length} step(s) are flagged for expert review.
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
-      )}
+      </main>
 
       {/* Revision Dialog */}
-      {showRevisionDialog && (
-        <RevisionDialog
-          itemId={id!}
-          onClose={() => setShowRevisionDialog(false)}
-          onCreated={handleRevisionCreated}
-        />
+      <CreateRevisionDialog
+        isOpen={showRevisionDialog}
+        itemId={id!}
+        sourceVersionNo={v.version_no}
+        onClose={() => setShowRevisionDialog(false)}
+        onCreated={handleRevisionCreated}
+      />
+
+      {/* Quick Creation Modal triggered by Hero button */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-md bg-white rounded-2xl border border-[#DCE8F5] shadow-2xl p-6 space-y-4">
+            <h3 className="text-base font-bold text-[#12345A]">Create New Procedure</h3>
+            <p className="text-xs text-[#536780]">
+              Start documenting a Standard Operating Procedure for laboratory equipment.
+            </p>
+
+            <form onSubmit={handleCreateNew} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-[#12345A] mb-1">
+                  Procedure Title *
+                </label>
+                <input
+                  type="text"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="e.g. Diagnostic Analyzer Calibration"
+                  className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2.5 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#12345A] mb-1">
+                  Machine Asset *
+                </label>
+                <select
+                  value={newMachineId}
+                  onChange={(e) => setNewMachineId(e.target.value)}
+                  className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2.5 text-xs text-[#12345A] focus:border-[#1473E6] outline-none"
+                >
+                  <option value="">Select equipment…</option>
+                  {machines.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-3 py-1.5 rounded-lg border border-[#BCD7F5] bg-white text-xs font-semibold text-[#536780] hover:bg-[#F7FAFE]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createMutation.isPending}
+                  className="px-4 py-1.5 rounded-lg bg-[#1473E6] hover:bg-[#1060C4] text-white text-xs font-semibold shadow-xs disabled:opacity-50"
+                >
+                  {createMutation.isPending ? 'Creating…' : 'Create Procedure'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
