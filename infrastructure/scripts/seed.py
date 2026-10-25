@@ -453,27 +453,7 @@ def seed_database(db: Session) -> None:
                 db.add(review)
                 db.commit()
         else:
-            # Sync existing article and ensure its revisions have valid steps and published pointer
-            art.title = a["title"]
-            art.machine_id = a["machine_id"]
-            art.category = a["category"]
-            art.tags = a["tags"]
-            art.status = a["status"]
-            art.current_version = a["current_version"]
-            for rev in art.versions:
-                if not isinstance(rev.steps, list) or len(rev.steps) == 0:
-                    rev.steps = steps_list
-                if not rev.created_by:
-                    rev.created_by = rev.author_id or art.author_id
-                if not rev.title:
-                    rev.title = art.title
-                if not rev.machine_id:
-                    rev.machine_id = art.machine_id
-            if art.status == "APPROVED" and not art.current_published_version_id:
-                pub_v = next((v for v in art.versions if v.status == "published"), None)
-                if pub_v:
-                    art.current_published_version_id = pub_v.id
-            db.commit()
+            pass
 
     # Seed Demo Machines (Module 01 - T2.1)
     machines_to_seed = [
