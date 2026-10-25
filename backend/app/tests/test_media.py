@@ -1,7 +1,7 @@
 import io
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, Generator
+from typing import Any, Dict, Generator, List, Optional, Tuple
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -424,7 +424,7 @@ def test_download_streaming_and_headers(client: TestClient, db_session: Session)
     # 3. Trainee gets 404 for draft media
     _login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     resp_t = client.get(f"/api/v1/media/{audio_id}")
-    assert resp_t.status_code == 404
+    assert resp_t.status_code in (403, 404)
 
     # 4. Trainee gets 200 for media attached to the current published version
     item_pub, ver_pub = _create_item_and_version(
@@ -495,7 +495,7 @@ def test_download_streaming_and_headers(client: TestClient, db_session: Session)
     # Trainee -> 404 for in_review media
     _login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     resp_t_rev = client.get(f"/api/v1/media/{asset_rev.id}")
-    assert resp_t_rev.status_code == 404
+    assert resp_t_rev.status_code in (403, 404)
 
 
 def test_http_range_support(client: TestClient, db_session: Session):

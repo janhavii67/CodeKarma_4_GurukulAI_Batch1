@@ -104,6 +104,10 @@ async def request_id_and_timing_middleware(request: Request, call_next):
     return response
 
 
+from sqlalchemy.exc import IntegrityError, DBAPIError
+from app.core.db_errors import map_db_error
+
+
 # Global Exception Handlers conforming strictly to API_CONVENTIONS.md
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError):
@@ -119,6 +123,25 @@ async def app_error_handler(request: Request, exc: AppError):
             }
         },
     )
+
+
+@app.exception_handler(IntegrityError)
+@app.exception_handler(DBAPIError)
+async def db_integrity_error_handler(request: Request, exc: Exception):
+    app_exc = map_db_error(exc)
+    request_id = getattr(request.state, "request_id", None)
+    return JSONResponse(
+        status_code=app_exc.status_code,
+        content={
+            "error": {
+                "code": app_exc.code,
+                "message": app_exc.message,
+                "details": app_exc.details,
+                "request_id": request_id,
+            }
+        },
+    )
+
 
 
 @app.exception_handler(RequestValidationError)

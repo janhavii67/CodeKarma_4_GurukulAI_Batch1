@@ -95,7 +95,8 @@ export const AppLayout: React.FC = () => {
                 </NavLink>
                 <NavLink to="/app/voice-capture" className={navItemClass}>
                   <Mic className="w-4 h-4 shrink-0" />
-                  <span>Voice-to-Knowledge (M04)</span>
+                  <span className="flex-1">Voice-to-Knowledge (M04)</span>
+                  <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono border border-emerald-500/30">Live</span>
                 </NavLink>
                 <NavLink to="/app/reviews" className={navItemClass}>
                   <CheckSquare className="w-4 h-4 shrink-0" />
@@ -248,7 +249,8 @@ export const AppLayout: React.FC = () => {
               </NavLink>
               <NavLink to="/app/voice-capture" className={navItemClass} onClick={closeMobileMenu}>
                 <Mic className="w-4 h-4" />
-                <span>Voice-to-Knowledge (M04)</span>
+                <span className="flex-1">Voice-to-Knowledge (M04)</span>
+                <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono border border-emerald-500/30">Live</span>
               </NavLink>
               <NavLink to="/app/reviews" className={navItemClass} onClick={closeMobileMenu}>
                 <CheckSquare className="w-4 h-4" />

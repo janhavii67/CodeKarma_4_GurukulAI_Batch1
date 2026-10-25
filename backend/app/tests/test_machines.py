@@ -28,16 +28,16 @@ def test_create_and_list_machines(client: TestClient):
         "/api/v1/machines",
         headers={settings.CSRF_HEADER_NAME: csrf_a},
         json={
-            "name": "Haas VF-2 CNC Mill",
-            "code": "HAAS-VF2-001",
+            "name": "Haas VF-2 CNC Mill Unit 2",
+            "code": "HAAS-VF2-002",
             "category": "Milling",
             "is_demo": False,
         },
     )
     assert create_resp.status_code == 201
     data = create_resp.json()
-    assert data["name"] == "Haas VF-2 CNC Mill"
-    assert data["code"] == "HAAS-VF2-001"
+    assert data["name"] == "Haas VF-2 CNC Mill Unit 2"
+    assert data["code"] == "HAAS-VF2-002"
     assert data["category"] == "Milling"
     assert data["is_demo"] is False
     assert "id" in data
@@ -48,7 +48,7 @@ def test_create_and_list_machines(client: TestClient):
         headers={settings.CSRF_HEADER_NAME: csrf_a},
         json={
             "name": "Another Haas Mill",
-            "code": "HAAS-VF2-001",
+            "code": "HAAS-VF2-002",
             "category": "Milling",
             "is_demo": False,
         },
@@ -61,7 +61,7 @@ def test_create_and_list_machines(client: TestClient):
     assert list_resp.status_code == 200
     list_data = list_resp.json()
     assert list_data["total"] >= 1
-    assert any(m["code"] == "HAAS-VF2-001" for m in list_data["items"])
+    assert any(m["code"] == "HAAS-VF2-002" for m in list_data["items"])
 
 
 def test_machine_manage_permission_gated(client: TestClient):

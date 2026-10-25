@@ -3,13 +3,14 @@ import os
 from pathlib import Path
 import sys
 import time
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 # Ensure backend root is on sys.path
 backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if backend_path not in sys.path:
     sys.path.insert(0, backend_path)
 
+from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.integrations.storage import get_storage_service

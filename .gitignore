@@ -43,7 +43,7 @@ frontend/dist/
 *.db
 *.sqlite3
 data/
-media/
+/media/
 /media_data/
 postgres_data/
 

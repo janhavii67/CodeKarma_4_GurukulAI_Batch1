@@ -1,0 +1,201 @@
+import json
+from pathlib import Path
+from typing import Optional, Tuple, List
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
+from app.models.media import MediaAsset
+from app.models.processing_job import ProcessingJob
+from app.models.transcript import Transcript, TranscriptSegment
+from app.models.knowledge import KnowledgeVersion
+from app.integrations.media.ffmpeg import probe_duration
+from app.services.vector_service import compute_dense_embedding, KnowledgeEmbedding, EMBEDDING_DIM
+from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError
+from app.core.logging import logger
+
+MAX_DURATION_SECONDS = 300.0  # 5 minutes maximum
+
+
+def create_voice_capture_job(
+    db: Session,
+    user_id: str,
+    file_path: str,
+    original_name: str,
+    mime_type: str,
+    size_bytes: int,
+    title: Optional[str] = None,
+    machine_id: Optional[str] = None,
+    version_id: Optional[str] = None,
+) -> Tuple[MediaAsset, ProcessingJob]:
+    """
+    Creates media asset record, validates duration <= 5 minutes,
+    and initializes an idempotent ProcessingJob for background transcription and RAG vector indexing.
+    """
+    audio_path = Path(file_path)
+    if not audio_path.exists():
+        raise ValidationError(code="file_not_found", message=f"Audio file '{file_path}' does not exist.")
+
+    # Validate duration limit
+    duration = probe_duration(audio_path)
+    if duration > MAX_DURATION_SECONDS:
+        raise ValidationError(
+            code="duration_exceeded",
+            message=f"Audio duration ({duration:.1f}s) exceeds the maximum allowed limit of 5 minutes (300s).",
+        )
+
+    # If linked to a knowledge version, verify ownership and draft status
+    if version_id:
+        version = db.get(KnowledgeVersion, version_id)
+        if not version:
+            raise NotFoundError(code="version_not_found", message=f"Knowledge version '{version_id}' not found.")
+        if version.status not in ("draft", "changes_requested"):
+            raise ForbiddenError(code="version_not_editable", message="Voice can only be attached to editable drafts.")
+
+    # 1. Create MediaAsset
+    media = MediaAsset(
+        title=title or (f"Voice Narration - {original_name}" if original_name else "Expert Voice Narration"),
+        machine_id=machine_id,
+        version_id=version_id,
+        kind="audio",
+        file_path=str(audio_path.resolve()),
+        original_name=original_name or "recording.webm",
+        mime_type=mime_type or "audio/webm",
+        size_bytes=size_bytes,
+        duration_seconds=duration,
+        uploaded_by=user_id,
+    )
+    db.add(media)
+    db.flush()
+
+    # 2. Idempotent ProcessingJob
+    idempotency_key = f"voice:{media.id}"
+    job = ProcessingJob(
+        type="voice_to_knowledge",
+        media_id=media.id,
+        version_id=version_id,
+        status="queued",
+        progress=0,
+        idempotency_key=idempotency_key,
+        created_by=user_id,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(media)
+    db.refresh(job)
+
+    logger.info(f"Created voice media asset {media.id} and processing job {job.id}.")
+    return media, job
+
+
+def retry_voice_job(db: Session, job_id: str, user_id: str) -> ProcessingJob:
+    """
+    Retries a failed processing job if under retry limit (attempts < 3).
+    """
+    job = db.get(ProcessingJob, job_id)
+    if not job:
+        raise NotFoundError(code="job_not_found", message=f"Processing job '{job_id}' not found.")
+
+    if job.status != "failed":
+        raise ValidationError(code="job_not_failed", message=f"Job status is '{job.status}'. Only failed jobs can be retried.")
+
+    if job.attempts >= 3:
+        raise ValidationError(code="max_retries_exceeded", message="Maximum retry limit (3 attempts) reached for this job.")
+
+    job.status = "queued"
+    job.progress = 0
+    job.error_safe = None
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def update_transcript_segment(
+    db: Session,
+    segment_id: str,
+    user_id: str,
+    edited_text: Optional[str] = None,
+    needs_review: Optional[bool] = None,
+) -> TranscriptSegment:
+    """
+    Edits segment text while keeping original_text untouched.
+    Updates corresponding vector embedding in knowledge_embeddings.
+    """
+    segment = db.get(TranscriptSegment, segment_id)
+    if not segment:
+        raise NotFoundError(code="segment_not_found", message=f"Segment '{segment_id}' not found.")
+
+    if edited_text is not None:
+        segment.edited_text = edited_text
+
+    if needs_review is not None:
+        segment.needs_review = needs_review
+
+    db.commit()
+
+    # Re-index updated segment vector in vector store
+    new_text = segment.edited_text if segment.edited_text else segment.original_text
+    new_vec = compute_dense_embedding(new_text)
+
+    emb = db.query(KnowledgeEmbedding).filter(
+        KnowledgeEmbedding.source_type == "voice_segment",
+        KnowledgeEmbedding.source_id == segment.id,
+    ).first()
+
+    if emb:
+        emb.chunk_text = new_text
+        emb.embedding_json = json.dumps(new_vec)
+        meta = emb.metadata_dict
+        meta["needs_review"] = segment.needs_review
+        meta["edited"] = True
+        emb.metadata_json = json.dumps(meta)
+        db.commit()
+
+    db.refresh(segment)
+    return segment
+
+
+def validate_version_for_submission(db: Session, version_id: str) -> None:
+    """
+    Enforces Strict Submission Invariants for Voice-Generated SOPs:
+    1. Blocks submission if any step has needs_review=True.
+    2. Blocks submission if latest voice processing job is currently processing or failed.
+    """
+    version = db.get(KnowledgeVersion, version_id)
+    if not version:
+        raise NotFoundError(code="version_not_found", message=f"Version '{version_id}' not found.")
+
+    # 1. Check latest processing job for this version
+    latest_job = (
+        db.query(ProcessingJob)
+        .filter(ProcessingJob.version_id == version_id)
+        .order_by(desc(ProcessingJob.created_at))
+        .first()
+    )
+    if latest_job:
+        if latest_job.status in ("queued", "processing"):
+            raise ValidationError(
+                code="voice_processing_in_progress",
+                message="Cannot submit version while voice narration is still processing. Please wait for transcription and structuring to complete.",
+            )
+        if latest_job.status == "failed":
+            raise ValidationError(
+                code="voice_processing_failed",
+                message="Cannot submit version with a failed voice narration job. Please retry the job or remove the failed draft.",
+            )
+
+    # 2. Check steps for unresolved review flags
+    if version.steps:
+        try:
+            steps_list = json.loads(version.steps) if isinstance(version.steps, str) else version.steps
+            flagged_steps = []
+            for idx, s in enumerate(steps_list, start=1):
+                if s.get("needs_review") is True:
+                    reason = s.get("note") or "Missing parameter or unverified tolerance"
+                    flagged_steps.append(f"Step #{idx} ('{s.get('title')}'): {reason}")
+
+            if flagged_steps:
+                raise ValidationError(
+                    code="unresolved_step_flags",
+                    message=f"Submission blocked: {len(flagged_steps)} steps require expert review. Please verify values: {'; '.join(flagged_steps[:3])}",
+                )
+        except json.JSONDecodeError:
+            pass

@@ -154,3 +154,25 @@ def get_me(
         user=UserResponse.model_validate(user),
         permissions=permissions,
     )
+
+
+@router.get(
+    "/csrf",
+    summary="Get or refresh Double-Submit CSRF token",
+)
+def get_csrf_token(
+    request: Request,
+    response: Response,
+):
+    token = request.cookies.get(settings.CSRF_COOKIE_NAME) or generate_csrf_token()
+    response.set_cookie(
+        key=settings.CSRF_COOKIE_NAME,
+        value=token,
+        httponly=False,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        max_age=settings.ABSOLUTE_TIMEOUT_HOURS * 3600,
+        path="/",
+    )
+    return {"csrf_token": token}
+

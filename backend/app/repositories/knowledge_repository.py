@@ -82,7 +82,11 @@ class KnowledgeRepository:
 
         version = KnowledgeVersion(
             item_id=item.id,
+            article_id=item.id,
             version_no=1,
+            version=1,
+            title=title.strip() if title else item.title,
+            machine_id=machine_id,
             status=STATUS_DRAFT,
             summary=summary.strip() if summary else None,
             description=description.strip() if description else None,
@@ -90,6 +94,7 @@ class KnowledgeRepository:
             origin=ORIGIN_EXPERT,
             revision_reason=None,
             created_by=author_id,
+            author_id=author_id,
         )
         db.add(version)
 
@@ -117,14 +122,19 @@ class KnowledgeRepository:
 
         new_version = KnowledgeVersion(
             item_id=item_id,
+            article_id=item_id,
             version_no=next_version_no,
+            version=next_version_no,
+            title=from_version.title or "",
+            machine_id=from_version.machine_id,
             status=STATUS_DRAFT,
             summary=from_version.summary,
             description=from_version.description,
             steps=copied_steps,
             origin=ORIGIN_EXPERT,
-            revision_reason=revision_reason.strip(),
+            revision_reason=revision_reason.strip() if revision_reason else None,
             created_by=created_by,
+            author_id=created_by,
         )
         db.add(new_version)
 

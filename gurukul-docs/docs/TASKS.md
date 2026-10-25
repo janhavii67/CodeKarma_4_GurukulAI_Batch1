@@ -41,16 +41,16 @@ Claude writes the task prompt, Antigravity implements, you run the tests, and re
 | T1.4 | 1 | B | Frontend skeleton: Vite, TS, Tailwind, router, API client | Tested |
 | T1.5 | 1 | B | Login/register UI, protected routes, layout, sidebar, 403/404, dashboards, placeholders for all modules | Tested |
 | T1.6 | 1 | A | Auth + permission tests, run and record results | Tested |
-| T2.1 | 2 | A | Migration 002, machines and knowledge item/version APIs | Tested |
-| T2.2 | 2 | A | Media upload + storage service + validation | Tested |
-| T2.3 | 2 | B | Knowledge library, create/edit form, step editor | Tested |
-| T2.4 | 2 | B | Upload and browser audio recording component | Tested |
+| T2.1 | 2 | A | Migration 002, machines and knowledge item/version APIs | Not started |
+| T2.2 | 2 | A | Media upload + storage service + validation | Not started |
+| T2.3 | 2 | B | Knowledge library, create/edit form, step editor | Not started |
+| T2.4 | 2 | B | Upload and browser audio recording component | Not started |
 | T3.1 | 3 | A | Review state machine, approve/reject/changes, publish/supersede/withdraw, audit | Not started |
 | T3.2 | 3 | A | M6 tests (self-approval block, concurrency, withdraw) | Not started |
 | T3.3 | 3 | B | Review queue, review page, comments, version history, status badges | Not started |
-| T4.1 | 4 | A | Migration 003, processing jobs, speech adapter, ffmpeg normalise | Not started |
-| T4.2 | 4 | A | LLM adapter + structuring prompt + schema validation + flags | Not started |
-| T4.3 | 4 | B | Voice capture page, job status, transcript editor, AI-draft review | Not started |
+| T4.1 | 4 | A | Migration 004, processing jobs, speech adapter, ffmpeg normalise, vector store | Tested |
+| T4.2 | 4 | A | LLM adapter + structuring prompt + schema validation + flags + vector search | Tested |
+| T4.3 | 4 | B | Voice capture page, job status, transcript editor, AI-draft review, RAG search | Tested |
 | T5.1 | 5 | A | Migration 004, chunking at publish, full-text search | Not started |
 | T5.2 | 5 | A | Assistant endpoint, strict prompt, citation validation, no-source path | Not started |
 | T5.3 | 5 | B | Chat UI, sources panel, "no source" state, feedback | Not started |

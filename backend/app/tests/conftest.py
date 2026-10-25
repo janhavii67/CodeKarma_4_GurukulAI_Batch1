@@ -95,7 +95,7 @@ def threadsafe_env() -> Generator[Tuple[TestClient, Session], None, None]:
 
     ts_engine = create_engine(
         ts_db_url,
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 30},
     )
     Base.metadata.create_all(bind=ts_engine)
     TsSession = sessionmaker(autocommit=False, autoflush=False, bind=ts_engine)

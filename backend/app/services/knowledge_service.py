@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 from app.core.exceptions import (
     ConflictError,
@@ -97,9 +97,9 @@ class KnowledgeService:
                 or version.status != STATUS_PUBLISHED
                 or target_item.current_published_version_id != version.id
             ):
-                raise NotFoundError(
-                    code="not_found",
-                    message="The requested knowledge version was not found.",
+                raise ForbiddenError(
+                    code="unauthorized_draft_access",
+                    message="Trainees are not permitted to view unpublished drafts.",
                 )
 
         if not cls.can_view_version(user, permissions, version, target_item):
@@ -227,9 +227,9 @@ class KnowledgeService:
                     version.status != STATUS_PUBLISHED
                     or item.current_published_version_id != version.id
                 ):
-                    raise NotFoundError(
-                        code="not_found",
-                        message="The requested knowledge version was not found.",
+                    raise ForbiddenError(
+                        code="unauthorized_draft_access",
+                        message="Trainees are not permitted to view unpublished drafts.",
                     )
 
             if not cls._can_view_version(user, permissions, version, item):
@@ -243,17 +243,17 @@ class KnowledgeService:
         # No version_id specified -> pick appropriate version
         if is_trainee:
             if not item.current_published_version_id:
-                raise NotFoundError(
-                    code="not_found",
-                    message="The requested knowledge item was not found.",
+                raise ForbiddenError(
+                    code="unauthorized_draft_access",
+                    message="Trainees are not permitted to view unpublished drafts.",
                 )
             version = KnowledgeRepository.get_version_by_id(
                 db, item.current_published_version_id
             )
             if not version or version.status != STATUS_PUBLISHED:
-                raise NotFoundError(
-                    code="not_found",
-                    message="The requested knowledge item was not found.",
+                raise ForbiddenError(
+                    code="unauthorized_draft_access",
+                    message="Trainees are not permitted to view unpublished drafts.",
                 )
             return item, version
 
@@ -397,10 +397,13 @@ class KnowledgeService:
                         message=f"Machine with id '{payload.machine_id}' does not exist.",
                     )
             item.machine_id = payload.machine_id
+            version.machine_id = payload.machine_id
             changed_fields.append("machine_id")
 
         if payload.title is not None:
-            item.title = payload.title.strip()
+            clean_title = payload.title.strip()
+            item.title = clean_title
+            version.title = clean_title
             changed_fields.append("title")
 
         if payload.summary is not None:
@@ -524,7 +527,7 @@ class KnowledgeService:
             db.commit()
             db.refresh(new_version)
             return item, new_version
-        except IntegrityError:
+        except (IntegrityError, OperationalError):
             db.rollback()
             raise ConflictError(
                 code="conflict",
