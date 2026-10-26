@@ -107,28 +107,28 @@ export const GuidedWorkflowsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold text-slate-100">Guided Operating Workflows</h1>
+            <h1 className="text-2xl font-bold text-[#17324D]">Guided Operating Workflows</h1>
             <Badge variant="brand" size="sm">
               Module 03
             </Badge>
           </div>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-[#5D7188]">
             Ordered step checklists with mandatory verification checkpoints and safety interlocks.
           </p>
         </div>
       </div>
 
       {loading ? (
-        <div className="py-12 text-center text-xs text-slate-400">Loading guided workflows...</div>
+        <div className="py-12 text-center text-xs text-[#7C8DA1]">Loading guided workflows...</div>
       ) : procedures.length === 0 ? (
         <Card>
-          <div className="py-8 text-center text-xs text-slate-400">No procedures configured.</div>
+          <div className="py-8 text-center text-xs text-[#7C8DA1]">No procedures configured.</div>
         </Card>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Procedures List */}
           <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+            <h3 className="text-xs font-bold text-[#7C8DA1] uppercase tracking-wider">
               Available Standard Procedures
             </h3>
             {procedures.map((p) => (
@@ -140,22 +140,22 @@ export const GuidedWorkflowsPage: React.FC = () => {
                 }}
                 className={`p-4 rounded-xl border cursor-pointer transition-all ${
                   activeProcedure?.id === p.id
-                    ? 'bg-slate-900 border-brand-500 shadow-md'
-                    : 'bg-slate-900/50 border-slate-800 hover:border-slate-700'
+                    ? 'bg-[#EAF3FF] border-[#1976D2] shadow-sm'
+                    : 'bg-white border-[#DCE6F0] hover:border-[#1976D2]/50 hover:shadow-xs'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-mono text-brand-400">
+                  <span className="text-[11px] font-mono font-bold text-[#1976D2]">
                     {p.steps.length} Steps
                   </span>
                   <Badge variant="success" size="sm">
                     Approved
                   </Badge>
                 </div>
-                <h4 className="text-sm font-semibold text-slate-100 mb-1">{p.title}</h4>
-                <p className="text-xs text-slate-400 line-clamp-2">{p.description}</p>
-                <div className="mt-2 text-[11px] text-slate-400">
-                  Target: <span className="text-slate-300">{p.machine_name || 'Standard Machine'}</span>
+                <h4 className="text-sm font-bold text-[#17324D] mb-1">{p.title}</h4>
+                <p className="text-xs text-[#5D7188] line-clamp-2">{p.description}</p>
+                <div className="mt-2 text-[11px] text-[#7C8DA1]">
+                  Target: <span className="text-[#17324D] font-medium">{p.machine_name || 'Standard Equipment'}</span>
                 </div>
               </div>
             ))}
@@ -166,7 +166,7 @@ export const GuidedWorkflowsPage: React.FC = () => {
             {activeProcedure && (
               <Card
                 title={activeProcedure.title}
-                subtitle={`Machine: ${activeProcedure.machine_name || 'Universal'} · Ordered Execution Flow`}
+                subtitle={`Equipment: ${activeProcedure.machine_name || 'Universal'} · Ordered Execution Flow`}
                 badge={
                   activeRun ? (
                     <Badge
@@ -184,27 +184,27 @@ export const GuidedWorkflowsPage: React.FC = () => {
                 }
               >
                 <div className="space-y-4 text-xs">
-                  <p className="text-slate-300 leading-relaxed">{activeProcedure.description}</p>
+                  <p className="text-[#5D7188] leading-relaxed">{activeProcedure.description}</p>
 
                   {/* Prerequisites & Warnings */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {activeProcedure.prerequisites && (
-                      <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
-                        <div className="flex items-center gap-1.5 font-semibold text-slate-300 mb-1">
-                          <Wrench className="w-3.5 h-3.5 text-brand-400" />
-                          Prerequisites & Tools:
+                      <div className="p-3 rounded-xl bg-[#F3F8FE] border border-[#DCE6F0]">
+                        <div className="flex items-center gap-1.5 font-bold text-[#17324D] mb-1">
+                          <Wrench className="w-3.5 h-3.5 text-[#1976D2]" />
+                          Prerequisites &amp; Tools:
                         </div>
-                        <p className="text-slate-400 text-[11px]">{activeProcedure.prerequisites}</p>
+                        <p className="text-[#5D7188] text-[11px]">{activeProcedure.prerequisites}</p>
                       </div>
                     )}
 
                     {activeProcedure.safety_warnings && (
-                      <div className="p-3 rounded-lg bg-amber-950/20 border border-amber-600/30 text-amber-200">
-                        <div className="flex items-center gap-1.5 font-semibold text-amber-400 mb-1">
+                      <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900">
+                        <div className="flex items-center gap-1.5 font-bold text-[#D98B13] mb-1">
                           <AlertTriangle className="w-3.5 h-3.5" />
                           Safety Precaution:
                         </div>
-                        <p className="text-[11px] text-amber-300">{activeProcedure.safety_warnings}</p>
+                        <p className="text-[11px] text-amber-800">{activeProcedure.safety_warnings}</p>
                       </div>
                     )}
                   </div>
@@ -226,9 +226,9 @@ export const GuidedWorkflowsPage: React.FC = () => {
                   {/* Active Steps Execution Checklist */}
                   {activeRun && (
                     <div className="space-y-3 pt-2">
-                      <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                        <span className="font-bold text-slate-200">Execution Checkpoints:</span>
-                        <span className="text-[11px] font-mono text-slate-400">
+                      <div className="flex items-center justify-between pb-2 border-b border-[#E8EEF5]">
+                        <span className="font-bold text-[#17324D]">Execution Checkpoints:</span>
+                        <span className="text-[11px] font-mono text-[#5D7188]">
                           {activeRun.step_executions.filter((s) => s.is_completed).length} /{' '}
                           {activeProcedure.steps.length} Complete
                         </span>
@@ -245,17 +245,17 @@ export const GuidedWorkflowsPage: React.FC = () => {
                               key={step.id}
                               className={`p-3.5 rounded-xl border transition-all ${
                                 isDone
-                                  ? 'bg-emerald-950/20 border-emerald-500/30 text-slate-300'
-                                  : 'bg-slate-900 border-slate-800 text-slate-200'
+                                  ? 'bg-emerald-50/70 border-emerald-200 text-[#17324D]'
+                                  : 'bg-white border-[#DCE6F0] text-[#17324D] shadow-xs'
                               }`}
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="space-y-1 flex-1">
                                   <div className="flex items-center gap-2">
-                                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-800 font-bold text-brand-300">
+                                    <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#EAF3FF] font-bold text-[#1976D2] border border-[#BCD7F5]">
                                       Step {step.step_order}
                                     </span>
-                                    <span className="font-semibold text-slate-100">{step.title}</span>
+                                    <span className="font-bold text-[#17324D]">{step.title}</span>
                                     {step.is_critical && (
                                       <Badge variant="danger" size="sm">
                                         Critical Verification
@@ -263,12 +263,12 @@ export const GuidedWorkflowsPage: React.FC = () => {
                                     )}
                                   </div>
 
-                                  <p className="text-slate-300 leading-relaxed text-[11px] pt-1">
+                                  <p className="text-[#5D7188] leading-relaxed text-[11px] pt-1">
                                     {step.instruction}
                                   </p>
 
                                   {step.expected_observation && (
-                                    <div className="text-[11px] font-mono text-emerald-400 pt-1">
+                                    <div className="text-[11px] font-mono font-medium text-[#15966A] pt-1">
                                       Expected Observation: {step.expected_observation}
                                     </div>
                                   )}
@@ -296,10 +296,10 @@ export const GuidedWorkflowsPage: React.FC = () => {
                       </div>
 
                       {activeRun.status === 'COMPLETED' && (
-                        <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-emerald-200 flex items-center justify-between">
+                        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-[#15966A] flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                            <span className="font-semibold">
+                            <CheckCircle2 className="w-5 h-5 text-[#15966A]" />
+                            <span className="font-bold">
                               All checkpoints verified! Workflow logged successfully.
                             </span>
                           </div>

@@ -80,9 +80,9 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg space-y-5">
+    <div className="bg-white border border-[#DCE6F0] rounded-2xl p-5 shadow-xs space-y-5">
       {/* Audio Player Toolbar */}
-      <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-[#F3F8FE] border border-[#DCE6F0] rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3 w-full md:w-auto">
           <Button
             size="sm"
@@ -93,8 +93,8 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
             {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
           </Button>
           <div>
-            <span className="text-xs font-semibold text-slate-200 block">Narration Audio Sync</span>
-            <span className="text-[11px] font-mono text-slate-400">
+            <span className="text-xs font-bold text-[#17324D] block">Narration Audio Sync</span>
+            <span className="text-[11px] font-mono text-[#5D7188]">
               Current: {formatTime(currentTime)} • Click any segment to seek
             </span>
           </div>
@@ -112,7 +112,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
 
       {/* Segments List */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-800 pb-2">
+        <div className="flex items-center justify-between text-xs text-[#5D7188] border-b border-[#E8EEF5] pb-2 font-medium">
           <span>Timestamped Speech Segments ({segments.length})</span>
           <span>Original audio preserved in database</span>
         </div>
@@ -125,16 +125,16 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
             return (
               <div
                 key={seg.id}
-                className={`p-3.5 rounded-lg border transition-all text-xs ${
+                className={`p-3.5 rounded-xl border transition-all text-xs ${
                   isActive
-                    ? 'bg-brand-500/10 border-brand-500/40 shadow-sm'
-                    : 'bg-slate-800/40 border-slate-800 hover:border-slate-700'
+                    ? 'bg-[#EAF3FF] border-[#1976D2]/60 shadow-xs'
+                    : 'bg-white border-[#DCE6F0] hover:border-[#1976D2]/30'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <button
                     onClick={() => handleSeek(seg.start_s)}
-                    className="flex items-center gap-1.5 font-mono text-[11px] text-brand-400 hover:text-brand-300 font-semibold"
+                    className="flex items-center gap-1.5 font-mono text-[11px] text-[#1976D2] hover:text-[#1677F2] font-bold"
                   >
                     <Volume2 className="w-3.5 h-3.5" />
                     <span>
@@ -150,18 +150,19 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                       </Badge>
                     )}
                     {seg.edited_text && (
-                      <span className="text-[10px] text-cyan-400 font-mono">Edited</span>
+                      <span className="text-[10px] text-[#1976D2] font-mono font-semibold">Edited</span>
                     )}
                     <button
                       onClick={() => toggleNeedsReview(seg)}
-                      className="text-[11px] text-slate-400 hover:text-slate-200 underline"
+                      className="text-[11px] text-[#5D7188] hover:text-[#17324D] underline"
                     >
                       {seg.needs_review ? 'Clear Flag' : 'Flag for Review'}
                     </button>
                     {!isEditing && (
                       <button
                         onClick={() => startEditing(seg)}
-                        className="text-slate-400 hover:text-slate-200 p-1 rounded"
+                        className="text-[#5D7188] hover:text-[#17324D] p-1 rounded"
+                        aria-label="Edit segment"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
@@ -174,7 +175,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                     <textarea
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-slate-100 focus:outline-none focus:border-brand-500"
+                      className="w-full bg-[#F3F8FE] border border-[#DCE6F0] rounded-xl p-2 text-xs text-[#17324D] focus:bg-white focus:outline-none focus:border-[#1976D2]"
                       rows={3}
                     />
                     <div className="flex justify-end gap-2">
@@ -189,11 +190,11 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                   </div>
                 ) : (
                   <div>
-                    <p className="text-slate-200 leading-relaxed">
+                    <p className="text-[#17324D] leading-relaxed">
                       {seg.edited_text ? seg.edited_text : seg.original_text}
                     </p>
                     {seg.edited_text && (
-                      <p className="text-[10px] text-slate-400 mt-1.5 italic">
+                      <p className="text-[10px] text-[#7C8DA1] mt-1.5 italic">
                         Original: "{seg.original_text}"
                       </p>
                     )}

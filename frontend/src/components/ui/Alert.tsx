@@ -16,24 +16,24 @@ export const Alert: React.FC<AlertProps> = ({
 }) => {
   const configs = {
     info: {
-      border: 'border-sky-500/30 bg-sky-950/30 text-sky-200',
-      icon: <Info className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />,
-      titleColor: 'text-sky-300',
+      border: 'border-[#BCD7F5] bg-[#EAF3FF] text-[#124A78]',
+      icon: <Info className="w-5 h-5 text-[#1976D2] shrink-0 mt-0.5" />,
+      titleColor: 'text-[#124A78]',
     },
     warning: {
-      border: 'border-amber-500/30 bg-amber-950/30 text-amber-200',
-      icon: <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />,
-      titleColor: 'text-amber-300',
+      border: 'border-amber-200 bg-amber-50 text-amber-900',
+      icon: <AlertTriangle className="w-5 h-5 text-[#D98B13] shrink-0 mt-0.5" />,
+      titleColor: 'text-amber-900',
     },
     error: {
-      border: 'border-rose-500/30 bg-rose-950/30 text-rose-200',
-      icon: <XCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />,
-      titleColor: 'text-rose-300',
+      border: 'border-rose-200 bg-rose-50 text-rose-900',
+      icon: <XCircle className="w-5 h-5 text-[#D94848] shrink-0 mt-0.5" />,
+      titleColor: 'text-rose-900',
     },
     success: {
-      border: 'border-emerald-500/30 bg-emerald-950/30 text-emerald-200',
-      icon: <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />,
-      titleColor: 'text-emerald-300',
+      border: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+      icon: <CheckCircle className="w-5 h-5 text-[#15966A] shrink-0 mt-0.5" />,
+      titleColor: 'text-emerald-900',
     },
   }[variant];
 

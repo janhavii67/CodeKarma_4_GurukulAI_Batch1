@@ -173,9 +173,9 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg space-y-5">
+    <div className="bg-white border border-[#DCE6F0] rounded-2xl p-5 shadow-xs space-y-5">
       {/* Tab Switcher */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+      <div className="flex items-center justify-between border-b border-[#E8EEF5] pb-3">
         <div className="flex items-center gap-2">
           <Button
             size="sm"
@@ -197,11 +197,11 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
           </Button>
         </div>
 
-        <span className="text-xs font-mono text-slate-400">Limit: 5 min max</span>
+        <span className="text-xs font-mono text-[#7C8DA1]">Limit: 5 min max</span>
       </div>
 
       {error && (
-        <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-3 text-xs text-rose-300">
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-[#D94848] font-medium">
           {error}
         </div>
       )}
@@ -209,29 +209,29 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
       {/* Metadata Inputs */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium text-slate-300 mb-1.5">
+          <label className="block text-xs font-bold text-[#17324D] mb-1.5">
             Narration Title / Topic
           </label>
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. CNC Spindle Warm-up & Chuck Setup"
+            placeholder="e.g. Diagnostic Centrifuge Calibration & Rotor Setup"
             disabled={isRecording || isUploading}
           />
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-300 mb-1.5">
-            Associated Machine Asset
+          <label className="block text-xs font-bold text-[#17324D] mb-1.5">
+            Associated Equipment Asset
           </label>
           <div className="relative">
             <select
               value={machineId}
               onChange={(e) => setMachineId(e.target.value)}
               disabled={isRecording || isUploading}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-brand-500"
+              className="w-full bg-[#F3F8FE] border border-[#DCE6F0] rounded-xl px-3 py-2.5 text-xs text-[#17324D] focus:bg-white focus:outline-none focus:border-[#1976D2]"
             >
-              <option value="">Select Machine (Optional)...</option>
+              <option value="">Select Equipment (Optional)...</option>
               {machines.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name} ({m.model_number})
@@ -244,27 +244,27 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
 
       {/* Recording Mode UI */}
       {mode === 'record' && (
-        <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-6 text-center space-y-4">
+        <div className="bg-[#F3F8FE] border border-[#DCE6F0] rounded-2xl p-6 text-center space-y-4">
           <div className="flex flex-col items-center justify-center space-y-3">
             <div
               className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
                 isRecording
-                  ? 'bg-rose-500/20 border-2 border-rose-500 animate-pulse text-rose-400'
+                  ? 'bg-rose-100 border-2 border-[#D94848] animate-pulse text-[#D94848]'
                   : audioBlob
-                  ? 'bg-emerald-500/15 border-2 border-emerald-500 text-emerald-400'
-                  : 'bg-brand-500/15 border border-brand-500/30 text-brand-400'
+                  ? 'bg-emerald-100 border-2 border-[#15966A] text-[#15966A]'
+                  : 'bg-[#EAF3FF] border-2 border-[#BCD7F5] text-[#1976D2]'
               }`}
             >
               {isRecording ? <Radio className="w-8 h-8 animate-spin" /> : <Mic className="w-8 h-8" />}
             </div>
 
             <div>
-              <span className="text-2xl font-mono font-bold text-slate-100">
+              <span className="text-2xl font-mono font-black text-[#17324D]">
                 {formatTimer(recordingSeconds)}
               </span>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-[#5D7188] mt-0.5">
                 {isRecording
-                  ? 'Recording live shop-floor narration... Speak clearly.'
+                  ? 'Recording live laboratory narration... Speak clearly.'
                   : audioBlob
                   ? 'Recording ready for conversion and vector indexing'
                   : 'Click below to begin voice recording'}
@@ -316,7 +316,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
 
       {/* Upload Mode UI */}
       {mode === 'upload' && (
-        <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-6 text-center space-y-3">
+        <div className="bg-[#F3F8FE] border border-[#DCE6F0] rounded-2xl p-6 text-center space-y-3">
           <input
             type="file"
             id="audio-upload-input"
@@ -326,13 +326,13 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
           />
           <label
             htmlFor="audio-upload-input"
-            className="cursor-pointer flex flex-col items-center justify-center space-y-2 border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-xl p-8 transition-colors"
+            className="cursor-pointer flex flex-col items-center justify-center space-y-2 border-2 border-dashed border-[#BCD7F5] hover:border-[#1976D2] bg-white rounded-2xl p-8 transition-colors shadow-xs"
           >
-            <Upload className="w-8 h-8 text-brand-400" />
-            <span className="text-xs font-semibold text-slate-200">
+            <Upload className="w-8 h-8 text-[#1976D2]" />
+            <span className="text-xs font-bold text-[#17324D]">
               {uploadFile ? uploadFile.name : 'Click to select audio / video file'}
             </span>
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[11px] text-[#5D7188]">
               Supported: WAV, MP3, WebM, MP4, M4A (Max 100MB, up to 5 min duration)
             </span>
           </label>
@@ -349,7 +349,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
           disabled={isRecording || (!audioBlob && !uploadFile)}
         >
           <Cpu className="w-4 h-4 mr-2" />
-          Convert Narration to Knowledge & Index Vectors
+          Convert Narration to Knowledge &amp; Index Vectors
         </Button>
       </div>
     </div>

@@ -24,24 +24,24 @@ export const Card: React.FC<CardProps> = ({
   return (
     <div
       className={`
-        rounded-xl bg-slate-900/70 border border-slate-800/80 shadow-lg shadow-black/20
-        backdrop-blur-md overflow-hidden flex flex-col
-        ${interactive ? 'hover:border-slate-700 transition-all duration-200 hover:-translate-y-0.5' : ''}
+        rounded-xl bg-white border border-[#DCE6F0] shadow-sm
+        overflow-hidden flex flex-col
+        ${interactive ? 'hover:border-[#1976D2]/50 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5' : ''}
         ${className}
       `}
       {...props}
     >
       {(header || title) && (
-        <div className="px-5 py-4 border-b border-slate-800/80 flex items-center justify-between gap-3">
+        <div className="px-5 py-4 border-b border-[#E8EEF5] flex items-center justify-between gap-3">
           {header ? (
             header
           ) : (
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-slate-100">{title}</h3>
+                <h3 className="text-base font-semibold text-[#17324D]">{title}</h3>
                 {badge}
               </div>
-              {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+              {subtitle && <p className="text-xs text-[#5D7188] mt-0.5">{subtitle}</p>}
             </div>
           )}
         </div>
@@ -50,7 +50,7 @@ export const Card: React.FC<CardProps> = ({
       <div className="p-5 flex-1">{children}</div>
 
       {footer && (
-        <div className="px-5 py-3 border-t border-slate-800/80 bg-slate-950/40 flex items-center justify-between text-xs text-slate-400">
+        <div className="px-5 py-3 border-t border-[#E8EEF5] bg-[#F3F8FE]/60 flex items-center justify-between text-xs text-[#5D7188]">
           {footer}
         </div>
       )}

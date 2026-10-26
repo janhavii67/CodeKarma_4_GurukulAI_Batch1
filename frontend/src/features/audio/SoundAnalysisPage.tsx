@@ -83,23 +83,23 @@ export const SoundAnalysisPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold text-slate-100">Machine Acoustic Sound Analysis</h1>
+            <h1 className="text-2xl font-bold text-[#17324D]">Laboratory Acoustic Diagnostic Engine</h1>
             <Badge variant="brand" size="sm">
               Module 07
             </Badge>
           </div>
-          <p className="text-xs text-slate-400">
-            Calibrated spectral reference matching with strict rejection policies for noise, silence, and unknown machine sounds.
+          <p className="text-xs text-[#5D7188]">
+            Calibrated spectral reference matching with strict rejection policies for noise, silence, and unknown equipment acoustics.
           </p>
         </div>
       </div>
 
       {/* Rejection Policy & Governance Banner */}
-      <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-3">
-        <ShieldAlert className="w-5 h-5 text-brand-400 shrink-0 mt-0.5" />
+      <div className="p-4 rounded-xl bg-[#EAF3FF] border border-[#BCD7F5] flex items-start gap-3">
+        <ShieldAlert className="w-5 h-5 text-[#1976D2] shrink-0 mt-0.5" />
         <div className="space-y-1 text-xs">
-          <span className="font-semibold text-slate-200">Acoustic Governance & Rejection Rules</span>
-          <p className="text-slate-400 leading-relaxed">
+          <span className="font-bold text-[#124A78]">Acoustic Governance &amp; Rejection Rules</span>
+          <p className="text-[#5D7188] leading-relaxed">
             Cosine similarity is a comparative ranking signal, not a probability of correctness. If acoustic energy is too low (silence)
             or below the acceptance threshold (0.82), the engine reliably rejects the input instead of asserting a false positive.
           </p>
@@ -115,24 +115,24 @@ export const SoundAnalysisPage: React.FC = () => {
           >
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-300 mb-1.5 font-medium">Test Acoustic Scenario:</label>
+                <label className="block text-[#17324D] mb-1.5 font-bold">Test Acoustic Scenario:</label>
                 <select
                   value={selectedScenario}
                   onChange={(e) => setSelectedScenario(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 text-xs focus:border-brand-500 outline-none"
+                  className="w-full bg-[#F3F8FE] border border-[#DCE6F0] rounded-xl p-2.5 text-[#17324D] text-xs focus:bg-white focus:border-[#1976D2] outline-none"
                 >
-                  <option value="normal_spindle">HAAS VF-2 Normal Spindle Idle (6,000 RPM)</option>
-                  <option value="bearing_whine">Spindle Bearing Fluting & High-Pitch Whine</option>
-                  <option value="cavitation">Hydraulic Pump Cavitation Gravel Sound</option>
+                  <option value="normal_spindle">Diagnostic Centrifuge Normal Rotor (6,000 RPM)</option>
+                  <option value="bearing_whine">Centrifuge Bearing Fluting &amp; High-Pitch Whine</option>
+                  <option value="cavitation">Hydraulic Pump Cavitation Sound</option>
                   <option value="silence">Edge Case: Near-Silent Recording (Low RMS)</option>
-                  <option value="ambient_noise">Edge Case: Ambient Shopfloor Background Noise</option>
+                  <option value="ambient_noise">Edge Case: Ambient Laboratory Background Noise</option>
                   <option value="speech">Edge Case: Operator Speech / Voice Narration</option>
-                  <option value="unknown_anomaly">Edge Case: Unknown Machine Type / Unregistered Sound</option>
+                  <option value="unknown_anomaly">Edge Case: Unknown Equipment / Unregistered Sound</option>
                 </select>
               </div>
 
-              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-slate-400">
-                <span className="font-semibold text-slate-300 block mb-1">Feature Extraction Pipeline:</span>
+              <div className="p-3 rounded-xl bg-[#F3F8FE] border border-[#DCE6F0] text-[11px] text-[#5D7188]">
+                <span className="font-bold text-[#17324D] block mb-1">Feature Extraction Pipeline:</span>
                 Normalized Euclidean similarity on Spectral Centroid, Bandwidth, RMS Energy, and Zero-Crossing Rate.
               </div>
 
@@ -151,17 +151,17 @@ export const SoundAnalysisPage: React.FC = () => {
           {/* Reference Library Mini-List */}
           <Card title="Stored Reference Baselines" subtitle={`${references.length} verified recordings`}>
             {loadingRefs ? (
-              <p className="text-xs text-slate-400 py-3 text-center">Loading references...</p>
+              <p className="text-xs text-[#7C8DA1] py-3 text-center">Loading references...</p>
             ) : (
               <div className="space-y-2 text-xs">
                 {references.map((r) => (
                   <div
                     key={r.id}
-                    className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between"
+                    className="p-2.5 rounded-xl bg-[#F3F8FE] border border-[#DCE6F0] flex items-center justify-between"
                   >
                     <div>
-                      <span className="font-medium text-slate-200 block">{r.title}</span>
-                      <span className="text-[10px] text-slate-400">
+                      <span className="font-bold text-[#17324D] block">{r.title}</span>
+                      <span className="text-[10px] text-[#5D7188]">
                         {r.fault_label} · {r.duration_seconds}s
                       </span>
                     </div>
@@ -202,18 +202,18 @@ export const SoundAnalysisPage: React.FC = () => {
                 <div
                   className={`p-4 rounded-xl border flex items-start gap-3 ${
                     result.status === 'MATCHED'
-                      ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
+                      ? 'bg-emerald-50 border-emerald-200 text-[#15966A]'
                       : result.status === 'AMBIGUOUS_MATCH'
-                      ? 'bg-amber-950/20 border-amber-500/30 text-amber-200'
-                      : 'bg-rose-950/20 border-rose-500/30 text-rose-200'
+                      ? 'bg-amber-50 border-amber-200 text-[#D98B13]'
+                      : 'bg-rose-50 border-rose-200 text-[#D94848]'
                   }`}
                 >
                   {result.status === 'MATCHED' ? (
-                    <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                    <CheckCircle className="w-5 h-5 text-[#15966A] shrink-0 mt-0.5" />
                   ) : result.status === 'AMBIGUOUS_MATCH' ? (
-                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                    <AlertTriangle className="w-5 h-5 text-[#D98B13] shrink-0 mt-0.5" />
                   ) : (
-                    <HelpCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                    <HelpCircle className="w-5 h-5 text-[#D94848] shrink-0 mt-0.5" />
                   )}
                   <div className="space-y-1">
                     <span className="font-bold text-sm block">Reason Code: {result.reason_code}</span>
@@ -223,19 +223,19 @@ export const SoundAnalysisPage: React.FC = () => {
 
                 {/* Score & Machine Metadata */}
                 {result.similarity_score !== null && result.similarity_score !== undefined && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-3 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-3.5 rounded-xl bg-[#F3F8FE] border border-[#DCE6F0]">
                     <div>
-                      <span className="text-[10px] text-slate-400 block">Top Match Score:</span>
-                      <span className="text-xl font-mono font-bold text-slate-100">
+                      <span className="text-[10px] text-[#5D7188] block">Top Match Score:</span>
+                      <span className="text-xl font-mono font-bold text-[#17324D]">
                         {result.similarity_score.toFixed(3)}
                       </span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 block">Identified Condition:</span>
-                      <span className="font-semibold text-slate-200">{result.fault_label || 'Unidentified'}</span>
+                      <span className="text-[10px] text-[#5D7188] block">Identified Condition:</span>
+                      <span className="font-bold text-[#17324D]">{result.fault_label || 'Unidentified'}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 block">Expert Review:</span>
+                      <span className="text-[10px] text-[#5D7188] block">Expert Review:</span>
                       <Badge variant={result.requires_expert_review ? 'warning' : 'neutral'} size="sm">
                         {result.requires_expert_review ? 'Required' : 'Not Required'}
                       </Badge>
@@ -243,23 +243,23 @@ export const SoundAnalysisPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Ranked Candidate Candidates Breakdown */}
+                {/* Ranked Reference Candidates Breakdown */}
                 {result.candidate_matches && result.candidate_matches.length > 0 && (
                   <div>
-                    <h4 className="font-bold text-slate-200 mb-2">
+                    <h4 className="font-bold text-[#17324D] mb-2">
                       Ranked Reference Candidates ({result.candidate_matches.length}):
                     </h4>
                     <div className="space-y-2">
                       {result.candidate_matches.map((c, i) => (
                         <div
                           key={c.reference_id}
-                          className="p-3 rounded-lg bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs"
+                          className="p-3 rounded-xl bg-white border border-[#DCE6F0] flex items-center justify-between text-xs shadow-xs"
                         >
                           <div className="space-y-0.5">
-                            <span className="font-medium text-slate-200">
+                            <span className="font-bold text-[#17324D]">
                               #{i + 1} {c.title}
                             </span>
-                            <span className="text-[10px] text-slate-400 block">
+                            <span className="text-[10px] text-[#5D7188] block">
                               Condition: {c.fault_label}
                             </span>
                           </div>
@@ -277,7 +277,7 @@ export const SoundAnalysisPage: React.FC = () => {
                             >
                               {c.confidence_tier}
                             </Badge>
-                            <span className="font-mono font-bold text-slate-200">
+                            <span className="font-mono font-bold text-[#17324D]">
                               {c.similarity_score.toFixed(3)}
                             </span>
                           </div>
@@ -291,9 +291,9 @@ export const SoundAnalysisPage: React.FC = () => {
           ) : (
             <Card>
               <div className="py-20 text-center space-y-2">
-                <Volume2 className="w-10 h-10 text-slate-600 mx-auto" />
-                <h3 className="text-sm font-semibold text-slate-300">Awaiting Signal Input</h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                <Volume2 className="w-10 h-10 text-[#7C8DA1] mx-auto" />
+                <h3 className="text-sm font-bold text-[#17324D]">Awaiting Signal Input</h3>
+                <p className="text-xs text-[#5D7188] max-w-sm mx-auto">
                   Select an acoustic scenario on the left and run the evaluation to inspect calibrated spectral comparison.
                 </p>
               </div>

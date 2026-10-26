@@ -136,12 +136,12 @@ export const KnowledgeLibraryPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold text-slate-100">Knowledge Library & SOPs</h1>
+            <h1 className="text-2xl font-bold text-[#17324D]">Knowledge Library & SOPs</h1>
             <Badge variant="brand" size="sm">
               Module 01 / 02
             </Badge>
           </div>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-[#5D7188]">
             Searchable standard operating procedures, thermal protocols, and troubleshooting guides.
           </p>
         </div>
@@ -177,17 +177,17 @@ export const KnowledgeLibraryPage: React.FC = () => {
 
       {/* Articles Grid */}
       {loading ? (
-        <div className="py-12 text-center text-xs text-slate-400">Searching knowledge repository...</div>
+        <div className="py-12 text-center text-xs text-[#5D7188]">Searching knowledge repository...</div>
       ) : articles.length === 0 ? (
         <Card>
-          <div className="py-8 text-center text-xs text-slate-400">
+          <div className="py-8 text-center text-xs text-[#5D7188]">
             No knowledge articles matched your search.
           </div>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {articles.map((art) => (
-            <Card key={art.id} className="flex flex-col justify-between hover:border-slate-700 transition-colors">
+            <Card key={art.id} className="flex flex-col justify-between hover:border-[#1976D2]/50 transition-all hover:shadow-md">
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <Badge
@@ -202,29 +202,29 @@ export const KnowledgeLibraryPage: React.FC = () => {
                   >
                     {art.status}
                   </Badge>
-                  <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                  <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-[#EAF3FF] text-[#1976D2] border border-[#BCD7F5]">
                     {art.category}
                   </span>
                 </div>
 
-                <h3 className="text-sm font-semibold text-slate-100 line-clamp-2">{art.title}</h3>
+                <h3 className="text-sm font-semibold text-[#17324D] line-clamp-2">{art.title}</h3>
 
-                <div className="text-xs text-slate-400 space-y-1">
-                  <div className="text-[11px] text-slate-300">
+                <div className="text-xs text-[#5D7188] space-y-1">
+                  <div className="text-[11px] text-[#5D7188]">
                     Machine:{' '}
-                    <span className="font-medium text-slate-200">
+                    <span className="font-medium text-[#17324D]">
                       {art.machine_name || 'All Compatible'}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-400">
-                    Author: <span className="text-slate-300">{art.author_name}</span> (v
+                  <div className="text-[11px] text-[#7C8DA1]">
+                    Author: <span className="text-[#17324D]">{art.author_name}</span> (v
                     {art.current_version})
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
-                <span className="text-[10px] text-slate-500 font-mono">
+              <div className="mt-4 pt-3 border-t border-[#DCE6F0] flex items-center justify-between">
+                <span className="text-[10px] text-[#7C8DA1] font-mono">
                   {new Date(art.updated_at).toLocaleDateString()}
                 </span>
                 <Button
@@ -243,18 +243,18 @@ export const KnowledgeLibraryPage: React.FC = () => {
 
       {/* Article Detail Inspection Modal */}
       {selectedArticle && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-5 shadow-2xl">
-            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-[#DCE6F0] rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-5 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-[#DCE6F0] pb-3">
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant="success" size="sm">
                     {selectedArticle.status}
                   </Badge>
-                  <span className="text-xs font-mono text-slate-400">v{selectedArticle.current_version}</span>
+                  <span className="text-xs font-mono text-[#5D7188]">v{selectedArticle.current_version}</span>
                 </div>
-                <h2 className="text-lg font-bold text-slate-100">{selectedArticle.title}</h2>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <h2 className="text-lg font-bold text-[#17324D]">{selectedArticle.title}</h2>
+                <p className="text-xs text-[#5D7188] mt-0.5">
                   Machine: {selectedArticle.machine_name || 'General Equipment'} · Author:{' '}
                   {selectedArticle.author_name}
                 </p>
@@ -262,7 +262,7 @@ export const KnowledgeLibraryPage: React.FC = () => {
 
               <button
                 onClick={() => setSelectedArticle(null)}
-                className="text-slate-400 hover:text-slate-200 p-1"
+                className="text-[#7C8DA1] hover:text-[#17324D] p-1"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -272,16 +272,16 @@ export const KnowledgeLibraryPage: React.FC = () => {
               <div className="space-y-4 text-xs">
                 {/* Operating Conditions Banner */}
                 {selectedArticle.current_revision.operating_conditions && (
-                  <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-                    <span className="font-semibold text-slate-300 block mb-1">Operating Parameters:</span>
-                    <p className="text-slate-300">{selectedArticle.current_revision.operating_conditions}</p>
+                  <div className="p-3 rounded-lg bg-[#F3F8FE] border border-[#DCE6F0]">
+                    <span className="font-semibold text-[#17324D] block mb-1">Operating Parameters:</span>
+                    <p className="text-[#5D7188]">{selectedArticle.current_revision.operating_conditions}</p>
                   </div>
                 )}
 
                 {/* Safety Warnings Banner */}
                 {selectedArticle.current_revision.safety_warnings && (
-                  <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-600/30 text-amber-200">
-                    <div className="flex items-center gap-1.5 font-semibold text-amber-400 mb-1">
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900">
+                    <div className="flex items-center gap-1.5 font-semibold text-amber-700 mb-1">
                       <AlertTriangle className="w-4 h-4" />
                       Safety Warning & Invariants:
                     </div>
@@ -291,22 +291,22 @@ export const KnowledgeLibraryPage: React.FC = () => {
 
                 {/* Main Content */}
                 <div>
-                  <span className="font-semibold text-slate-300 block mb-1.5">
+                  <span className="font-semibold text-[#17324D] block mb-1.5">
                     Standard Operating Procedure:
                   </span>
-                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-sans text-slate-200 leading-relaxed whitespace-pre-line text-sm">
+                  <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#DCE6F0] font-sans text-[#17324D] leading-relaxed whitespace-pre-line text-sm">
                     {selectedArticle.current_revision.content}
                   </div>
                 </div>
 
                 {/* Corrective Actions */}
                 {selectedArticle.current_revision.corrective_actions && (
-                  <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-500/20">
-                    <div className="flex items-center gap-1.5 font-semibold text-emerald-400 mb-1">
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <div className="flex items-center gap-1.5 font-semibold text-[#15966A] mb-1">
                       <CheckCircle className="w-4 h-4" />
                       Corrective Action & Recovery:
                     </div>
-                    <p className="text-slate-300">
+                    <p className="text-[#17324D]">
                       {selectedArticle.current_revision.corrective_actions}
                     </p>
                   </div>
@@ -314,7 +314,7 @@ export const KnowledgeLibraryPage: React.FC = () => {
               </div>
             )}
 
-            <div className="pt-3 border-t border-slate-800 flex justify-end">
+            <div className="pt-3 border-t border-[#DCE6F0] flex justify-end">
               <Button variant="secondary" size="sm" onClick={() => setSelectedArticle(null)}>
                 Close SOP
               </Button>
@@ -325,35 +325,35 @@ export const KnowledgeLibraryPage: React.FC = () => {
 
       {/* Author New Knowledge Article Modal */}
       {showAuthorModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-[#DCE6F0] rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#DCE6F0] pb-3">
               <div>
-                <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-brand-400" />
+                <h2 className="text-base font-bold text-[#17324D] flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-[#1976D2]" />
                   Author Technical Knowledge Draft (Module 01)
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-[#5D7188]">
                   New procedures require peer review by an authorized reviewer prior to publication.
                 </p>
               </div>
               <button
                 onClick={() => setShowAuthorModal(false)}
-                className="text-slate-400 hover:text-slate-200"
+                className="text-[#7C8DA1] hover:text-[#17324D]"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {authoringError && (
-              <div className="p-3 rounded-lg bg-rose-950/30 border border-rose-500/30 text-rose-300 text-xs">
+              <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-[#D94848] text-xs">
                 {authoringError}
               </div>
             )}
 
             <form onSubmit={handleCreateArticle} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-300 mb-1 font-medium">Procedure Title</label>
+                <label className="block text-[#17324D] mb-1 font-medium">Procedure Title</label>
                 <Input
                   id="new-title"
                   type="text"
@@ -365,11 +365,11 @@ export const KnowledgeLibraryPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1 font-medium">Category</label>
+                <label className="block text-[#17324D] mb-1 font-medium">Category</label>
                 <select
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 text-xs focus:border-brand-500 outline-none"
+                  className="w-full bg-[#F3F8FE] border border-[#DCE6F0] rounded-lg p-2.5 text-[#17324D] text-xs focus:bg-white focus:border-[#1976D2] outline-none"
                 >
                   <option value="OPERATING_PROCEDURE">Operating Procedure (SOP)</option>
                   <option value="MAINTENANCE">Preventive Maintenance</option>
@@ -379,7 +379,7 @@ export const KnowledgeLibraryPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1 font-medium">
+                <label className="block text-[#17324D] mb-1 font-medium">
                   Detailed Procedural Content
                 </label>
                 <textarea
@@ -387,13 +387,13 @@ export const KnowledgeLibraryPage: React.FC = () => {
                   placeholder="Describe step-by-step instructions, indicators, dial readings, and zeroing rules..."
                   value={newContent}
                   onChange={(e) => setNewContent(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-slate-200 text-xs focus:border-brand-500 outline-none"
+                  className="w-full bg-[#F3F8FE] border border-[#DCE6F0] rounded-lg p-3 text-[#17324D] text-xs focus:bg-white focus:border-[#1976D2] outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1 font-medium">
+                <label className="block text-[#17324D] mb-1 font-medium">
                   Operating Conditions & Tolerances
                 </label>
                 <Input
@@ -406,7 +406,7 @@ export const KnowledgeLibraryPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-amber-300 mb-1 font-medium">
+                <label className="block text-[#D98B13] mb-1 font-medium">
                   Mandatory Safety Warnings & Hazards
                 </label>
                 <Input
@@ -418,7 +418,7 @@ export const KnowledgeLibraryPage: React.FC = () => {
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
+              <div className="pt-3 border-t border-[#DCE6F0] flex items-center justify-end gap-2">
                 <Button variant="secondary" size="sm" type="button" onClick={() => setShowAuthorModal(false)}>
                   Cancel
                 </Button>

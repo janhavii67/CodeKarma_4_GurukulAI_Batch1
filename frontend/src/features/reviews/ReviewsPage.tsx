@@ -88,12 +88,12 @@ export const ReviewsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold text-slate-100">Peer Review Governance Queue</h1>
+            <h1 className="text-2xl font-bold text-[#17324D]">Peer Review Governance Queue</h1>
             <Badge variant="warning" size="sm">
               Module 06
             </Badge>
           </div>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-[#5D7188]">
             Strict two-person rule enforcement. Authors cannot approve their own submissions.
           </p>
         </div>
@@ -109,19 +109,19 @@ export const ReviewsPage: React.FC = () => {
       </div>
 
       {/* Governance Banner */}
-      <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-3">
-        <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+      <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 flex items-start gap-3">
+        <ShieldAlert className="w-5 h-5 text-[#D98B13] shrink-0 mt-0.5" />
         <div className="space-y-1 text-xs">
-          <span className="font-semibold text-slate-200">Strict Peer Review Governance Active</span>
-          <p className="text-slate-400 leading-relaxed">
-            Every procedure or revision submitted by an engineer must undergo peer validation by a qualified reviewer.
+          <span className="font-semibold text-amber-900">Strict Peer Review Governance Active</span>
+          <p className="text-amber-800 leading-relaxed">
+            Every procedure or revision submitted by an expert must undergo peer validation by a qualified reviewer.
             Self-approvals trigger an automatic rejection policy (403 self_review_forbidden).
           </p>
         </div>
       </div>
 
       {successMsg && (
-        <div className="p-3.5 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[#15966A] text-xs flex items-center gap-2 font-medium">
           <CheckCircle className="w-4 h-4 shrink-0" />
           {successMsg}
         </div>
@@ -129,13 +129,13 @@ export const ReviewsPage: React.FC = () => {
 
       {/* Queue List */}
       {loading ? (
-        <div className="py-12 text-center text-xs text-slate-400">Loading review queue...</div>
+        <div className="py-12 text-center text-xs text-[#7C8DA1]">Loading review queue...</div>
       ) : queue.length === 0 ? (
         <Card>
           <div className="py-12 text-center space-y-2">
-            <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto" />
-            <h3 className="text-sm font-semibold text-slate-200">Review Backlog Clear</h3>
-            <p className="text-xs text-slate-400">No pending knowledge articles awaiting peer review.</p>
+            <CheckCircle className="w-8 h-8 text-[#15966A] mx-auto" />
+            <h3 className="text-sm font-semibold text-[#17324D]">Review Backlog Clear</h3>
+            <p className="text-xs text-[#5D7188]">No pending knowledge articles awaiting peer review.</p>
           </div>
         </Card>
       ) : (
@@ -145,14 +145,14 @@ export const ReviewsPage: React.FC = () => {
             return (
               <Card
                 key={item.article_id}
-                className="hover:border-slate-700 transition-colors p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                className="hover:border-[#1976D2]/50 hover:shadow-md transition-all p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
               >
                 <div className="space-y-1.5 flex-1">
                   <div className="flex items-center gap-2">
                     <Badge variant="warning" size="sm" dot>
                       Pending Review
                     </Badge>
-                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-[#F3F8FE] text-[#5D7188] border border-[#DCE6F0]">
                       {item.category}
                     </span>
                     {isOwnSubmission && (
@@ -162,19 +162,19 @@ export const ReviewsPage: React.FC = () => {
                     )}
                   </div>
 
-                  <h3 className="text-sm font-semibold text-slate-100">{item.title}</h3>
+                  <h3 className="text-sm font-bold text-[#17324D]">{item.title}</h3>
 
-                  <p className="text-xs text-slate-400 line-clamp-1">{item.content_preview}</p>
+                  <p className="text-xs text-[#5D7188] line-clamp-1">{item.content_preview}</p>
 
-                  <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-1">
+                  <div className="flex items-center gap-4 text-[11px] text-[#7C8DA1] pt-1">
                     <span>
-                      Author: <strong className="text-slate-300">{item.author_name}</strong>
+                      Author: <strong className="text-[#17324D]">{item.author_name}</strong>
                     </span>
                     <span>·</span>
                     <span>Machine: {item.machine_name || 'General'}</span>
                     <span>·</span>
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-slate-500" />
+                      <Clock className="w-3 h-3 text-[#7C8DA1]" />
                       {new Date(item.submitted_at).toLocaleDateString()}
                     </span>
                   </div>
@@ -189,7 +189,7 @@ export const ReviewsPage: React.FC = () => {
                   }}
                   icon={<CheckSquare className="w-3.5 h-3.5" />}
                 >
-                  Inspect & Decide
+                  Inspect &amp; Decide
                 </Button>
               </Card>
             );
@@ -199,43 +199,44 @@ export const ReviewsPage: React.FC = () => {
 
       {/* Review Decision Modal */}
       {selectedItem && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
-            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#DCE6F0] rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-[#E8EEF5] pb-3">
               <div>
                 <Badge variant="warning" size="sm" className="mb-1">
                   Peer Review Evaluation
                 </Badge>
-                <h2 className="text-base font-bold text-slate-100">{selectedItem.title}</h2>
-                <p className="text-xs text-slate-400">
+                <h2 className="text-base font-bold text-[#17324D]">{selectedItem.title}</h2>
+                <p className="text-xs text-[#5D7188]">
                   Author: {selectedItem.author_name} · Machine: {selectedItem.machine_name || 'General'}
                 </p>
               </div>
               <button
                 onClick={() => setSelectedItem(null)}
-                className="text-slate-400 hover:text-slate-200"
+                className="text-[#7C8DA1] hover:text-[#17324D] transition-colors"
+                aria-label="Close dialog"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {errorMsg && (
-              <div className="p-3 rounded-lg bg-rose-950/30 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-[#D94848] text-xs flex items-center gap-2">
                 <ShieldAlert className="w-4 h-4 shrink-0" />
-                {errorMsg}
+                <span>{errorMsg}</span>
               </div>
             )}
 
             <div className="space-y-3 text-xs">
               <div>
-                <span className="font-semibold text-slate-300 block mb-1">Content Preview:</span>
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs leading-relaxed max-h-48 overflow-y-auto">
+                <span className="font-semibold text-[#17324D] block mb-1">Content Preview:</span>
+                <div className="p-3.5 rounded-xl bg-[#F3F8FE] border border-[#DCE6F0] text-[#17324D] text-xs leading-relaxed max-h-48 overflow-y-auto">
                   {selectedItem.content_preview}
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1 font-medium">
+                <label className="block text-[#17324D] mb-1 font-semibold">
                   Reviewer Engineering Comments / Justification
                 </label>
                 <textarea
@@ -243,12 +244,12 @@ export const ReviewsPage: React.FC = () => {
                   placeholder="State technical verification findings, tolerance checks, or required revisions..."
                   value={comments}
                   onChange={(e) => setComments(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 text-xs focus:border-brand-500 outline-none"
+                  className="w-full bg-[#F3F8FE] border border-[#DCE6F0] rounded-xl p-2.5 text-[#17324D] text-xs focus:bg-white focus:border-[#1976D2] outline-none"
                 />
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+            <div className="pt-3 border-t border-[#E8EEF5] flex items-center justify-between">
               <Button variant="secondary" size="sm" onClick={() => setSelectedItem(null)}>
                 Cancel
               </Button>
@@ -259,7 +260,7 @@ export const ReviewsPage: React.FC = () => {
                   size="sm"
                   disabled={actionLoading}
                   onClick={() => handleDecision('REJECTED')}
-                  className="text-rose-400 border-rose-900/60 hover:bg-rose-950/30"
+                  className="text-[#D94848] border-rose-200 hover:bg-rose-50 hover:border-rose-300"
                   icon={<XCircle className="w-3.5 h-3.5" />}
                 >
                   Reject Revision
@@ -270,10 +271,10 @@ export const ReviewsPage: React.FC = () => {
                   size="sm"
                   disabled={actionLoading}
                   onClick={() => handleDecision('APPROVED')}
-                  className="bg-emerald-600 hover:bg-emerald-500"
+                  className="bg-[#15966A] hover:bg-[#12815B] border border-[#15966A] text-white"
                   icon={<CheckCircle className="w-3.5 h-3.5" />}
                 >
-                  Approve & Publish SOP
+                  Approve &amp; Publish SOP
                 </Button>
               </div>
             </div>

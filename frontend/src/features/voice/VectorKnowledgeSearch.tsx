@@ -52,30 +52,30 @@ export const VectorKnowledgeSearch: React.FC = () => {
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg space-y-6">
+    <div className="bg-white border border-[#DCE6F0] rounded-2xl p-5 shadow-xs space-y-6">
       {/* Title & Architecture Information */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-[#E8EEF5] pb-4">
         <div>
           <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-              <Database className="w-4 h-4 text-brand-400" />
-              Semantic RAG Vector Search & Expert Voice Engine
+            <h4 className="text-sm font-bold text-[#17324D] flex items-center gap-2">
+              <Database className="w-4 h-4 text-[#1976D2]" />
+              Semantic RAG Vector Search &amp; Expert Voice Engine
             </h4>
             <Badge variant="brand" size="sm">
               Vector DB
             </Badge>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-[#5D7188] mt-1">
             Every expert voice recording is indexed into 384-dimensional dense vector embeddings. Natural language queries retrieve the exact timestamped voice segment for the RAG assistant.
           </p>
         </div>
       </div>
 
-      {/* Hidden Audio Player for Query Playback */}
+      {/* Audio Player for Query Playback */}
       {activeAudioSrc && (
-        <div className="bg-slate-950 border border-brand-500/30 rounded-lg p-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-brand-300">
-            <Volume2 className="w-4 h-4 text-brand-400 animate-pulse" />
+        <div className="bg-[#EAF3FF] border border-[#BCD7F5] rounded-xl p-3 flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2 text-xs text-[#124A78] font-semibold">
+            <Volume2 className="w-4 h-4 text-[#1976D2] animate-pulse" />
             <span>Playing Referenced Expert Voice Recording</span>
           </div>
           <audio
@@ -91,11 +91,11 @@ export const VectorKnowledgeSearch: React.FC = () => {
       {/* Search Input Bar */}
       <form onSubmit={handleSearch} className="flex gap-2">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+          <Search className="w-4 h-4 absolute left-3 top-3 text-[#7C8DA1]" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ask anything (e.g. 'What is the chuck clamping pressure?' or 'spindle warmup procedure')..."
+            placeholder="Ask anything (e.g. 'What is the centrifuge rotor speed?' or 'daily calibration procedure')..."
             className="pl-9"
           />
         </div>
@@ -106,47 +106,47 @@ export const VectorKnowledgeSearch: React.FC = () => {
       </form>
 
       {/* Quick Example Query Pills */}
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-        <span>Suggested Queries:</span>
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#5D7188]">
+        <span className="font-semibold text-[#17324D]">Suggested Queries:</span>
         <button
           type="button"
           onClick={() => {
-            setQuery('What hydraulic chuck pressure is required?');
+            setQuery('What centrifuge calibration schedule is required?');
           }}
-          className="bg-slate-800/80 hover:bg-slate-700/80 px-2.5 py-1 rounded-full text-slate-300 border border-slate-700 transition"
+          className="bg-[#F3F8FE] hover:bg-[#EAF3FF] px-2.5 py-1 rounded-full text-[#17324D] border border-[#DCE6F0] transition font-medium"
         >
-          "chuck clamping pressure"
+          "rotor calibration schedule"
         </button>
         <button
           type="button"
           onClick={() => {
-            setQuery('Which tool insert and torque setting?');
+            setQuery('Which diagnostic reagent and temperature setting?');
           }}
-          className="bg-slate-800/80 hover:bg-slate-700/80 px-2.5 py-1 rounded-full text-slate-300 border border-slate-700 transition"
+          className="bg-[#F3F8FE] hover:bg-[#EAF3FF] px-2.5 py-1 rounded-full text-[#17324D] border border-[#DCE6F0] transition font-medium"
         >
-          "tool insert & torque"
+          "reagent &amp; temperature"
         </button>
         <button
           type="button"
           onClick={() => {
-            setQuery('Blast shield door and coolant safety rules');
+            setQuery('Biohazard decontamination and safety rules');
           }}
-          className="bg-slate-800/80 hover:bg-slate-700/80 px-2.5 py-1 rounded-full text-slate-300 border border-slate-700 transition"
+          className="bg-[#F3F8FE] hover:bg-[#EAF3FF] px-2.5 py-1 rounded-full text-[#17324D] border border-[#DCE6F0] transition font-medium"
         >
-          "blast shield & coolant warning"
+          "biohazard &amp; safety warning"
         </button>
       </div>
 
       {/* Search Results */}
       {hasSearched && (
         <div className="space-y-3 pt-2">
-          <div className="flex items-center justify-between text-xs text-slate-400">
+          <div className="flex items-center justify-between text-xs text-[#5D7188] font-medium">
             <span>Retrieved Knowledge Chunks ({results.length})</span>
             <span>Ranked by Cosine Similarity</span>
           </div>
 
           {results.length === 0 ? (
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-8 text-center text-xs text-slate-400">
+            <div className="bg-[#F3F8FE] border border-[#DCE6F0] rounded-2xl p-8 text-center text-xs text-[#5D7188]">
               No matching expert knowledge found in vector store.
             </div>
           ) : (
@@ -157,7 +157,7 @@ export const VectorKnowledgeSearch: React.FC = () => {
                 return (
                   <div
                     key={res.id}
-                    className="bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl p-4 space-y-3 transition-all"
+                    className="bg-[#F3F8FE] border border-[#DCE6F0] hover:bg-white hover:border-[#1976D2]/50 rounded-xl p-4 space-y-3 transition-all shadow-xs"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
@@ -167,24 +167,24 @@ export const VectorKnowledgeSearch: React.FC = () => {
                         >
                           {matchPercent}% Similarity Match
                         </Badge>
-                        <span className="text-[10px] text-slate-400 font-mono">
+                        <span className="text-[10px] text-[#5D7188] font-mono">
                           {res.source_type}
                         </span>
                       </div>
 
                       {res.start_s !== undefined && res.start_s !== null && (
-                        <span className="text-[11px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                        <span className="text-[11px] font-mono text-[#1976D2] bg-[#EAF3FF] px-2 py-0.5 rounded border border-[#BCD7F5]">
                           {formatTime(res.start_s)} - {formatTime(res.end_s)}
                         </span>
                       )}
                     </div>
 
-                    <p className="text-xs text-slate-200 leading-relaxed italic bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60">
+                    <p className="text-xs text-[#17324D] leading-relaxed italic bg-white p-2.5 rounded-lg border border-[#E8EEF5]">
                       "{res.chunk_text}"
                     </p>
 
                     <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] text-slate-400 truncate max-w-[200px]">
+                      <span className="text-[11px] text-[#5D7188] font-medium truncate max-w-[200px]">
                         {res.media_title || 'Expert Narration'}
                       </span>
 
@@ -195,7 +195,7 @@ export const VectorKnowledgeSearch: React.FC = () => {
                           onClick={() => playAudioSegment(res.media_id, res.start_s)}
                           className="text-[11px] h-7 px-2"
                         >
-                          <Play className="w-3 h-3 mr-1 text-brand-400" />
+                          <Play className="w-3 h-3 mr-1 text-[#1976D2]" />
                           Listen Snippet
                         </Button>
                       )}

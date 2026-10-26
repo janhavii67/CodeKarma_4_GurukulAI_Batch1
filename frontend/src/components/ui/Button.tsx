@@ -18,7 +18,7 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseStyles =
-    'inline-flex items-center justify-center font-medium transition-all duration-150 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed select-none active:scale-[0.98]';
+    'inline-flex items-center justify-center font-medium transition-all duration-150 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed select-none active:scale-[0.98]';
 
   const sizeStyles = {
     sm: 'px-3 py-1.5 text-xs gap-1.5',
@@ -28,15 +28,15 @@ export const Button: React.FC<ButtonProps> = ({
 
   const variantStyles = {
     primary:
-      'bg-brand-500 hover:bg-brand-400 text-slate-950 font-semibold shadow-md shadow-brand-500/20 hover:shadow-brand-500/30 focus:ring-brand-400 border border-brand-400/30',
+      'bg-[#1976D2] hover:bg-[#1565C0] text-white font-semibold shadow-sm focus:ring-[#1976D2]/40 border border-[#1976D2]',
     secondary:
-      'bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-slate-700 focus:ring-slate-500 shadow-sm',
+      'bg-white hover:bg-[#F3F8FE] text-[#17324D] border border-[#DCE6F0] hover:border-[#1976D2]/50 focus:ring-[#1976D2]/20 shadow-xs',
     outline:
-      'bg-transparent hover:bg-slate-800/50 text-slate-300 border border-slate-700 hover:border-slate-600 focus:ring-slate-500',
+      'bg-transparent hover:bg-[#EAF3FF] text-[#1976D2] border border-[#DCE6F0] hover:border-[#1976D2] focus:ring-[#1976D2]/20',
     danger:
-      'bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-600/20 focus:ring-rose-500 border border-rose-500/30',
+      'bg-[#D94848] hover:bg-[#C23939] text-white shadow-xs focus:ring-[#D94848]/30 border border-[#D94848]',
     ghost:
-      'bg-transparent hover:bg-slate-800/60 text-slate-300 hover:text-white focus:ring-slate-600',
+      'bg-transparent hover:bg-[#EAF3FF] text-[#5D7188] hover:text-[#17324D] focus:ring-[#1976D2]/20',
   }[variant];
 
   return (

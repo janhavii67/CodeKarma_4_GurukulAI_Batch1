@@ -20,7 +20,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-steel-950 flex items-center justify-center">
+      <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center">
         <LoadingSpinner size="lg" message="Authenticating session..." />
       </div>
     );
