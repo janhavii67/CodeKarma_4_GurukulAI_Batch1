@@ -1,3 +1,4 @@
+from app.models.session import SessionModel
 from typing import List, Optional
 from sqlalchemy import Boolean, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship

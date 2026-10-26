@@ -37,9 +37,20 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
 
   useEffect(() => {
     // Load machines list
-    api.get<MachineOption[]>('/machines')
-      .then((data) => setMachines(data || []))
-      .catch((err) => console.error('Failed to load machines:', err));
+    api.get<any>('/machines')
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setMachines(data);
+        } else if (data && Array.isArray(data.items)) {
+          setMachines(data.items);
+        } else {
+          setMachines([]);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load machines:', err);
+        setMachines([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -54,7 +65,21 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
       setError(null);
       audioChunksRef.current = [];
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      let mimeType = 'audio/webm';
+      if (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function') {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+          mimeType = 'audio/ogg';
+        } else {
+          mimeType = '';
+        }
+      }
+      const mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -63,7 +88,8 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const finalType = mediaRecorder.mimeType || mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: finalType });
         setAudioBlob(blob);
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
@@ -232,7 +258,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-brand-500"
             >
               <option value="">Select Machine (Optional)...</option>
-              {machines.map((m) => (
+              {(Array.isArray(machines) ? machines : []).map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name} ({m.model_number})
                 </option>

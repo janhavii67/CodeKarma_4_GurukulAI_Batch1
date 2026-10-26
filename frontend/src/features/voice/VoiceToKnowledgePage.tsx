@@ -10,6 +10,8 @@ import {
   Transcript,
   StepDraft,
   getVersionTranscript,
+  getMediaTranscript,
+  getMediaSteps,
   listVoiceAssets,
   MediaAsset,
 } from './voiceApi';
@@ -33,28 +35,71 @@ export const VoiceToKnowledgePage: React.FC = () => {
   const [currentTranscript, setCurrentTranscript] = useState<Transcript | null>(null);
   const [currentSteps, setCurrentSteps] = useState<StepDraft[]>([]);
   const [voiceAssets, setVoiceAssets] = useState<MediaAsset[]>([]);
+  const [isLoadingReview, setIsLoadingReview] = useState(false);
 
   // Load existing voice assets for the library
   const loadAssets = () => {
     listVoiceAssets()
-      .then((data) => setVoiceAssets(data || []))
-      .catch((err) => console.error(err));
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setVoiceAssets(data);
+        } else if (data && Array.isArray((data as any).items)) {
+          setVoiceAssets((data as any).items);
+        } else {
+          setVoiceAssets([]);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load voice assets:', err);
+        setVoiceAssets([]);
+      });
   };
 
   useEffect(() => {
     loadAssets();
   }, []);
 
+  const selectAssetForReview = async (asset: MediaAsset) => {
+    setActiveMediaId(asset.id);
+    setActiveVersionId(asset.version_id || null);
+    setIsLoadingReview(true);
+    try {
+      const [tData, stepsData] = await Promise.all([
+        getMediaTranscript(asset.id).catch(() =>
+          asset.version_id ? getVersionTranscript(asset.version_id) : null
+        ),
+        getMediaSteps(asset.id).catch(() => null),
+      ]);
+      if (tData) {
+        setCurrentTranscript(tData);
+      }
+      if (stepsData && stepsData.steps) {
+        setCurrentSteps(stepsData.steps);
+      }
+      setActiveTab('review');
+    } catch (err) {
+      console.error('Failed to load asset for review:', err);
+    } finally {
+      setIsLoadingReview(false);
+    }
+  };
+
   // Poll active processing job
   const { job: polledJob } = useJobPolling(activeJobId, async (finishedJob) => {
-    // When completed or needs_review, fetch transcript and steps
-    if (finishedJob.version_id) {
+    const targetMediaId = finishedJob.media_id || activeMediaId;
+    if (targetMediaId) {
       try {
-        const transcriptData = await getVersionTranscript(finishedJob.version_id);
-        setCurrentTranscript(transcriptData);
+        const [tData, stepsData] = await Promise.all([
+          getMediaTranscript(targetMediaId).catch(() =>
+            finishedJob.version_id ? getVersionTranscript(finishedJob.version_id) : null
+          ),
+          getMediaSteps(targetMediaId).catch(() => null),
+        ]);
+        if (tData) setCurrentTranscript(tData);
+        if (stepsData?.steps) setCurrentSteps(stepsData.steps);
         setActiveTab('review');
       } catch (err) {
-        console.error('Failed to load version transcript:', err);
+        console.error('Failed to load transcript/steps after job completion:', err);
       }
     }
     loadAssets();
@@ -165,20 +210,20 @@ export const VoiceToKnowledgePage: React.FC = () => {
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
                 <ListMusic className="w-4 h-4 text-brand-400" />
-                Expert Voice Knowledge Recordings ({voiceAssets.length})
+                Expert Voice Knowledge Recordings ({(Array.isArray(voiceAssets) ? voiceAssets.length : 0)})
               </h4>
               <span className="text-xs text-slate-400 font-mono">
                 Indexed in Vector Store for RAG
               </span>
             </div>
 
-            {voiceAssets.length === 0 ? (
+            {(!Array.isArray(voiceAssets) || voiceAssets.length === 0) ? (
               <div className="p-8 text-center text-xs text-slate-400 bg-slate-950 rounded-xl border border-slate-800">
                 No voice narrations recorded yet. Use the microphone above to capture your first expert voice asset.
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {voiceAssets.map((asset) => (
+                {(Array.isArray(voiceAssets) ? voiceAssets : []).map((asset) => (
                   <div
                     key={asset.id}
                     className="bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl p-4 space-y-3 transition-all"
@@ -207,6 +252,18 @@ export const VoiceToKnowledgePage: React.FC = () => {
                       <span>{new Date(asset.created_at).toLocaleDateString()}</span>
                       <span className="text-brand-400 font-semibold">Indexed in RAG</span>
                     </div>
+
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => selectAssetForReview(asset)}
+                        className="w-full text-xs"
+                      >
+                        <FileText className="w-3.5 h-3.5 mr-1.5" />
+                        Inspect Transcript & Steps
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -218,7 +275,11 @@ export const VoiceToKnowledgePage: React.FC = () => {
       {/* Tab 2: Transcript & Candidate Steps Review */}
       {activeTab === 'review' && (
         <div className="space-y-6">
-          {currentTranscript && activeMediaId ? (
+          {isLoadingReview ? (
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center text-xs text-slate-400">
+              Loading transcript and candidate steps...
+            </div>
+          ) : currentTranscript && activeMediaId ? (
             <>
               <TranscriptEditor
                 transcript={currentTranscript}

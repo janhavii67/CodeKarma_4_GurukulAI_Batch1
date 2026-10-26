@@ -49,6 +49,20 @@ def create_voice_capture_job(
             raise NotFoundError(code="version_not_found", message=f"Knowledge version '{version_id}' not found.")
         if version.status not in ("draft", "changes_requested"):
             raise ForbiddenError(code="version_not_editable", message="Voice can only be attached to editable drafts.")
+    else:
+        # Auto-create draft KnowledgeItem and KnowledgeVersion for standalone voice narrations
+        from app.repositories.knowledge_repository import KnowledgeRepository
+        draft_title = title or (f"Voice SOP - {original_name}" if original_name else "Expert Voice Narration SOP")
+        item, version = KnowledgeRepository.create_item_and_version_1(
+            db=db,
+            title=draft_title,
+            author_id=user_id,
+            machine_id=machine_id,
+            summary="Draft Standard Operating Procedure generated from expert shop floor voice narration.",
+            commit=False,
+        )
+        version.origin = "ai_draft"
+        version_id = version.id
 
     # 1. Create MediaAsset
     media = MediaAsset(
@@ -149,6 +163,15 @@ def update_transcript_segment(
         emb.metadata_json = json.dumps(meta)
         db.commit()
 
+    # Refresh Assistant RAG knowledge chunks for this transcript
+    try:
+        from app.modules.assistant.services.indexing_service import IndexingService
+        media = segment.transcript.media if segment.transcript else None
+        title = media.title if media else None
+        IndexingService.index_transcript(segment.transcript_id, db=db, title=title)
+    except Exception as e:
+        logger.error(f"Failed to update RAG chunks for edited segment {segment_id}: {e}")
+
     db.refresh(segment)
     return segment
 
@@ -165,11 +188,12 @@ def validate_version_for_submission(db: Session, version_id: str) -> None:
 
     # 1. Check latest processing job for this version
     latest_job = (
-        db.query(ProcessingJob)
-        .filter(ProcessingJob.version_id == version_id)
-        .order_by(desc(ProcessingJob.created_at))
-        .first()
+    db.query(ProcessingJob)
+    .filter(ProcessingJob.version_id == version_id)
+    .order_by((ProcessingJob.created_at).desc())
+    .first()
     )
+
     if latest_job:
         if latest_job.status in ("queued", "processing"):
             raise ValidationError(

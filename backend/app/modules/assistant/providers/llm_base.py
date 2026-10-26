@@ -1,0 +1,92 @@
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any, List
+from app.core.config import settings
+
+
+class LLMError(Exception):
+    """Base error for LLM provider operations."""
+    pass
+
+
+class LLMExternalDisabledError(LLMError):
+    """Raised when an external LLM call is attempted while ALLOW_EXTERNAL_LLM=False."""
+    pass
+
+
+class LLMTimeoutError(LLMError):
+    """Raised when LLM call exceeds configured timeout."""
+    pass
+
+
+class LLMAuthenticationError(LLMError):
+    """Raised when provider API key or authentication fails."""
+    pass
+
+
+class LLMRateLimitError(LLMError):
+    """Raised when provider rate limit is exceeded."""
+    pass
+
+
+@dataclass
+class LLMRequest:
+    prompt: str
+    system_prompt: Optional[str] = None
+    temperature: float = 0.0
+    max_tokens: int = 1024
+    request_id: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class LLMResponse:
+    content: str
+    provider_name: str
+    model_name: str
+    latency_ms: int
+    raw_output: Optional[str] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+
+
+class LLMProvider(ABC):
+    """Abstract interface for LLM providers."""
+
+    @abstractmethod
+    def generate(self, request: LLMRequest) -> LLMResponse:
+        """Synchronously generate text response."""
+        pass
+
+    @abstractmethod
+    async def generate_async(self, request: LLMRequest) -> LLMResponse:
+        """Asynchronously generate text response."""
+        pass
+
+
+def get_llm_provider(provider_name: Optional[str] = None) -> LLMProvider:
+    """
+    Factory function returning the configured LLM provider.
+    Enforces ALLOW_EXTERNAL_LLM guard: external providers cannot be instantiated
+    unless explicitly allowed by configuration.
+    """
+    selected = (provider_name or settings.ASSISTANT_LLM_PROVIDER).lower().strip()
+
+    if selected == "fake":
+        from app.modules.assistant.providers.llm_fake import FakeLLMProvider
+        return FakeLLMProvider()
+
+    if selected == "anthropic":
+        if not settings.ALLOW_EXTERNAL_LLM:
+            raise LLMExternalDisabledError(
+                "External LLM calls are disabled. "
+                "Set ALLOW_EXTERNAL_LLM=true only after reviewing confidential data policy."
+            )
+        if not settings.ANTHROPIC_API_KEY:
+            raise LLMAuthenticationError("ANTHROPIC_API_KEY is not configured.")
+
+        # Real adapter can be loaded when enabled
+        from app.modules.assistant.providers.llm_anthropic import AnthropicLLMProvider
+        return AnthropicLLMProvider()
+
+    raise LLMError(f"Unknown LLM provider: '{selected}'. Supported: 'fake', 'anthropic'")

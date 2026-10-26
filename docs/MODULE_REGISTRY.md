@@ -41,9 +41,9 @@ Modules talk through services and database foreign keys, never by importing anot
 | 01 | Expert Knowledge Capture | modules/01-expert-knowledge-capture.md | 2 | Build | Planned |
 | 06 | Knowledge Validation and Versioning | modules/06-knowledge-validation.md | 2 | Build | Planned |
 | 04 | Voice-to-Knowledge | modules/04-voice-to-knowledge.md | 3 | Build ("wow") | Planned |
-| 02 | AI Knowledge Assistant | modules/02-ai-knowledge-assistant.md | 3 | Build | Planned |
+| 02 | AI Knowledge Assistant | modules/02-ai-assistant.md | 3 | Build | In Progress (Backend C1 done) |
 | 03 | Guided Workflows | modules/03-guided-workflows.md | 3 | Placeholder | Planned |
-| 05 | Troubleshooting | modules/05-troubleshooting.md | 4 | Placeholder | Planned |
+| 05 | Troubleshooting | modules/05-troubleshooting.md | 4 | Placeholder | Placeholder implemented |
 | 09 | Failure Simulator | modules/09-failure-simulator.md | 4 | Placeholder | Planned |
 | 07 | Machine Sound Analysis | modules/07-machine-sound-analysis.md | 5 | Placeholder | Planned |
 | 08 | Knowledge Graph | modules/08-manufacturing-knowledge-graph.md | 5 | Placeholder | Planned |

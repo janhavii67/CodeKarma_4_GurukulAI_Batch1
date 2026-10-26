@@ -147,6 +147,35 @@ export async function getVersionTranscript(versionId: string): Promise<Transcrip
   return api.get<Transcript>(`/voice/knowledge-versions/${versionId}/transcript`);
 }
 
+export async function getMediaTranscript(mediaId: string): Promise<Transcript> {
+  return api.get<Transcript>(`/voice/assets/${mediaId}/transcript`);
+}
+
+export interface StepsListResponse {
+  media_id: string;
+  version_id?: string;
+  origin: string;
+  steps: StepDraft[];
+  unclear_segments: number[];
+}
+
+export interface CreateDraftResponse {
+  item_id: string;
+  version_id: string;
+  title: string;
+  status: string;
+  origin: string;
+  steps_count: number;
+}
+
+export async function getMediaSteps(mediaId: string): Promise<StepsListResponse> {
+  return api.get<StepsListResponse>(`/voice/assets/${mediaId}/steps`);
+}
+
+export async function createDraftFromVoice(mediaId: string): Promise<CreateDraftResponse> {
+  return api.post<CreateDraftResponse>(`/voice/assets/${mediaId}/create-draft`);
+}
+
 export async function patchSegment(
   transcriptId: string,
   segmentId: string,

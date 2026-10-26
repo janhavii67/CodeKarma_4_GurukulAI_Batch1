@@ -1,8 +1,9 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from app.core.exceptions import NotFoundError, ForbiddenError
+from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError
 from app.core.permissions import (
     AuthenticatedContext,
     csrf_protect,
@@ -346,6 +347,17 @@ def _build_detail_response(db: Session, item: KnowledgeItem, version: Optional[K
     ver_title = (version.title if (version and version.title) else item_title) or item_title
     ver_machine_id = (version.machine_id if (version and version.machine_id) else (item.machine_id if item else None))
 
+    # Check RAG index status
+    rag_indexed = False
+    rag_chunks_count = 0
+    target_vid = item.current_published_version_id or (version.id if version and version.status == "published" else None)
+    if target_vid:
+        from app.modules.assistant.models import KnowledgeSource
+        src = db.query(KnowledgeSource).filter(KnowledgeSource.knowledge_version_id == target_vid).first()
+        if src and src.status == "published":
+            rag_indexed = True
+            rag_chunks_count = len([c for c in src.chunks if c.is_active])
+
     resp = KnowledgeItemDetailResponse(
         id=item.id,
         title=ver_title,
@@ -365,6 +377,96 @@ def _build_detail_response(db: Session, item: KnowledgeItem, version: Optional[K
         status=status_str,
         current_revision=rev_resp,
         reviews=review_resps,
+        rag_indexed=rag_indexed,
+        rag_chunks_count=rag_chunks_count,
     )
     return resp
 
+
+class BatchIndexRequest(BaseModel):
+    version_id: Optional[str] = None
+    item_id: Optional[str] = None
+    sync_all: bool = False
+
+
+@router.post(
+    "/index",
+    dependencies=[Depends(csrf_protect)],
+    summary="Batch index knowledge versions into the RAG Assistant knowledge base",
+)
+def batch_index_knowledge(
+    req: BatchIndexRequest,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_KNOWLEDGE_CREATE)),
+    db: Session = Depends(get_db),
+):
+    from app.modules.assistant.services.indexing_service import IndexingService
+
+    if req.version_id:
+        source = IndexingService.index_knowledge_version(req.version_id, db, user_id=auth_ctx.user.id)
+        return {
+            "status": "success",
+            "indexed_count": 1,
+            "chunks_count": len(source.chunks),
+            "sources": [{"version_id": req.version_id, "source_id": source.id}],
+        }
+
+    if req.item_id:
+        item = db.get(KnowledgeItem, req.item_id)
+        if not item or not item.current_published_version_id:
+            raise NotFoundError(code="published_version_not_found", message=f"No published version found for item '{req.item_id}'.")
+        source = IndexingService.index_knowledge_version(item.current_published_version_id, db, user_id=auth_ctx.user.id)
+        return {
+            "status": "success",
+            "indexed_count": 1,
+            "chunks_count": len(source.chunks),
+            "sources": [{"version_id": item.current_published_version_id, "source_id": source.id}],
+        }
+
+    if req.sync_all:
+        pub_versions = db.query(KnowledgeVersion).filter(KnowledgeVersion.status == "published").all()
+        total_chunks = 0
+        sources = []
+        for pv in pub_versions:
+            src = IndexingService.index_knowledge_version(pv.id, db, user_id=auth_ctx.user.id)
+            total_chunks += len(src.chunks)
+            sources.append({"version_id": pv.id, "source_id": src.id})
+        return {
+            "status": "success",
+            "indexed_count": len(pub_versions),
+            "chunks_count": total_chunks,
+            "sources": sources,
+        }
+
+    raise ValidationError(code="invalid_request", message="Must provide version_id, item_id, or sync_all=True.")
+
+
+@router.post(
+    "/{id}/index",
+    dependencies=[Depends(csrf_protect)],
+    summary="Index or re-index a published knowledge article into the RAG Assistant knowledge base",
+)
+def index_knowledge_item(
+    id: str,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_KNOWLEDGE_CREATE)),
+    db: Session = Depends(get_db),
+):
+    item = db.get(KnowledgeItem, id)
+    if not item:
+        raise NotFoundError(code="knowledge_not_found", message=f"Knowledge item '{id}' not found.")
+
+    if not item.current_published_version_id:
+        raise ValidationError(
+            code="no_published_version",
+            message="Only approved, published knowledge articles can be indexed for the AI Assistant.",
+        )
+
+    from app.modules.assistant.services.indexing_service import IndexingService
+    source = IndexingService.index_knowledge_version(item.current_published_version_id, db, user_id=auth_ctx.user.id)
+    return {
+        "status": "success",
+        "message": "Successfully indexed article into AI knowledge base.",
+        "item_id": item.id,
+        "source_id": source.id,
+        "version_id": item.current_published_version_id,
+        "chunks_count": len(source.chunks),
+    }

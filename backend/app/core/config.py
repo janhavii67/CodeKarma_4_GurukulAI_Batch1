@@ -74,6 +74,20 @@ class Settings(BaseSettings):
     STT_PROVIDER: str = "whisper_api"
     OPENAI_API_KEY: str = ""
 
+    # Module 02 Assistant & RAG Settings
+    ASSISTANT_LLM_PROVIDER: str = "fake"
+    ALLOW_EXTERNAL_LLM: bool = False
+    ASSISTANT_LLM_MODEL: str = "claude-3-5-sonnet-20241022"
+    ASSISTANT_LLM_TIMEOUT_S: int = 30
+    ASSISTANT_LLM_MAX_RETRIES: int = 2
+    ASSISTANT_RETRIEVAL_TOP_K: int = 6
+    ASSISTANT_RETRIEVAL_MIN_SCORE: float = 0.05
+    ASSISTANT_QUESTION_MAX_CHARS: int = 1000
+    ASSISTANT_PROMPT_VERSION: str = "v1"
+    RETRIEVAL_MODE: str = "keyword"
+    CHAT_RETENTION_DAYS: int = 365
+    CHAT_RATE_LIMIT_PER_MINUTE: int = 20
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

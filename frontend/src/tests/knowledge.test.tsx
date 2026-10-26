@@ -424,7 +424,7 @@ describe('KnowledgeEditorPage', () => {
       if (path === '/auth/me')
         return Promise.resolve({ user: mockUser, permissions: ['knowledge.create'] });
       if (path.startsWith('/knowledge'))
-        return Promise.reject(new ApiClientError(404, 'not_found', 'Not found'));
+        return Promise.reject(new ApiClientError('not_found', 'Not found', 404));
       return Promise.reject(new Error('Unknown'));
     });
 

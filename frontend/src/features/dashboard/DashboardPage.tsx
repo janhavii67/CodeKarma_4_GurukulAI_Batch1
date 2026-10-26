@@ -18,6 +18,7 @@ import {
   Cpu,
   Volume2,
   Clock,
+  Mic,
 } from 'lucide-react';
 
 interface DashboardStats {
@@ -104,6 +105,11 @@ export const DashboardPage: React.FC = () => {
             <Link to="/app/guided-workflows">
               <Button variant="secondary" size="sm" icon={<Layers className="w-4 h-4" />}>
                 Guided Workflows (M03)
+              </Button>
+            </Link>
+            <Link to="/app/voice-capture">
+              <Button variant="secondary" size="sm" icon={<Mic className="w-4 h-4" />}>
+                Voice-to-Knowledge (M04)
               </Button>
             </Link>
             <Link to="/app/sound-analysis">

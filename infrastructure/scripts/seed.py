@@ -54,6 +54,8 @@ from app.core.permissions import (
     PERM_MACHINE_MANAGE,
     PERM_KNOWLEDGE_VIEW_PUBLISHED,
     PERM_ASSISTANT_USE,
+    PERM_ASSISTANT_INDEX,
+    PERM_ASSISTANT_REVIEW_FEEDBACK,
     PERM_AUDIT_VIEW,
     PERM_PROCEDURE_CREATE,
     PERM_PROCEDURE_EXECUTE,
@@ -93,6 +95,8 @@ def seed_database(db: Session) -> None:
         {"id": PERM_MACHINE_MANAGE, "description": "Register and manage machines, tools, and cell assets"},
         {"id": PERM_KNOWLEDGE_VIEW_PUBLISHED, "description": "Read published and verified SOP knowledge items"},
         {"id": PERM_ASSISTANT_USE, "description": "Query the grounded AI knowledge assistant"},
+        {"id": PERM_ASSISTANT_INDEX, "description": "Trigger indexing and manage assistant knowledge sources"},
+        {"id": PERM_ASSISTANT_REVIEW_FEEDBACK, "description": "Review and triage assistant conversation feedback"},
         {"id": PERM_AUDIT_VIEW, "description": "Inspect system audit trails and compliance logs"},
         {"id": PERM_PROCEDURE_CREATE, "description": "Author structured step-by-step procedures"},
         {"id": PERM_PROCEDURE_EXECUTE, "description": "Execute and record checklists for guided procedures"},
@@ -209,6 +213,12 @@ def seed_database(db: Session) -> None:
 
     expert_a = created_users[settings.EXPERT_A_EMAIL]
     expert_b = created_users[settings.EXPERT_B_EMAIL]
+
+    # Grant expert_a per-user permissions for assistant indexing and feedback triage
+    for perm_id in [PERM_ASSISTANT_INDEX, PERM_ASSISTANT_REVIEW_FEEDBACK]:
+        if not db.get(UserPermission, (expert_a.id, perm_id)):
+            db.add(UserPermission(user_id=expert_a.id, permission_id=perm_id))
+    db.commit()
 
     # 5. Seed Machine Categories & Machines
     categories = [
@@ -454,6 +464,16 @@ def seed_database(db: Session) -> None:
                 db.commit()
         else:
             pass
+
+    # Ensure all published knowledge versions are indexed into Assistant Knowledge Base
+    try:
+        from app.modules.assistant.services.indexing_service import IndexingService
+        pub_versions = db.query(KnowledgeVersion).filter(KnowledgeVersion.status == "published").all()
+        for pv in pub_versions:
+            IndexingService.index_knowledge_version(pv.id, db)
+        logger.info(f"Seeded assistant knowledge base with {len(pub_versions)} published versions.")
+    except Exception as e:
+        logger.warning(f"Could not index published versions into assistant: {e}")
 
     # Seed Demo Machines (Module 01 - T2.1)
     machines_to_seed = [

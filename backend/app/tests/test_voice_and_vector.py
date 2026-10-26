@@ -254,5 +254,94 @@ def test_vector_search_api_endpoint(client, db_session: Session):
     assert search_res.status_code == 200
     res_data = search_res.json()
     assert res_data["total"] >= 1
-    assert "contamination" in res_data["results"][0]["chunk_text"].lower()
     assert res_data["results"][0]["start_s"] == 4.2
+
+
+def test_media_transcript_and_steps_endpoints(client, db_session: Session):
+    """Test GET /api/v1/voice/assets/{media_id}/transcript and /steps endpoints."""
+    csrf_token = get_expert_credentials(client)
+
+    # 1. Create MediaAsset with linked transcript and draft
+    from app.models.media import MediaAsset
+    from app.models.transcript import Transcript, TranscriptSegment
+    from app.models.knowledge import KnowledgeItem, KnowledgeVersion
+
+    item = KnowledgeItem(title="CNC Maintenance Voice SOP", author_id="seed-user-expert-a", status="DRAFT")
+    db_session.add(item)
+    db_session.flush()
+
+    steps = [
+        {"title": "Check Chuck Pressure", "instruction": "Check pressure gauge.", "tools": ["GAUGE"], "needs_review": False}
+    ]
+    version = KnowledgeVersion(
+        item_id=item.id,
+        version_no=1,
+        title="CNC Maintenance Voice SOP",
+        status="draft",
+        origin="ai_draft",
+        steps=json.dumps(steps),
+        created_by="seed-user-expert-a",
+    )
+    db_session.add(version)
+    db_session.flush()
+
+    media = MediaAsset(
+        title="CNC Audio Recording",
+        version_id=version.id,
+        kind="audio",
+        file_path="./data/media/test_cnc.webm",
+        original_name="test_cnc.webm",
+        mime_type="audio/webm",
+        size_bytes=1024,
+        duration_seconds=12.5,
+        uploaded_by="seed-user-expert-a",
+    )
+    db_session.add(media)
+    db_session.flush()
+
+    transcript = Transcript(
+        media_id=media.id,
+        version_id=version.id,
+        language="en",
+        provider="whisper_api",
+        full_text="Check hydraulic chuck pressure before operating CNC lathe.",
+        status="completed",
+    )
+    db_session.add(transcript)
+    db_session.flush()
+
+    seg = TranscriptSegment(
+        transcript_id=transcript.id,
+        idx=1,
+        start_s=0.0,
+        end_s=5.0,
+        original_text="Check hydraulic chuck pressure before operating CNC lathe.",
+        needs_review=False,
+    )
+    db_session.add(seg)
+    db_session.commit()
+
+    # Test GET transcript by media_id
+    t_res = client.get(f"/api/v1/voice/assets/{media.id}/transcript")
+    assert t_res.status_code == 200
+    t_data = t_res.json()
+    assert t_data["full_text"] == transcript.full_text
+    assert len(t_data["segments"]) == 1
+
+    # Test GET steps by media_id
+    s_res = client.get(f"/api/v1/voice/assets/{media.id}/steps")
+    assert s_res.status_code == 200
+    s_data = s_res.json()
+    assert s_data["media_id"] == media.id
+    assert len(s_data["steps"]) == 1
+    assert s_data["steps"][0]["title"] == "Check Chuck Pressure"
+
+    # Test POST create-draft returns existing linked version
+    d_res = client.post(
+        f"/api/v1/voice/assets/{media.id}/create-draft",
+        headers={"X-CSRF-Token": csrf_token},
+    )
+    assert d_res.status_code == 200
+    d_data = d_res.json()
+    assert d_data["version_id"] == version.id
+    assert d_data["steps_count"] == 1

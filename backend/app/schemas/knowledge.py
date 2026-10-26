@@ -165,6 +165,8 @@ class KnowledgeItemDetailResponse(BaseModel):
     machine: Optional[MachineResponse] = None
     current_revision: Optional[KnowledgeRevisionResponse] = None
     reviews: List[ReviewRecordResponse] = Field(default_factory=list)
+    rag_indexed: bool = False
+    rag_chunks_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 

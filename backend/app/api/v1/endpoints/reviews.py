@@ -88,10 +88,11 @@ def submit_review_decision(
             message="Authors are strictly forbidden from approving or reviewing their own submissions (Invariant 3). A separate qualified peer expert must perform the review.",
         )
 
+    from sqlalchemy import or_
     latest_rev = (
         db.query(KnowledgeRevision)
-        .filter(KnowledgeRevision.article_id == article.id)
-        .order_by(desc(KnowledgeRevision.version))
+        .filter(or_(KnowledgeRevision.item_id == article.id, KnowledgeRevision.article_id == article.id))
+        .order_by(desc(KnowledgeRevision.version_no), desc(KnowledgeRevision.version))
         .first()
     )
 
@@ -115,6 +116,22 @@ def submit_review_decision(
     article.status = payload.decision  # "APPROVED" or "REJECTED"
     if latest_rev:
         if decision_lower == "approved":
+            # Transition any currently published version of this article to superseded
+            from app.models.knowledge import KnowledgeVersion
+            prev_published = (
+                db.query(KnowledgeVersion)
+                .filter(
+                    KnowledgeVersion.item_id == article.id,
+                    KnowledgeVersion.id != latest_rev.id,
+                    KnowledgeVersion.status == "published",
+                )
+                .all()
+            )
+            for pv in prev_published:
+                pv.status = "superseded"
+            if prev_published:
+                db.flush()
+
             latest_rev.status = "published"
             latest_rev.published_at = now
             article.current_published_version_id = latest_rev.id
@@ -127,6 +144,29 @@ def submit_review_decision(
     db.refresh(article)
     if latest_rev:
         db.refresh(latest_rev)
+        # If approved and published, immediately index into the Assistant Knowledge Base and deactivate superseded versions
+        if decision_lower == "approved":
+            try:
+                from app.modules.assistant.services.indexing_service import IndexingService
+                from app.modules.assistant.models import KnowledgeSource, SOURCE_TYPE_KNOWLEDGE_VERSION
+                from app.models.knowledge import KnowledgeVersion
+
+                prev_sources = (
+                    db.query(KnowledgeSource)
+                    .filter(
+                        KnowledgeSource.source_type == SOURCE_TYPE_KNOWLEDGE_VERSION,
+                        KnowledgeSource.knowledge_version_id != latest_rev.id,
+                    )
+                    .join(KnowledgeVersion, KnowledgeVersion.id == KnowledgeSource.knowledge_version_id)
+                    .filter(KnowledgeVersion.item_id == article.id)
+                    .all()
+                )
+                for ps in prev_sources:
+                    IndexingService.deactivate_source_for_version(ps.source_ref_id, db, new_status="superseded")
+
+                IndexingService.index_knowledge_version(latest_rev.id, db)
+            except Exception as e:
+                pass
 
     return _build_detail_response(db, article, latest_rev)
 

@@ -12,6 +12,7 @@ import { ReviewsPage } from './features/reviews/ReviewsPage';
 import { GuidedWorkflowsPage } from './features/workflows/GuidedWorkflowsPage';
 import { SoundAnalysisPage } from './features/audio/SoundAnalysisPage';
 import { VoiceToKnowledgePage } from './features/voice/VoiceToKnowledgePage';
+import { TroubleshootingPage } from './features/troubleshooting/TroubleshootingPage';
 import { ModulePlaceholderPage } from './features/placeholders/ModulePlaceholderPage';
 import { LibraryPage } from './features/knowledge-capture/LibraryPage';
 import { KnowledgeEditorPage } from './features/knowledge-capture/KnowledgeEditorPage';
@@ -59,6 +60,8 @@ export const App: React.FC = () => {
               <Route path="guided-workflows" element={<GuidedWorkflowsPage />} />
               <Route path="sound-analysis" element={<SoundAnalysisPage />} />
               <Route path="voice-capture" element={<VoiceToKnowledgePage />} />
+              <Route path="voice" element={<VoiceToKnowledgePage />} />
+              <Route path="voice-to-knowledge" element={<VoiceToKnowledgePage />} />
 
               {/* Graceful Specifications & Placeholders for Future Expansion Modules */}
               <Route
@@ -67,7 +70,7 @@ export const App: React.FC = () => {
               />
               <Route
                 path="troubleshooting"
-                element={<ModulePlaceholderPage moduleKeyOverride="troubleshooting" />}
+                element={<TroubleshootingPage />}
               />
               <Route
                 path="knowledge-graph"

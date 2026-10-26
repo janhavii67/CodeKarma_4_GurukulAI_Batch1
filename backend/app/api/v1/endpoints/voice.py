@@ -1,5 +1,7 @@
+import json
 import os
 import shutil
+import uuid
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, Depends, UploadFile, File, Form, BackgroundTasks, status
@@ -19,6 +21,7 @@ from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError
 from app.models.media import MediaAsset
 from app.models.transcript import Transcript, TranscriptSegment
 from app.models.knowledge import KnowledgeVersion
+from app.models.processing_job import ProcessingJob
 from app.schemas.voice import (
     VoiceUploadResponse,
     MediaAssetResponse,
@@ -28,6 +31,10 @@ from app.schemas.voice import (
     VectorSearchRequest,
     VectorSearchResponse,
     VectorSearchItemResponse,
+    StepDraftResponse,
+    StepsListResponse,
+    CreateDraftFromVoiceResponse,
+    ProcessingJobResponse,
 )
 from app.services.voice_service import (
     create_voice_capture_job,
@@ -57,7 +64,7 @@ async def upload_voice_narration(
     media_dir.mkdir(parents=True, exist_ok=True)
 
     file_extension = Path(file.filename or "recording.webm").suffix or ".webm"
-    stored_filename = f"voice_{auth_ctx.user.id}_{int(os.times().elapsed * 1000)}{file_extension}"
+    stored_filename = f"voice_{auth_ctx.user.id}_{uuid.uuid4().hex}{file_extension}"
     target_path = media_dir / stored_filename
 
     # Save uploaded file to disk
@@ -143,6 +150,150 @@ def get_voice_asset(
     if not media:
         raise NotFoundError(code="media_not_found", message=f"Media asset '{media_id}' not found.")
     return media
+
+
+@router.get("/assets/{media_id}/transcript", response_model=TranscriptResponse)
+@router.get("/media/{media_id}/transcript", response_model=TranscriptResponse)
+def get_media_transcript(
+    media_id: str,
+    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve timestamped narration transcript and segments for a specific media asset."""
+    transcript = (
+        db.query(Transcript)
+        .filter(Transcript.media_id == media_id)
+        .order_by(desc(Transcript.created_at))
+        .first()
+    )
+    if not transcript:
+        raise NotFoundError(code="transcript_not_found", message=f"No transcript found for media asset '{media_id}'.")
+    return transcript
+
+
+@router.get("/assets/{media_id}/steps", response_model=StepsListResponse)
+@router.get("/media/{media_id}/steps", response_model=StepsListResponse)
+def get_media_steps(
+    media_id: str,
+    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve structured candidate SOP steps for an expert voice recording."""
+    media = db.get(MediaAsset, media_id)
+    if not media:
+        raise NotFoundError(code="media_not_found", message=f"Media asset '{media_id}' not found.")
+
+    steps: List[dict] = []
+    origin = "ai_draft"
+    unclear: List[int] = []
+
+    if media.version_id:
+        version = db.get(KnowledgeVersion, media.version_id)
+        if version:
+            origin = version.origin or "ai_draft"
+            if version.steps:
+                steps = json.loads(version.steps) if isinstance(version.steps, str) else version.steps
+
+    for s in steps:
+        if isinstance(s, dict) and s.get("needs_review") and s.get("source_segment_ids"):
+            unclear.extend(s.get("source_segment_ids"))
+
+    return StepsListResponse(
+        media_id=media.id,
+        version_id=media.version_id,
+        origin=origin,
+        steps=steps,
+        unclear_segments=list(set(unclear)),
+    )
+
+
+@router.post("/assets/{media_id}/create-draft", response_model=CreateDraftFromVoiceResponse)
+async def create_draft_from_voice_asset(
+    media_id: str,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_KNOWLEDGE_CREATE)),
+    db: Session = Depends(get_db),
+):
+    """
+    Create or attach an editable Knowledge draft SOP from this voice recording.
+    Populates candidate steps from its transcript if not already linked.
+    """
+    media = db.get(MediaAsset, media_id)
+    if not media:
+        raise NotFoundError(code="media_not_found", message=f"Media asset '{media_id}' not found.")
+
+    from app.repositories.knowledge_repository import KnowledgeRepository
+    from app.services.structuring_service import structure_transcript_with_ai
+
+    if media.version_id:
+        version = db.get(KnowledgeVersion, media.version_id)
+        if version:
+            steps_list = json.loads(version.steps) if isinstance(version.steps, str) else (version.steps or [])
+            return CreateDraftFromVoiceResponse(
+                item_id=version.item_id,
+                version_id=version.id,
+                title=version.title or media.title,
+                status=version.status,
+                origin=version.origin or "ai_draft",
+                steps_count=len(steps_list),
+            )
+
+    # Find transcript
+    transcript = (
+        db.query(Transcript)
+        .filter(Transcript.media_id == media.id)
+        .order_by(desc(Transcript.created_at))
+        .first()
+    )
+
+    steps_payload = []
+    summary_text = "Standard Operating Procedure generated from expert voice recording."
+    if transcript and transcript.segments:
+        structured = await structure_transcript_with_ai(
+            segments=transcript.segments,
+            machine_name=media.machine.name if media.machine else None,
+        )
+        steps_payload = [step.model_dump() for step in structured.steps]
+        summary_text = structured.summary or summary_text
+
+    item, version = KnowledgeRepository.create_item_and_version_1(
+        db=db,
+        title=media.title or f"Voice SOP - {media.original_name}",
+        author_id=auth_ctx.user.id,
+        machine_id=media.machine_id,
+        summary=summary_text,
+        commit=False,
+    )
+    version.origin = "ai_draft"
+    version.steps = steps_payload
+
+    media.version_id = version.id
+    if transcript:
+        transcript.version_id = version.id
+
+    db.commit()
+    db.refresh(version)
+
+    return CreateDraftFromVoiceResponse(
+        item_id=item.id,
+        version_id=version.id,
+        title=version.title,
+        status=version.status,
+        origin=version.origin,
+        steps_count=len(steps_payload),
+    )
+
+
+@router.get("/jobs/{job_id}", response_model=ProcessingJobResponse)
+def get_voice_job(
+    job_id: str,
+    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve processing job status and progress for voice transcription pipeline."""
+    job = db.get(ProcessingJob, job_id)
+    if not job:
+        raise NotFoundError(code="job_not_found", message=f"Processing job '{job_id}' not found.")
+    return job
 
 
 @router.get("/knowledge-versions/{version_id}/transcript", response_model=TranscriptResponse)

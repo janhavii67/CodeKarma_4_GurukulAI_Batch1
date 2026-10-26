@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -14,6 +15,9 @@ import {
   Eye,
   Send,
   X,
+  Mic,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 
 interface KnowledgeItem {
@@ -31,6 +35,8 @@ interface KnowledgeItem {
 }
 
 interface KnowledgeDetail extends KnowledgeItem {
+  rag_indexed?: boolean;
+  rag_chunks_count?: number;
   current_revision?: {
     version: number;
     title: string;
@@ -45,6 +51,7 @@ interface KnowledgeDetail extends KnowledgeItem {
 }
 
 export const KnowledgeLibraryPage: React.FC = () => {
+  const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const canCreate = hasPermission('knowledge.create');
 
@@ -53,6 +60,7 @@ export const KnowledgeLibraryPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [selectedArticle, setSelectedArticle] = useState<KnowledgeDetail | null>(null);
   const [showAuthorModal, setShowAuthorModal] = useState(false);
+  const [indexing, setIndexing] = useState(false);
 
   // Authoring Form State
   const [newTitle, setNewTitle] = useState('');
@@ -92,6 +100,20 @@ export const KnowledgeLibraryPage: React.FC = () => {
         setSelectedArticle(data);
       })
       .catch(() => {});
+  };
+
+  const handleReindex = async (id: string) => {
+    setIndexing(true);
+    try {
+      await api.post(`/knowledge/${id}/index`, {});
+      // Refresh detail
+      const updated = await api.get<KnowledgeDetail>(`/knowledge/${id}`);
+      setSelectedArticle(updated);
+    } catch {
+      // Ignored or handled gracefully
+    } finally {
+      setIndexing(false);
+    }
   };
 
   const handleCreateArticle = async (e: React.FormEvent) => {
@@ -147,14 +169,25 @@ export const KnowledgeLibraryPage: React.FC = () => {
         </div>
 
         {canCreate && (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setShowAuthorModal(true)}
-            icon={<PlusCircle className="w-4 h-4" />}
-          >
-            Author Knowledge Draft
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link to="/app/voice-capture">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Mic className="w-4 h-4 text-brand-400" />}
+              >
+                Capture Voice Narration (M04)
+              </Button>
+            </Link>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setShowAuthorModal(true)}
+              icon={<PlusCircle className="w-4 h-4" />}
+            >
+              Author Knowledge Draft
+            </Button>
+          </div>
         )}
       </div>
 
@@ -252,6 +285,12 @@ export const KnowledgeLibraryPage: React.FC = () => {
                     {selectedArticle.status}
                   </Badge>
                   <span className="text-xs font-mono text-slate-400">v{selectedArticle.current_version}</span>
+                  {selectedArticle.rag_indexed && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/60 text-emerald-300 border border-emerald-500/30">
+                      <Sparkles className="w-3 h-3 text-emerald-400" />
+                      RAG Grounded ({selectedArticle.rag_chunks_count} Chunks)
+                    </span>
+                  )}
                 </div>
                 <h2 className="text-lg font-bold text-slate-100">{selectedArticle.title}</h2>
                 <p className="text-xs text-slate-400 mt-0.5">
@@ -314,7 +353,34 @@ export const KnowledgeLibraryPage: React.FC = () => {
               </div>
             )}
 
-            <div className="pt-3 border-t border-slate-800 flex justify-end">
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    navigate(`/app/assistant?q=${encodeURIComponent(`How do I execute ${selectedArticle.title}?`)}`);
+                  }}
+                  className="bg-brand-600 hover:bg-brand-500 text-white flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Ask AI Assistant
+                </Button>
+
+                {canCreate && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleReindex(selectedArticle.id)}
+                    disabled={indexing}
+                    className="flex items-center gap-1.5"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${indexing ? 'animate-spin' : ''}`} />
+                    {indexing ? 'Indexing...' : 'Sync RAG Index'}
+                  </Button>
+                )}
+              </div>
+
               <Button variant="secondary" size="sm" onClick={() => setSelectedArticle(null)}>
                 Close SOP
               </Button>

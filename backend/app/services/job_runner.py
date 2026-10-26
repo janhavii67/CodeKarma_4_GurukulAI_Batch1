@@ -115,6 +115,13 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
         except Exception as e:
             logger.error(f"Vector indexing error for job {job_id}: {e}")
 
+        # 3b. Index transcript chunks into Assistant Knowledge Base (Module 02 RAG)
+        try:
+            from app.modules.assistant.services.indexing_service import IndexingService
+            IndexingService.index_transcript(transcript.id, db=db, title=media.title)
+        except Exception as e:
+            logger.error(f"Assistant RAG transcript indexing error for job {job_id}: {e}")
+
         job.progress = 75
         db.commit()
 

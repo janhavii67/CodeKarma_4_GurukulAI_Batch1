@@ -106,3 +106,32 @@ class VectorSearchResponse(BaseModel):
     total: int
     results: List[VectorSearchItemResponse]
 
+
+class StepDraftResponse(BaseModel):
+    title: str
+    instruction: str
+    tools: List[str] = []
+    safety_warning: Optional[str] = None
+    expected_result: Optional[str] = None
+    stop_condition: Optional[str] = None
+    source_segment_ids: List[int] = []
+    needs_review: bool = False
+    note: Optional[str] = None
+
+
+class StepsListResponse(BaseModel):
+    media_id: str
+    version_id: Optional[str] = None
+    origin: str = "ai_draft"
+    steps: List[StepDraftResponse] = []
+    unclear_segments: List[int] = []
+
+
+class CreateDraftFromVoiceResponse(BaseModel):
+    item_id: str
+    version_id: str
+    title: str
+    status: str
+    origin: str
+    steps_count: int
+

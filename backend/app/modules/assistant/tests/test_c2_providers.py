@@ -1,0 +1,146 @@
+import json
+import math
+import pytest
+from app.core.config import settings
+from app.modules.assistant.providers import (
+    LLMRequest,
+    LLMResponse,
+    LLMExternalDisabledError,
+    LLMTimeoutError,
+    LLMError,
+    get_llm_provider,
+    FakeLLMProvider,
+    EmbeddingRequest,
+    get_embedding_provider,
+    FakeEmbeddingProvider,
+)
+
+
+def test_fake_llm_provider_default_grounded_generation():
+    """
+    FakeLLMProvider generates deterministic answers citing chunks from the prompt.
+    """
+    provider = FakeLLMProvider()
+    prompt = """
+You are a manufacturing assistant.
+[CHUNK:chk-vf2-warmup]
+Run spindle warmup cycle for 15 minutes at 5000 RPM before high speed milling.
+[/CHUNK]
+Question: How long should I warm up the spindle?
+"""
+    req = LLMRequest(prompt=prompt, request_id="test-req-1")
+    resp = provider.generate(req)
+
+    assert resp.provider_name == "fake"
+    assert resp.latency_ms > 0
+    assert provider.call_count == 1
+    assert len(provider.recorded_requests) == 1
+
+    parsed = json.loads(resp.content)
+    assert "spindle warmup" in parsed["answer"].lower()
+    assert "chk-vf2-warmup" in parsed["citations"]
+    assert parsed["evidence_status"] == "sufficient"
+
+
+def test_fake_llm_provider_no_chunks_reports_insufficient():
+    """
+    When no chunks are present, default output reports insufficient evidence.
+    """
+    provider = FakeLLMProvider()
+    req = LLMRequest(prompt="What is the torque for head bolts with no context?")
+    resp = provider.generate(req)
+
+    parsed = json.loads(resp.content)
+    assert parsed["evidence_status"] == "insufficient"
+    assert len(parsed["citations"]) == 0
+
+
+def test_fake_llm_canned_response_and_errors():
+    """
+    Verify canned response and simulated error injection for testing downstream retry logic.
+    """
+    provider = FakeLLMProvider()
+    req = LLMRequest(prompt="Test prompt")
+
+    # Canned JSON
+    provider.set_json_response({"answer": "Canned custom response", "citations": ["chk-99"]})
+    resp = provider.generate(req)
+    parsed = json.loads(resp.content)
+    assert parsed["answer"] == "Canned custom response"
+    assert parsed["citations"] == ["chk-99"]
+
+    # Injected error
+    provider.set_error(LLMTimeoutError("Simulation timeout"))
+    with pytest.raises(LLMTimeoutError):
+        provider.generate(req)
+
+    # Reset
+    provider.reset()
+    assert provider.call_count == 0
+    assert len(provider.recorded_requests) == 0
+
+
+@pytest.mark.asyncio
+async def test_fake_llm_async_generate():
+    """
+    Async generation matches sync output.
+    """
+    provider = FakeLLMProvider()
+    req = LLMRequest(prompt="[CHUNK:chk-async] Verify async generation. [/CHUNK]")
+    resp = await provider.generate_async(req)
+    assert resp.provider_name == "fake"
+    parsed = json.loads(resp.content)
+    assert "chk-async" in parsed["citations"]
+
+
+def test_safety_guard_blocks_external_llm():
+    """
+    Guarantees that external LLM calls cannot be initiated when ALLOW_EXTERNAL_LLM=False.
+    Must raise LLMExternalDisabledError without any network traffic.
+    """
+    original_setting = settings.ALLOW_EXTERNAL_LLM
+    try:
+        settings.ALLOW_EXTERNAL_LLM = False
+        with pytest.raises(LLMExternalDisabledError) as exc_info:
+            get_llm_provider("anthropic")
+        assert "External LLM calls are disabled" in str(exc_info.value)
+    finally:
+        settings.ALLOW_EXTERNAL_LLM = original_setting
+
+
+def test_unknown_provider_raises_error():
+    with pytest.raises(LLMError) as exc_info:
+        get_llm_provider("non_existent_provider")
+    assert "Unknown LLM provider" in str(exc_info.value)
+
+
+def test_fake_embedding_provider_deterministic_math():
+    """
+    Verify FakeEmbeddingProvider produces normalized vectors with identical output
+    for identical text and zero network dependency.
+    """
+    provider = get_embedding_provider("fake")
+    assert isinstance(provider, FakeEmbeddingProvider)
+
+    text_a = "HAAS VF-2 spindle speed 12000 RPM"
+    text_b = "HAAS VF-2 spindle speed 12000 RPM"
+    text_c = "Hydraulic pressure relief valve adjustment"
+
+    v_a = provider.embed_query(text_a)
+    v_b = provider.embed_query(text_b)
+    v_c = provider.embed_query(text_c)
+
+    # Identical text produces exact same vector
+    assert v_a == v_b
+    assert v_a != v_c
+    assert len(v_a) == provider.dimension
+
+    # Unit vector magnitude check (approx 1.0)
+    mag_a = math.sqrt(sum(x * x for x in v_a))
+    assert math.isclose(mag_a, 1.0, rel_tol=1e-3)
+
+    # Batch embedding
+    batch_resp = provider.embed_texts(EmbeddingRequest(texts=[text_a, text_c]))
+    assert len(batch_resp.embeddings) == 2
+    assert batch_resp.embeddings[0] == v_a
+    assert batch_resp.embeddings[1] == v_c

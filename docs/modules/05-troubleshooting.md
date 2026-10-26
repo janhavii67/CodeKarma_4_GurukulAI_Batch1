@@ -1,6 +1,6 @@
 # Module 05 — Troubleshooting and Decision Trees
 
-**Status:** Planned (placeholder in hackathon) · **Phase:** 4
+**Status:** In Progress (Task A1 Placeholder + Task B1 Models + Task B2 Engine/Validator Implemented & Tested) · **Phase:** 4 · **Implementation:** B2 COMPLETED
 
 ## 1. Full workflow diagram
 ```mermaid
