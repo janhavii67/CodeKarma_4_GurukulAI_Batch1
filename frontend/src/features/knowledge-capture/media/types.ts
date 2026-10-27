@@ -11,7 +11,10 @@ export interface MediaAsset {
   verification_status?: string | null;
   author_name?: string | null;
   transcript_id?: string | null;
+  media_id?: string | null;
+  transcript_job_id?: string | null;
   transcript_status?: string | null;
+  transcript_error?: string | null;
   kind: MediaKind | string;
   original_name: string;
   mime: string;

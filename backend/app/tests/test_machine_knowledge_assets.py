@@ -3,7 +3,7 @@ from app.integrations.storage import set_storage_service
 from app.core.permissions import PERM_KNOWLEDGE_CREATE
 from app.core.config import settings
 from app.integrations.storage.local import LocalStorageService
-from app.models import Machine, MediaAsset, Procedure, User
+from app.models import Machine, MediaAsset, Procedure, ProcedureRun, ProcessingJob, Transcript, User
 from app.repositories.media_repository import MediaRepository
 from app.services.media_service import MediaService
 from app.core.exceptions import UnsupportedMediaTypeError, ConflictError
@@ -157,6 +157,165 @@ def test_machine_upload_auth_validation_and_isolation(client, db_session, tmp_pa
         set_storage_service(None)
 
 
+def test_authenticated_audio_recording_upload_persists_to_selected_machine(client, db_session, tmp_path):
+    storage = LocalStorageService(tmp_path / "recorded-audio")
+    set_storage_service(storage)
+    old_root = settings.MEDIA_ROOT
+    old_key = settings.OPENAI_API_KEY
+    settings.MEDIA_ROOT = str(tmp_path / "recorded-audio")
+    settings.OPENAI_API_KEY = ""
+    try:
+        machine = db_session.query(Machine).first()
+        login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
+        assert login.status_code == 200
+        csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
+        webm_recording = b"\x1a\x45\xdf\xa3" + b"recorded audio payload"
+        uploaded = client.post(
+            f"/api/v1/machine-knowledge/{machine.id}/media",
+            headers={settings.CSRF_HEADER_NAME: csrf},
+            data={"kind": "audio", "title": "Recorded machine note"},
+            files={"file": ("recording.webm", webm_recording, "audio/webm")},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        asset = uploaded.json()
+        assert asset["machine_id"] == machine.id
+        assert asset["version_id"] is None
+        assert asset["kind"] == "audio"
+        assert asset["transcript_status"] == "not_configured"
+        assert storage.exists(db_session.get(MediaAsset, asset["id"]).storage_key)
+        listed = client.get(f"/api/v1/machine-knowledge/{machine.id}/media?kind=audio")
+        assert listed.status_code == 200
+        assert [row["id"] for row in listed.json()] == [asset["id"]]
+    finally:
+        settings.MEDIA_ROOT = old_root
+        settings.OPENAI_API_KEY = old_key
+        set_storage_service(None)
+
+
+def test_transcription_request_reports_missing_provider_configuration(client, db_session, tmp_path, monkeypatch):
+    storage = LocalStorageService(tmp_path / "transcription-not-configured")
+    set_storage_service(storage)
+    old_root = settings.MEDIA_ROOT
+    settings.MEDIA_ROOT = str(tmp_path / "transcription-not-configured")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "STT_PROVIDER", "whisper_api")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    try:
+        user = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+        machine = db_session.query(Machine).first()
+        audio = MediaService.upload(db_session, user, [PERM_KNOWLEDGE_CREATE], None,
+            io.BytesIO(b"\x1a\x45\xdf\xa3recorded audio"), "audio", "audio/webm", "recording.webm",
+            machine_id=machine.id, storage=storage)
+        login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
+        csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
+        response = client.post(f"/api/v1/voice/assets/{audio.id}/transcribe", headers={settings.CSRF_HEADER_NAME: csrf}, json={})
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "transcription_not_configured"
+        assert db_session.query(ProcessingJob).filter(ProcessingJob.media_id == audio.id).count() == 0
+        assert storage.exists(audio.storage_key)
+    finally:
+        settings.MEDIA_ROOT = old_root
+        set_storage_service(None)
+
+
+def test_transcript_edit_persists_and_keeps_original_audio_and_machine_link(client, db_session, tmp_path):
+    storage = LocalStorageService(tmp_path / "transcript-edit")
+    set_storage_service(storage)
+    old_root = settings.MEDIA_ROOT
+    settings.MEDIA_ROOT = str(tmp_path / "transcript-edit")
+    try:
+        user = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+        machine = db_session.query(Machine).first()
+        audio = MediaService.upload(db_session, user, [PERM_KNOWLEDGE_CREATE], None,
+            io.BytesIO(b"\x1a\x45\xdf\xa3recorded audio"), "audio", "audio/webm", "recording.webm",
+            machine_id=machine.id, storage=storage)
+        transcript = Transcript(media_id=audio.id, full_text="Initial transcript", status="completed", provider="test")
+        db_session.add(transcript); db_session.commit()
+        audio_id, transcript_id, storage_key = audio.id, transcript.id, audio.storage_key
+        login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
+        csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
+        headers = {settings.CSRF_HEADER_NAME: csrf}
+        fetched = client.get(f"/api/v1/voice/transcripts/{transcript_id}")
+        changed = client.patch(f"/api/v1/voice/transcripts/{transcript_id}", headers=headers, json={"full_text": "Reviewed transcript text"})
+        listing = client.get(f"/api/v1/machine-knowledge/{machine.id}/media?kind=transcript")
+
+        assert fetched.status_code == 200 and fetched.json()["media_id"] == audio_id
+        assert changed.status_code == 200 and changed.json()["full_text"] == "Reviewed transcript text"
+        assert listing.status_code == 200 and listing.json()[0]["media_id"] == audio_id
+        assert db_session.get(Transcript, transcript_id).full_text == "Reviewed transcript text"
+        assert db_session.get(MediaAsset, audio_id) is not None and storage.exists(storage_key)
+    finally:
+        settings.MEDIA_ROOT = old_root
+        set_storage_service(None)
+
+
+def test_transcript_is_not_visible_to_unassigned_user(client, db_session, tmp_path):
+    user = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+    machine = db_session.query(Machine).first()
+    audio = MediaService.upload(db_session, user, [PERM_KNOWLEDGE_CREATE], None,
+        io.BytesIO(b"\x1a\x45\xdf\xa3recorded audio"), "audio", "audio/webm", "recording.webm",
+        machine_id=machine.id, storage=LocalStorageService(tmp_path / "transcript-auth"))
+    transcript = Transcript(media_id=audio.id, full_text="Private transcript", status="completed", provider="test")
+    db_session.add(transcript); db_session.commit()
+    trainee = client.post("/api/v1/auth/login", json={"email": settings.TRAINEE_EMAIL, "password": settings.TRAINEE_PASSWORD})
+    response = client.get(f"/api/v1/voice/transcripts/{transcript.id}")
+    machine_listing = client.get(f"/api/v1/machine-knowledge/{machine.id}/media?kind=transcript")
+    assert trainee.status_code == 200
+    assert response.status_code == 403
+    assert machine_listing.status_code == 200 and machine_listing.json() == []
+
+
+def test_private_machine_asset_cannot_be_listed_downloaded_or_referenced_by_trainee(client, db_session, tmp_path):
+    storage = LocalStorageService(tmp_path / "private-machine-media")
+    author = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+    machine = db_session.query(Machine).first()
+    asset = MediaService.upload(db_session, author, [PERM_KNOWLEDGE_CREATE], None,
+        io.BytesIO(PNG), "image", "image/png", "private.png", machine_id=machine.id,
+        storage=storage)
+    login = client.post("/api/v1/auth/login", json={"email": settings.TRAINEE_EMAIL, "password": settings.TRAINEE_PASSWORD})
+    headers = {settings.CSRF_HEADER_NAME: login.cookies.get(settings.CSRF_COOKIE_NAME)}
+
+    listing = client.get(f"/api/v1/machine-knowledge/{machine.id}/media")
+    download = client.get(f"/api/v1/media/{asset.id}")
+    voice_listing = client.get("/api/v1/voice/assets")
+    voice_detail = client.get(f"/api/v1/voice/assets/{asset.id}")
+    reference = client.post("/api/v1/procedures", headers=headers, json={
+        "title": "Cannot reference another author's private asset", "description": "Test", "machine_id": machine.id,
+        "steps": [{"title": "Inspect", "instruction": "Inspect safely."}], "asset_ids": [asset.id],
+    })
+
+    assert login.status_code == 200
+    assert listing.status_code == 200 and all(row["id"] != asset.id for row in listing.json())
+    assert download.status_code == 403
+    assert voice_listing.status_code == 200 and all(row["id"] != asset.id for row in voice_listing.json())
+    assert voice_detail.status_code == 403
+    assert reference.status_code == 403
+    assert db_session.get(MediaAsset, asset.id) is not None
+
+
+def test_trainee_cannot_upload_machine_audio(client, db_session, tmp_path):
+    storage = LocalStorageService(tmp_path / "recorded-audio")
+    set_storage_service(storage)
+    old_root = settings.MEDIA_ROOT
+    settings.MEDIA_ROOT = str(tmp_path / "recorded-audio")
+    try:
+        machine = db_session.query(Machine).first()
+        login = client.post("/api/v1/auth/login", json={"email": settings.TRAINEE_EMAIL, "password": settings.TRAINEE_PASSWORD})
+        assert login.status_code == 200
+        csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
+        response = client.post(
+            f"/api/v1/machine-knowledge/{machine.id}/media",
+            headers={settings.CSRF_HEADER_NAME: csrf},
+            data={"kind": "audio"},
+            files={"file": ("recording.webm", b"\x1a\x45\xdf\xa3audio bytes", "audio/webm")},
+        )
+        assert response.status_code == 403
+        assert db_session.query(MediaAsset).filter(MediaAsset.title == "recording.webm").count() == 0
+    finally:
+        settings.MEDIA_ROOT = old_root
+        set_storage_service(None)
+
+
 def test_procedure_asset_api_enforces_same_machine(client, db_session, tmp_path):
     from app.integrations.storage.local import LocalStorageService
     storage = LocalStorageService(tmp_path / "api-media")
@@ -178,6 +337,35 @@ def test_procedure_asset_api_enforces_same_machine(client, db_session, tmp_path)
     finally:
         settings.MEDIA_ROOT = old_root
         set_storage_service(None)
+
+
+def test_procedure_asset_references_are_reviewable_but_only_mutable_by_draft_owner(client, db_session, tmp_path):
+    storage = LocalStorageService(tmp_path / "procedure-asset-auth")
+    owner = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+    machine = db_session.query(Machine).first()
+    asset = MediaService.upload(db_session, owner, [PERM_KNOWLEDGE_CREATE], None,
+        io.BytesIO(PNG), "image", "image/png", "shared.png", machine_id=machine.id,
+        storage=storage)
+    procedure = Procedure(title="Private draft", description="Draft", machine_id=machine.id,
+        author_id=owner.id, status="DRAFT")
+    procedure.media_assets.append(asset)
+    db_session.add(procedure); db_session.commit()
+
+    login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_B_EMAIL, "password": settings.EXPERT_B_PASSWORD})
+    csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
+    headers = {settings.CSRF_HEADER_NAME: csrf}
+    viewed = client.get(f"/api/v1/procedures/{procedure.id}/assets")
+    changed = client.put(f"/api/v1/procedures/{procedure.id}/assets", headers=headers, json={"asset_ids": []})
+
+    assert login.status_code == 200
+    assert viewed.status_code == 200
+    assert changed.status_code == 403
+    trainee = client.post("/api/v1/auth/login", json={"email": settings.TRAINEE_EMAIL, "password": settings.TRAINEE_PASSWORD})
+    trainee_view = client.get(f"/api/v1/procedures/{procedure.id}/assets")
+    assert trainee.status_code == 200
+    assert trainee_view.status_code == 403
+    db_session.expire_all()
+    assert db_session.get(Procedure, procedure.id).media_assets[0].id == asset.id
 
 
 def test_expert_creates_procedure_with_existing_same_machine_asset(client, db_session, tmp_path):
@@ -207,3 +395,79 @@ def test_expert_creates_procedure_with_existing_same_machine_asset(client, db_se
     finally:
         settings.MEDIA_ROOT = old_root
         set_storage_service(None)
+
+
+def test_authorized_procedure_delete_preserves_linked_machine_asset(client, db_session, tmp_path):
+    storage = LocalStorageService(tmp_path / "procedure-delete")
+    set_storage_service(storage)
+    old_root = settings.MEDIA_ROOT
+    settings.MEDIA_ROOT = str(tmp_path / "procedure-delete")
+    try:
+        user = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+        machine = db_session.query(Machine).first()
+        asset = MediaService.upload(db_session, user, [PERM_KNOWLEDGE_CREATE], None,
+            io.BytesIO(PNG), "image", "image/png", "kept.png", machine_id=machine.id,
+            title="Independent asset", storage=storage)
+        procedure = Procedure(title="Delete draft", description="Temporary", machine_id=machine.id,
+            author_id=user.id, status="DRAFT")
+        procedure.media_assets.append(asset)
+        db_session.add(procedure); db_session.commit()
+        procedure_id, asset_id, storage_key = procedure.id, asset.id, asset.storage_key
+
+        login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
+        csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
+        response = client.delete(f"/api/v1/procedures/{procedure_id}", headers={settings.CSRF_HEADER_NAME: csrf})
+
+        assert response.status_code == 204
+        assert db_session.get(Procedure, procedure_id) is None
+        db_session.expire_all()
+        assert db_session.get(MediaAsset, asset_id) is not None
+        assert storage.exists(storage_key)
+    finally:
+        settings.MEDIA_ROOT = old_root
+        set_storage_service(None)
+
+
+def test_procedure_delete_rejects_non_owner_and_procedures_with_runs(client, db_session):
+    machine = db_session.query(Machine).first()
+    author = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+    other_expert = db_session.query(User).filter(User.email == settings.EXPERT_B_EMAIL).first()
+    trainee = db_session.query(User).filter(User.email == settings.TRAINEE_EMAIL).first()
+    protected = Procedure(title="Protected draft", description="Has run history", machine_id=machine.id,
+        author_id=author.id, status="DRAFT")
+    protected.runs.append(ProcedureRun(operator_id=trainee.id, status="IN_PROGRESS"))
+    db_session.add(protected)
+    another_draft = Procedure(title="Another expert draft", description="Owner only", machine_id=machine.id,
+        author_id=author.id, status="DRAFT")
+    db_session.add(another_draft); db_session.commit()
+
+    login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_B_EMAIL, "password": settings.EXPERT_B_PASSWORD})
+    csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
+    headers = {settings.CSRF_HEADER_NAME: csrf}
+    cross_machine = client.delete(f"/api/v1/procedures/{another_draft.id}", headers=headers)
+    author_login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
+    author_headers = {settings.CSRF_HEADER_NAME: author_login.cookies.get(settings.CSRF_COOKIE_NAME)}
+    assert cross_machine.status_code == 403
+    with_runs = client.delete(f"/api/v1/procedures/{protected.id}", headers=author_headers)
+    assert with_runs.status_code == 409
+    assert db_session.get(Procedure, another_draft.id) is not None
+    assert db_session.get(Procedure, protected.id) is not None
+
+
+def test_procedure_delete_requires_auth_and_only_deletes_drafts(client, db_session):
+    machine = db_session.query(Machine).first()
+    author = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+    approved = Procedure(title="Published SOP", description="Published", machine_id=machine.id,
+        author_id=author.id, status="APPROVED")
+    db_session.add(approved); db_session.commit()
+    unauthenticated = client.delete(f"/api/v1/procedures/{approved.id}")
+    login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
+    csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
+    headers = {settings.CSRF_HEADER_NAME: csrf}
+    not_draft = client.delete(f"/api/v1/procedures/{approved.id}", headers=headers)
+    missing = client.delete("/api/v1/procedures/nonexistent-procedure", headers=headers)
+
+    assert unauthenticated.status_code == 401
+    assert not_draft.status_code == 409
+    assert not_draft.json()["error"]["code"] == "procedure_not_draft"
+    assert missing.status_code == 404

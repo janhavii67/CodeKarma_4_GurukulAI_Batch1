@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
     STT_PROVIDER: str = "whisper_api"
     OPENAI_API_KEY: str = ""
+    OPENAI_TRANSCRIPTION_MODEL: str = "whisper-1"
 
     model_config = SettingsConfigDict(
         env_file=".env",

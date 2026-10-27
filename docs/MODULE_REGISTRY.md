@@ -1,6 +1,6 @@
 # Module Registry
 
-**Status:** Planned
+**Status:** Audited on 2026-10-28. See [ROADMAP_STATUS.md](ROADMAP_STATUS.md) for evidence and remaining work.
 
 ## 1. Full workflow diagram (module dependencies)
 
@@ -38,17 +38,17 @@ Modules talk through services and database foreign keys, never by importing anot
 | # | Module | Doc | Phase | Hackathon | Status |
 |---|---|---|---|---|---|
 | 00 | Foundation | modules/00-foundation.md | 1 | Build | Tested |
-| 01 | Expert Knowledge Capture | modules/01-expert-knowledge-capture.md | 2 | Build | Planned |
-| 06 | Knowledge Validation and Versioning | modules/06-knowledge-validation.md | 2 | Build | Planned |
-| 04 | Voice-to-Knowledge | modules/04-voice-to-knowledge.md | 3 | Build ("wow") | Planned |
-| 02 | AI Knowledge Assistant | modules/02-ai-knowledge-assistant.md | 3 | Build | Planned |
-| 03 | Guided Workflows | modules/03-guided-workflows.md | 3 | Placeholder | Planned |
-| 05 | Troubleshooting | modules/05-troubleshooting.md | 4 | Placeholder | Planned |
-| 09 | Failure Simulator | modules/09-failure-simulator.md | 4 | Placeholder | Planned |
-| 07 | Machine Sound Analysis | modules/07-machine-sound-analysis.md | 5 | Placeholder | Planned |
-| 08 | Knowledge Graph | modules/08-manufacturing-knowledge-graph.md | 5 | Placeholder | Planned |
-| 11 | Synchronized Simulation | modules/11-synchronized-training-simulation.md | 6 | Placeholder | Planned |
-| 10 | Practical Skill Verification | modules/10-practical-skill-verification.md | 6 | Placeholder | Planned |
+| 01 | Expert Knowledge Capture | modules/01-expert-knowledge-capture.md | 2 | Build | Implemented and tested |
+| 06 | Knowledge Validation and Versioning | modules/06-knowledge-validation.md | 2 | Build | Implemented and tested; continue gap audit |
+| 04 | Voice-to-Knowledge | modules/04-voice-to-knowledge.md | 3 | Build ("wow") | Partial; real transcription needs provider credentials |
+| 02 | AI Knowledge Assistant | modules/02-ai-knowledge-assistant.md | 3 | Build | Partial; UI is a placeholder |
+| 03 | Guided Workflows | modules/03-guided-workflows.md | 3 | Placeholder | Partial; immutable workflow version/checkpoints incomplete |
+| 05 | Troubleshooting | modules/05-troubleshooting.md | 4 | Placeholder | Partial; UI and guided flow incomplete |
+| 09 | Failure Simulator | modules/09-failure-simulator.md | 4 | Placeholder | Partial; UI is a placeholder |
+| 07 | Machine Sound Analysis | modules/07-machine-sound-analysis.md | 5 | Placeholder | Partial; analysis pipeline needs completion |
+| 08 | Knowledge Graph | modules/08-manufacturing-knowledge-graph.md | 5 | Placeholder | Not implemented |
+| 11 | Synchronized Simulation | modules/11-synchronized-training-simulation.md | 6 | Placeholder | Not implemented |
+| 10 | Practical Skill Verification | modules/10-practical-skill-verification.md | 6 | Placeholder | Partial; assessment UI/workflow incomplete |
 
 ## 6. Other information
-Update this table and `TASKS.md` after every completed task. A module is "Implemented" only when its real frontend-to-backend flow works, and "Tested" only when tests were actually run.
+Update this table and `ROADMAP_STATUS.md` after completed work. A module is "Implemented" only when its real frontend-to-backend flow works, and "Tested" only when tests were actually run. `TASKS.md` records the original hackathon plan and is historical.

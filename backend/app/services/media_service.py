@@ -217,6 +217,20 @@ def verify_file_signature(header: bytes, canonical_mime: str) -> bool:
 
 class MediaService:
     @classmethod
+    def ensure_can_view_asset(cls, db: Session, user: User, permissions: List[str], asset: MediaAsset) -> None:
+        """Keep standalone machine assets private to their author and reviewers."""
+        if asset.version_id:
+            version = KnowledgeRepository.get_version_by_id(db, asset.version_id)
+            if not version:
+                raise NotFoundError(code="not_found", message="The requested media asset was not found.")
+            item = KnowledgeRepository.get_item_by_id(db, version.item_id)
+            if not item:
+                raise NotFoundError(code="not_found", message="The requested media asset was not found.")
+            KnowledgeService.ensure_can_view_version(user, permissions, version, item)
+        elif asset.uploaded_by != user.id and PERM_KNOWLEDGE_APPROVE not in permissions:
+            raise ForbiddenError(code="forbidden", message="You may only access your own machine knowledge assets or assets assigned for review.")
+
+    @classmethod
     def get_config(cls) -> Dict[str, Any]:
         """Returns the media configuration limits and allowed MIME types."""
         return {
@@ -438,18 +452,7 @@ class MediaService:
                 message="The requested media asset was not found.",
             )
 
-        version = KnowledgeRepository.get_version_by_id(db, asset.version_id) if asset.version_id else None
-        if asset.version_id and not version:
-            raise NotFoundError(
-                code="not_found",
-                message="The requested media asset was not found.",
-            )
-
-        if version:
-            item = KnowledgeRepository.get_item_by_id(db, version.item_id)
-            if not item:
-                raise NotFoundError(code="not_found", message="The requested media asset was not found.")
-            KnowledgeService.ensure_can_view_version(user, permissions, version, item)
+        cls.ensure_can_view_asset(db, user, permissions, asset)
 
         if not storage.exists(asset.storage_key):
             logger.error(f"Missing media file in storage for asset_id={asset.id}")

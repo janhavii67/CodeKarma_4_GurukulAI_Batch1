@@ -47,6 +47,17 @@ Open your browser to:
 - **Backend Swagger Docs**: `http://127.0.0.1:8000/docs`
 - **Backend Health Check**: `http://127.0.0.1:8000/api/v1/health`
 
+### Optional real audio transcription
+Audio recording and upload work without a transcription provider. To enable speech-to-text, place your provider settings in `backend/.env` (the API loads `.env` relative to the `backend` working directory), then restart the backend:
+
+```dotenv
+STT_PROVIDER=whisper_api
+OPENAI_API_KEY=<your OpenAI API key>
+OPENAI_TRANSCRIPTION_MODEL=whisper-1
+```
+
+Keep the key only in the backend environment. Do not add it to frontend variables or commit `backend/.env`. Without a valid key, transcription requests return `transcription_not_configured`; no transcript is generated. Transcription uses the configured OpenAI API and incurs provider usage.
+
 ---
 
 ## 2. Pre-Configured Seed Demo Credentials

@@ -18,11 +18,12 @@ from app.core.config import settings
 from app.models.processing_job import ProcessingJob
 from app.services.job_runner import execute_voice_processing_job
 from app.models.transcript import Transcript
+from app.models.media import MediaAsset
 from app.integrations.storage import get_storage_service
 from app.core.permissions import PERM_KNOWLEDGE_APPROVE
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from app.core.exceptions import RangeNotSatisfiableError
+from app.core.exceptions import ForbiddenError, RangeNotSatisfiableError
 from app.core.permissions import (
     AuthenticatedContext,
     csrf_protect,
@@ -66,13 +67,14 @@ def upload_machine_media(
         file.content_type, file.filename, request.client.host if request.client else None,
         machine_id=machine_id, title=title, description=description, tags=tags)
     transcript_status = "not_configured"
+    job = None
     if asset.kind == "audio" and settings.OPENAI_API_KEY and settings.STT_PROVIDER.lower() not in ("mock", "test"):
         job = ProcessingJob(type="voice_to_knowledge", media_id=asset.id, version_id=None,
             status="queued", progress=0, idempotency_key=f"voice:{asset.id}", created_by=auth_ctx.user.id)
         db.add(job); db.commit(); db.refresh(job)
         background_tasks.add_task(execute_voice_processing_job, job.id)
         transcript_status = "processing"
-    return MediaAssetResponse.model_validate({**asset.__dict__, "url": f"/api/v1/media/{asset.id}", "transcript_status": transcript_status})
+    return MediaAssetResponse.model_validate({**asset.__dict__, "url": f"/api/v1/media/{asset.id}", "transcript_status": transcript_status, "transcript_job_id": job.id if job else None})
 
 
 @router.get("/machine-knowledge/{machine_id}/media", response_model=List[MediaAssetResponse])
@@ -84,14 +86,30 @@ def list_machine_media(machine_id: str, kind: Optional[str] = None, q: Optional[
         rows = db.query(Transcript, Machine.name).join(Transcript.media).join(Machine, Machine.id == MediaAsset.machine_id).filter(Machine.id == machine_id)
         if q:
             rows = rows.filter(Transcript.full_text.ilike(f"%{q}%"))
-        return [{"id": t.id, "version_id": t.version_id, "machine_id": machine_id,
+        visible = []
+        for transcript, _ in rows.order_by(Transcript.created_at.desc()).all():
+            try:
+                MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, transcript.media)
+                visible.append(transcript)
+            except ForbiddenError:
+                continue
+        return [{"id": t.id, "media_id": t.media_id, "version_id": t.version_id, "machine_id": machine_id,
             "title": f"Transcript · {t.media.title}", "description": None, "tags": None,
             "content": t.full_text, "transcript_id": t.id, "transcript_status": t.status,
+            "transcript_job_id": None, "transcript_error": None,
             "kind": "transcript", "original_name": t.media.original_name, "mime": "text/plain",
             "size_bytes": len(t.full_text.encode("utf-8")), "uploaded_by": t.media.uploaded_by,
             "author_name": t.media.uploader.name, "verification_status": "pending_review",
-            "created_at": t.created_at, "url": None} for t, _ in rows.order_by(Transcript.created_at.desc()).all()]
+            "created_at": t.created_at, "url": None} for t in visible]
     assets = MediaRepository.list_by_machine_id(db, machine_id, kind)
+    visible_assets = []
+    for asset in assets:
+        try:
+            MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, asset)
+            visible_assets.append(asset)
+        except ForbiddenError:
+            continue
+    assets = visible_assets
     if q:
         query = q.casefold()
         assets = [a for a in assets if query in (a.title or "").casefold() or query in (a.description or "").casefold() or query in (a.tags or "").casefold() or query in a.original_name.casefold()]
@@ -109,6 +127,8 @@ def list_machine_media(machine_id: str, kind: Optional[str] = None, q: Optional[
         elif a.kind == "audio":
             job = db.query(ProcessingJob).filter(ProcessingJob.media_id == a.id).order_by(ProcessingJob.created_at.desc()).first()
             payload["transcript_status"] = job.status if job else "not_configured"
+            payload["transcript_job_id"] = job.id if job else None
+            payload["transcript_error"] = job.error_safe if job and job.status == "failed" else None
         results.append(MediaAssetResponse.model_validate(payload))
     return results
 

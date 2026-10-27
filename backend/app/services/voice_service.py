@@ -114,6 +114,7 @@ def update_transcript_segment(
     user_id: str,
     edited_text: Optional[str] = None,
     needs_review: Optional[bool] = None,
+    can_review: bool = False,
 ) -> TranscriptSegment:
     """
     Edits segment text while keeping original_text untouched.
@@ -123,13 +124,14 @@ def update_transcript_segment(
     if not segment:
         raise NotFoundError(code="segment_not_found", message=f"Segment '{segment_id}' not found.")
 
+    if segment.transcript.media.uploaded_by != user_id and not can_review:
+        raise ForbiddenError(code="forbidden", message="You may only edit segments from your own recordings or recordings assigned for review.")
+
     if edited_text is not None:
         segment.edited_text = edited_text
 
     if needs_review is not None:
         segment.needs_review = needs_review
-
-    db.commit()
 
     # Re-index updated segment vector in vector store
     new_text = segment.edited_text if segment.edited_text else segment.original_text
@@ -147,7 +149,7 @@ def update_transcript_segment(
         meta["needs_review"] = segment.needs_review
         meta["edited"] = True
         emb.metadata_json = json.dumps(meta)
-        db.commit()
+    db.commit()
 
     db.refresh(segment)
     return segment

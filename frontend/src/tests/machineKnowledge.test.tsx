@@ -12,7 +12,7 @@ vi.mock('../features/knowledge-capture/media/uploadWithProgress', () => ({ uploa
 
 describe('machine knowledge capture', () => {
   beforeEach(() => {
-    apiMock.get.mockReset(); apiMock.post.mockReset(); apiMock.patch.mockReset(); apiMock.delete.mockReset();
+    apiMock.get.mockReset(); apiMock.post.mockReset(); apiMock.patch.mockReset(); apiMock.delete.mockReset(); apiMock.upload.mockReset();
     apiMock.get.mockResolvedValue([]);
   });
 
@@ -121,11 +121,122 @@ describe('machine knowledge capture', () => {
 
   it('shows a clear microphone permission error', async () => {
     const user = userEvent.setup();
-    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: vi.fn().mockRejectedValue(new Error('denied')) } });
-    render(<MemoryRouter><MachineKnowledgePage /></MemoryRouter>);
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: vi.fn().mockRejectedValue(Object.assign(new Error('denied'), { name: 'NotAllowedError' })) } });
+    const originalMediaRecorder = globalThis.MediaRecorder;
+    vi.stubGlobal('MediaRecorder', class PermissionCheckMediaRecorder {});
+    try {
+      render(<MemoryRouter><MachineKnowledgePage /></MemoryRouter>);
+      await user.selectOptions(await screen.findByLabelText('Machine'), 'machine-cnc');
+      await user.click(screen.getByRole('button', {name:'audio'}));
+      await user.click(screen.getByRole('button', {name:'Start recording'}));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Microphone permission was denied');
+    } finally {
+      cleanup();
+      vi.stubGlobal('MediaRecorder', originalMediaRecorder);
+    }
+  });
+
+  it('explains when microphone recording is unsupported', async () => {
+    const user = userEvent.setup();
+    const originalMediaRecorder = globalThis.MediaRecorder;
+    const originalMediaDevices = navigator.mediaDevices;
+    vi.stubGlobal('MediaRecorder', undefined);
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined });
+    try {
+      render(<MemoryRouter><MachineKnowledgePage /></MemoryRouter>);
+      await user.selectOptions(await screen.findByLabelText('Machine'), 'machine-cnc');
+      await user.click(screen.getByRole('button', { name: 'audio' }));
+      await user.click(screen.getByRole('button', { name: 'Start recording' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('not supported by this browser');
+      expect(apiMock.upload).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+      vi.stubGlobal('MediaRecorder', originalMediaRecorder);
+      Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: originalMediaDevices });
+    }
+  });
+
+  it('does not save an empty recording', async () => {
+    const user = userEvent.setup();
+    const stream = { getTracks: () => [{ stop: vi.fn() }] };
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: vi.fn().mockResolvedValue(stream) } });
+    const originalMediaRecorder = globalThis.MediaRecorder;
+    class EmptyMediaRecorder {
+      state = 'inactive'; mimeType = 'audio/webm'; ondataavailable: ((event: {data: Blob})=>void) | null = null; onstop: (()=>void) | null = null;
+      start() { this.state = 'recording'; }
+      stop() { this.state = 'inactive'; this.onstop?.(); }
+    }
+    vi.stubGlobal('MediaRecorder', EmptyMediaRecorder);
+    try {
+      render(<MemoryRouter><MachineKnowledgePage /></MemoryRouter>);
+      await user.selectOptions(await screen.findByLabelText('Machine'), 'machine-cnc');
+      await user.click(screen.getByRole('button', { name: 'audio' }));
+      await user.click(screen.getByRole('button', { name: 'Start recording' }));
+      await user.click(screen.getByRole('button', { name: 'Stop recording' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('No audio was captured');
+      await user.type(screen.getByPlaceholderText('Knowledge title'), 'Empty recording');
+      await user.click(screen.getByRole('button', { name: 'Save to machine knowledge' }));
+      expect(apiMock.upload).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+      vi.stubGlobal('MediaRecorder', originalMediaRecorder);
+    }
+  });
+
+  it('opens, edits, and saves a transcript linked to its original machine recording', async () => {
+    const user = userEvent.setup();
+    const audio = { id: 'audio-linked', machine_id: 'machine-cnc', title: 'Spindle sound', kind: 'audio', original_name: 'spindle.webm', mime: 'audio/webm', size_bytes: 20, uploaded_by: 'expert', created_at: new Date().toISOString(), transcript_id: 'transcript-linked', transcript_status: 'completed' };
+    apiMock.get.mockImplementation((path: string) => {
+      if (path === '/machine-knowledge/machine-cnc/media') return Promise.resolve([audio]);
+      if (path === '/voice/transcripts/transcript-linked') return Promise.resolve({ id: 'transcript-linked', media_id: 'audio-linked', machine_id: 'machine-cnc', status: 'completed', full_text: 'Initial transcript' });
+      if (path === '/machine-knowledge/machine-cnc/media?kind=audio') return Promise.resolve([audio]);
+      return Promise.resolve([]);
+    });
+    apiMock.patch.mockResolvedValue({ id: 'transcript-linked', media_id: 'audio-linked', status: 'completed', full_text: 'Reviewed transcript' });
+    const { container } = render(<MemoryRouter><MachineKnowledgePage /></MemoryRouter>);
     await user.selectOptions(await screen.findByLabelText('Machine'), 'machine-cnc');
-    await user.click(screen.getByRole('button', {name:'audio'}));
-    await user.click(screen.getByRole('button', {name:'Start recording'}));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Microphone access was denied');
+    await user.click(await screen.findByRole('button', { name: 'Transcript · completed' }));
+    const editor = await screen.findByLabelText('Transcript text');
+    await user.clear(editor);
+    await user.type(editor, 'Reviewed transcript');
+    await user.click(screen.getByRole('button', { name: 'Save transcript edit' }));
+    await waitFor(() => expect(apiMock.patch).toHaveBeenCalledWith('/voice/transcripts/transcript-linked', { full_text: 'Reviewed transcript' }));
+    expect(await screen.findAllByText('Transcript updated.')).not.toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Open original recording' }));
+    expect(await screen.findByRole('heading', { name: 'Spindle sound' })).toBeInTheDocument();
+    expect(container.querySelector('audio')).toBeInTheDocument();
+  });
+
+  it('reports recording save failures and allows retry', async () => {
+    const user = userEvent.setup();
+    const stream = { getTracks: () => [{ stop: vi.fn() }] };
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: vi.fn().mockResolvedValue(stream) } });
+    const originalMediaRecorder = globalThis.MediaRecorder;
+    class FailingSaveMediaRecorder {
+      state = 'inactive'; mimeType = 'audio/webm'; ondataavailable: ((event: {data: Blob})=>void) | null = null; onstop: (()=>void) | null = null;
+      start() { this.state = 'recording'; }
+      stop() { this.state = 'inactive'; this.ondataavailable?.({data:new Blob(['audio bytes'],{type:'audio/webm'})}); this.onstop?.(); }
+    }
+    vi.stubGlobal('MediaRecorder', FailingSaveMediaRecorder);
+    apiMock.upload.mockRejectedValueOnce(new Error('Upload service unavailable'));
+    apiMock.upload.mockResolvedValueOnce({ id:'retry-audio-1', machine_id:'machine-cnc', title:'Retry recording', kind:'audio', original_name:'recording.webm', created_at:new Date().toISOString() });
+    try {
+      render(<MemoryRouter><MachineKnowledgePage /></MemoryRouter>);
+      await user.selectOptions(await screen.findByLabelText('Machine'), 'machine-cnc');
+      await user.click(screen.getByRole('button', { name: 'audio' }));
+      await user.click(screen.getByRole('button', { name: 'Start recording' }));
+      await user.click(screen.getByRole('button', { name: 'Stop recording' }));
+      await user.type(screen.getByPlaceholderText('Knowledge title'), 'Retry recording');
+      await user.click(screen.getByRole('button', { name: 'Save to machine knowledge' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Upload service unavailable');
+      expect(screen.getByRole('button', { name: 'Discard and record again' })).toBeInTheDocument();
+      expect(apiMock.upload).toHaveBeenCalledTimes(1);
+      await user.click(screen.getByRole('button', { name: 'Save to machine knowledge' }));
+      expect(await screen.findByText('Knowledge saved to the selected machine.')).toBeInTheDocument();
+      expect(apiMock.upload).toHaveBeenCalledTimes(2);
+    } finally {
+      cleanup();
+      vi.stubGlobal('MediaRecorder', originalMediaRecorder);
+    }
   });
 });

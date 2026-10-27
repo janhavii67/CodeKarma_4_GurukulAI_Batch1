@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -10,9 +10,10 @@ from app.core.permissions import (
     AuthenticatedContext,
     PERM_PROCEDURE_EXECUTE,
     PERM_PROCEDURE_CREATE,
+    PERM_KNOWLEDGE_APPROVE,
     csrf_protect,
 )
-from app.core.exceptions import NotFoundError, ForbiddenError
+from app.core.exceptions import NotFoundError, ForbiddenError, ConflictError
 from app.models import Procedure, ProcedureStep, ProcedureRun, ProcedureRunStep, Machine, MediaAsset
 from app.schemas.procedure import (
     ProcedureResponse,
@@ -21,6 +22,7 @@ from app.schemas.procedure import (
     ProcedureRunStepResponse,
     StepCompletionRequest,
 )
+from app.services.media_service import MediaService
 
 router = APIRouter(prefix="/procedures", tags=["Procedures"])
 
@@ -59,6 +61,8 @@ def create_procedure(payload: ProcedureCreatePayload,
         raise NotFoundError(code="asset_not_found", message="One or more selected knowledge assets were not found.")
     if any(asset.machine_id != payload.machine_id for asset in assets):
         raise ForbiddenError(code="machine_mismatch", message="A procedure can only reference assets from its selected machine.")
+    for asset in assets:
+        MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, asset)
     procedure = Procedure(title=payload.title, description=payload.description, machine_id=payload.machine_id,
         author_id=auth_ctx.user.id, status="DRAFT", prerequisites=payload.prerequisites,
         required_tools=payload.required_tools, safety_warnings=payload.safety_warnings)
@@ -75,6 +79,10 @@ def list_procedure_assets(procedure_id: str, auth_ctx: AuthenticatedContext = De
     procedure = db.get(Procedure, procedure_id)
     if not procedure:
         raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
+    if procedure.author_id != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN" and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
+        raise ForbiddenError(code="forbidden", message="You may only view references on your own procedures or procedures assigned for review.")
+    for asset in procedure.media_assets:
+        MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, asset)
     return [{"id": a.id, "title": a.title, "kind": a.kind, "machine_id": a.machine_id,
         "url": f"/api/v1/media/{a.id}"} for a in procedure.media_assets]
 
@@ -85,14 +93,51 @@ def set_procedure_assets(procedure_id: str, payload: ProcedureAssetsUpdate,
     procedure = db.get(Procedure, procedure_id)
     if not procedure:
         raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
+    if procedure.author_id != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+        raise ForbiddenError(code="forbidden", message="You may only edit references on your own procedures.")
+    if procedure.status != "DRAFT":
+        raise ConflictError(code="procedure_not_draft", message="Only draft procedures can change their knowledge references.")
     assets = db.query(MediaAsset).filter(MediaAsset.id.in_(set(payload.asset_ids))).all() if payload.asset_ids else []
     if len(assets) != len(set(payload.asset_ids)):
         raise NotFoundError(code="asset_not_found", message="One or more selected knowledge assets were not found.")
     if any(a.machine_id != procedure.machine_id for a in assets):
         raise ForbiddenError(code="machine_mismatch", message="A procedure can only reference assets from its own machine.")
+    for asset in assets:
+        MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, asset)
     procedure.media_assets = assets
     db.commit()
     return {"procedure_id": procedure.id, "asset_ids": [a.id for a in assets]}
+
+
+@router.get("/mine/drafts", response_model=List[ProcedureResponse])
+def list_my_procedure_drafts(
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_CREATE)),
+    db: Session = Depends(get_db),
+):
+    procedures = (db.query(Procedure)
+        .filter(Procedure.author_id == auth_ctx.user.id, Procedure.status == "DRAFT")
+        .order_by(Procedure.updated_at.desc()).all())
+    return [get_procedure(procedure.id, auth_ctx, db) for procedure in procedures]
+
+
+@router.delete("/{procedure_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(csrf_protect)])
+def delete_procedure(
+    procedure_id: str,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_CREATE)),
+    db: Session = Depends(get_db),
+):
+    procedure = db.get(Procedure, procedure_id)
+    if not procedure:
+        raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
+    if procedure.author_id != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+        raise ForbiddenError(code="forbidden", message="You may only delete your own machine procedures.")
+    if procedure.status != "DRAFT":
+        raise ConflictError(code="procedure_not_draft", message="Only draft procedures can be deleted. Published or archived procedures must follow the review and archive workflow.")
+    if db.query(ProcedureRun.id).filter(ProcedureRun.procedure_id == procedure.id).first():
+        raise ConflictError(code="procedure_in_use", message="This procedure has execution history and cannot be deleted.")
+    db.delete(procedure)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("", response_model=List[ProcedureResponse])

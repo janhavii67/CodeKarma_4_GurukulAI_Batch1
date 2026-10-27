@@ -13,6 +13,9 @@ class MediaAssetResponse(BaseModel):
     content: Optional[str] = None
     transcript_status: Optional[str] = None
     transcript_id: Optional[str] = None
+    transcript_error: Optional[str] = None
+    transcript_job_id: Optional[str] = None
+    media_id: Optional[str] = None
     verification_status: Optional[str] = None
     author_name: Optional[str] = None
     kind: str
