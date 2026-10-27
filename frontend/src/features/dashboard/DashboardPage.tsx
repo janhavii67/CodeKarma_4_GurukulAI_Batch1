@@ -11,9 +11,7 @@ import { QuickActionsGrid } from './components/QuickActionsGrid';
 import { AdminDiagnosticsModal } from './components/AdminDiagnosticsModal';
 import { Shield } from 'lucide-react';
 
-import { EditorialHero } from './components/EditorialHero';
-import { EditorialFeatureCards } from './components/EditorialFeatureCards';
-import { EditorialKnowledgeStreams } from './components/EditorialKnowledgeStreams';
+import { StitchExpertDashboard } from './components/StitchExpertDashboard';
 
 export const DashboardPage: React.FC = () => {
   const { user, permissions, hasPermission, hasRole } = useAuth();
@@ -57,46 +55,15 @@ export const DashboardPage: React.FC = () => {
   }, [fetchDashboardData]);
 
   return (
-    <div className="space-y-7 max-w-7xl mx-auto pb-8">
+    <div className="space-y-7 max-w-[1440px] mx-auto pb-8">
       {isExpert ? (
-        <>
-          {/* Stitch Editorial Hero Banner */}
-          <EditorialHero
-            user={user}
-            stats={stats}
-            loading={loading}
-            hasPermission={hasPermission}
-            hasRole={hasRole}
-          />
-
-          {/* Stitch 3 Floating Feature Cards */}
-          <EditorialFeatureCards
-            hasPermission={hasPermission}
-            pendingReviewsCount={stats?.pending_reviews_for_user ?? 0}
-          />
-
-          {/* Authoritative Contribution Statistics (6 metrics) */}
-          <ContributionMetrics
-            stats={stats}
-            loading={loading}
-            hasRole={hasRole}
-            hasPermission={hasPermission}
-          />
-
-          {/* Stitch 3-Column Knowledge Stream & Media Activity */}
-          <EditorialKnowledgeStreams
-            stats={stats}
-            loading={loading}
-            canCreateKnowledge={hasPermission('knowledge.create')}
-          />
-
-          {/* Quality & Governance Milestone Journey */}
-          <ExpertiseJourney
-            stats={stats}
-            loading={loading}
-            hasRole={hasRole}
-          />
-        </>
+        <StitchExpertDashboard
+          user={user}
+          stats={stats}
+          loading={loading}
+          hasPermission={hasPermission}
+          hasRole={hasRole}
+        />
       ) : (
         <>
           {/* Trainee Welcome Banner */}
