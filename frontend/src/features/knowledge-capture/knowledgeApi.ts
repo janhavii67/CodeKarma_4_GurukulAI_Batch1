@@ -64,6 +64,10 @@ export async function updateKnowledge(
   return api.patch<KnowledgeVersion>(`/knowledge/${itemId}`, payload);
 }
 
+export async function submitKnowledgeForReview(itemId: string): Promise<KnowledgeItemDetail> {
+  return api.post<KnowledgeItemDetail>(`/knowledge/${itemId}/submit`);
+}
+
 // ─── Versions ─────────────────────────────────────────────────────────────────
 
 export async function fetchVersionList(

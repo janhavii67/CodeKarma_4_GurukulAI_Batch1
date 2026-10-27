@@ -238,7 +238,7 @@ export const RecordHeader: React.FC<RecordHeaderProps> = ({
 
   return (
     <div
-      className="sticky top-0 z-20 bg-[#0D1426] border-b border-[#22304D]"
+      className="bg-[#0D1426] border-b border-[#22304D]"
       style={{ backdropFilter: 'blur(12px)' }}
     >
       {/* Main header row */}

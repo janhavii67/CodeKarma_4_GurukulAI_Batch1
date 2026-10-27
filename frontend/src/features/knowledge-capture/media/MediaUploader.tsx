@@ -33,6 +33,17 @@ const KIND_MIME_PREFIXES: Record<string, string[]> = {
   documents: ['application/pdf'],
 };
 
+const ImageThumbnail: React.FC<{ file: File }> = ({ file }) => {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    if (typeof URL.createObjectURL !== 'function') return;
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  return url ? <img src={url} alt={`Preview of ${file.name}`} className="w-16 h-12 rounded-md border border-slate-600 object-cover" /> : null;
+};
+
 interface MediaUploaderProps {
   versionId: string;
   config?: MediaConfig;
@@ -46,6 +57,7 @@ interface MediaUploaderProps {
    * message. This is a convenience check only — the backend validates.
    */
   kindFilter?: string;
+  captureMode?: boolean;
 }
 
 export const MediaUploader: React.FC<MediaUploaderProps> = ({
@@ -56,6 +68,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   onUploadSuccess,
   isVersionFrozen,
   kindFilter,
+  captureMode = false,
 }) => {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -357,8 +370,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         ref={fileInputRef}
         id="media-file-input"
         type="file"
-        multiple
-        accept={allowedMimes.join(',')}
+        multiple={!captureMode}
+        accept={captureMode ? 'image/*' : allowedMimes.join(',')}
+        capture={captureMode ? 'environment' : undefined}
         onChange={(e) => e.target.files && handleFiles(e.target.files)}
         className="sr-only"
         disabled={isCapReached || isVersionFrozen}
@@ -444,11 +458,12 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             Upload Queue ({queue.length})
           </p>
           <div className="space-y-2">
-            {queue.map((item) => (
+              {queue.map((item) => (
               <div
                 key={item.id}
                 className="rounded-lg bg-slate-800/60 border border-slate-700/60 p-3 space-y-2 text-xs"
               >
+                {item.file.type.startsWith('image/') && <ImageThumbnail file={item.file} />}
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
                     <FileIcon className="w-4 h-4 text-slate-400 shrink-0" />

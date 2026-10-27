@@ -23,6 +23,7 @@ import {
   useCreateRevision,
   useMachines,
   useCreateKnowledge,
+  useSubmitKnowledgeForReview,
 } from './hooks';
 import { StepEditor } from './StepEditor';
 import { MediaPanel } from './media/MediaPanel';
@@ -30,7 +31,6 @@ import { Button } from '../../components/ui/Button';
 import { ApiClientError } from '../../lib/api/client';
 import type { Step, KnowledgeVersion } from './types';
 import { isEditableStatus } from './types';
-import { MedicalTopNav } from './components/MedicalTopNav';
 import { MedicalHeroBanner } from './components/MedicalHeroBanner';
 import { DraftStatusBar } from './components/DraftStatusBar';
 
@@ -202,13 +202,15 @@ export const KnowledgeEditorPage: React.FC = () => {
   const machines = machinesData?.items ?? [];
 
   const isNewRoute = !id || id === 'new';
+  const captureKind = searchParams.get('capture') ?? undefined;
   const versionIdParam = searchParams.get('version_id') ?? undefined;
 
   // New Draft Creation Modal State (if accessing /app/knowledge/new)
-  const [newTitle, setNewTitle] = useState('Diagnostic Analyzer Calibration');
+  const [newTitle, setNewTitle] = useState('');
   const [newMachineId, setNewMachineId] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
   const createMutation = useCreateKnowledge();
+  const submitReviewMutation = useSubmitKnowledgeForReview(id || '');
 
   // Fetch item detail if an ID exists
   const { data, isLoading, isError, error } = useKnowledgeDetail(
@@ -229,6 +231,7 @@ export const KnowledgeEditorPage: React.FC = () => {
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [showRevisionDialog, setShowRevisionDialog] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
@@ -249,6 +252,13 @@ export const KnowledgeEditorPage: React.FC = () => {
     setSaveError(null);
   }, [data]);
 
+  useEffect(() => {
+    if (captureKind === 'notes' && data) setShowDetailsSection(true);
+    if (captureKind && data && captureKind !== 'notes') {
+      window.setTimeout(() => document.getElementById('media-evidence')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    }
+  }, [captureKind, data]);
+
   // Handle new creation submission
   const handleCreateNew = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -259,10 +269,10 @@ export const KnowledgeEditorPage: React.FC = () => {
     try {
       const res = await createMutation.mutateAsync({
         title: newTitle.trim(),
-        machine_id: newMachineId || (machines[0]?.id ?? null),
+        machine_id: newMachineId || null,
       });
       setShowCreateModal(false);
-      navigate(`/app/knowledge/${res.id}`);
+      navigate(`/app/knowledge/${res.id}${captureKind ? `?capture=${encodeURIComponent(captureKind)}` : ''}`);
     } catch (err) {
       setCreateError(err instanceof ApiClientError ? err.message : 'Creation failed.');
     }
@@ -285,6 +295,7 @@ export const KnowledgeEditorPage: React.FC = () => {
   const isAuthor = version?.created_by === user?.id;
   const editableStatus = version ? isEditableStatus(version.status) : false;
   const isEditable = canCreate && isAuthor && editableStatus;
+  const canSubmitReview = hasPermission('knowledge.submit_review') && isAuthor && editableStatus;
   const isFrozen = !!version && !editableStatus;
 
   const markDirty = () => setIsDirty(true);
@@ -332,6 +343,25 @@ export const KnowledgeEditorPage: React.FC = () => {
     }
   };
 
+  const handleSubmitReview = async () => {
+    if (!canSubmitReview || !version) return;
+    setSubmitError(null);
+    try {
+      if (isDirty) {
+        if (!localTitle.trim()) { setSubmitError('Add a title before submitting for review.'); return; }
+        await updateMutation.mutateAsync({
+          title: localTitle.trim(), summary: localSummary.trim() || null,
+          description: localDescription.trim() || null, steps: localSteps,
+          revision_reason: localRevisionReason.trim() || null, version_id: version.id,
+        });
+        setIsDirty(false);
+      }
+      await submitReviewMutation.mutateAsync();
+    } catch (err) {
+      setSubmitError(err instanceof ApiClientError ? err.message : 'Could not submit this draft for review.');
+    }
+  };
+
   // Keyboard shortcut: Ctrl+S
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -361,15 +391,14 @@ export const KnowledgeEditorPage: React.FC = () => {
   if (isNewRoute) {
     return (
       <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
-        <MedicalTopNav />
         <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
           <MedicalHeroBanner onCreateClick={() => setShowCreateModal(true)} />
           
           <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-[#DCE8F5] shadow-sm p-6 sm:p-8 space-y-6">
             <div className="border-b border-[#DCE8F5] pb-4">
-              <h2 className="text-xl font-bold text-[#12345A]">Create Medical Procedure</h2>
+              <h2 className="text-xl font-bold text-[#12345A]">Start a knowledge draft</h2>
               <p className="text-xs text-[#536780] mt-1">
-                Initialize an expert Standard Operating Procedure draft for laboratory equipment.
+                Give this practical knowledge a title and link it to the relevant machine.
               </p>
             </div>
 
@@ -383,7 +412,7 @@ export const KnowledgeEditorPage: React.FC = () => {
             <form onSubmit={handleCreateNew} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-[#536780] mb-1.5">
-                  Procedure Title *
+                  Knowledge Title *
                 </label>
                 <input
                   type="text"
@@ -397,14 +426,14 @@ export const KnowledgeEditorPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-[#536780] mb-1.5">
-                  Select Machine Asset *
+                  Select Machine Asset (optional)
                 </label>
                 <select
                   value={newMachineId}
                   onChange={(e) => setNewMachineId(e.target.value)}
                   className="w-full bg-white border border-[#DCE8F5] rounded-lg px-3.5 py-2.5 text-sm text-[#12345A] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none"
                 >
-                  <option value="">Select laboratory equipment…</option>
+                  <option value="">Select equipment…</option>
                   {machines.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name} ({m.code})
@@ -412,7 +441,7 @@ export const KnowledgeEditorPage: React.FC = () => {
                   ))}
                 </select>
                 <p className="text-[11px] text-[#536780] mt-1">
-                  Associates this standard procedure with a registered medical device or station.
+                  Link this knowledge to registered equipment when relevant.
                 </p>
               </div>
 
@@ -444,7 +473,6 @@ export const KnowledgeEditorPage: React.FC = () => {
     const is404 = error instanceof ApiClientError && error.status === 404;
     return (
       <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
-        <MedicalTopNav />
         <div className="max-w-md mx-auto py-24 text-center space-y-4 px-4">
           <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 text-amber-500 flex items-center justify-center mx-auto">
             <AlertTriangle className="w-6 h-6" />
@@ -476,7 +504,6 @@ export const KnowledgeEditorPage: React.FC = () => {
   if (isLoading || !data) {
     return (
       <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans" aria-busy="true" aria-label="Loading knowledge item">
-        <MedicalTopNav />
         <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
           <div className="h-44 rounded-2xl bg-white border border-[#DCE8F5] animate-pulse" />
           <div className="h-14 rounded-xl bg-white border border-[#DCE8F5] animate-pulse" />
@@ -494,13 +521,12 @@ export const KnowledgeEditorPage: React.FC = () => {
   }
 
   const v = data.version;
-  const machineName = data.machine ? `${data.machine.name} (${data.machine.code})` : 'Demo Inspection Station';
+  const machineName = data.machine ? `${data.machine.name} (${data.machine.code})` : 'No equipment linked';
   const originDisplay = v.origin ? `${v.origin.replace('_', ' ')} Draft` : 'Expert Draft';
 
   return (
     <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
       {/* 1. TOP NAVIGATION */}
-      <MedicalTopNav />
 
       {/* Main Container */}
       <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -528,7 +554,11 @@ export const KnowledgeEditorPage: React.FC = () => {
           onSave={handleSave}
           canEdit={isEditable}
           isDirty={isDirty}
+          canSubmitReview={canSubmitReview}
+          isSubmittingReview={submitReviewMutation.isPending}
+          onSubmitReview={handleSubmitReview}
         />
+        {submitError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{submitError}</div>}
 
         {/* Frozen Version Notice Banner (Required by tests) */}
         {isFrozen && (
@@ -642,22 +672,8 @@ export const KnowledgeEditorPage: React.FC = () => {
                   <span>Draft Status</span>
                 </div>
                 <p className="text-[11px] leading-relaxed">
-                  This procedure is saved as a draft. It will be available for review once the review workflow is enabled.
-                  <span className="block mt-1 text-[#536780]">
-                    <strong className="text-[#12345A]">Submit for Review</strong> is unavailable — the review &amp; publication workflow (Module 06) has not been implemented yet.
-                  </span>
+                  This knowledge is saved as a draft. Save your changes, then submit it for peer review when ready.
                 </p>
-                {isEditable && (
-                  <button
-                    type="button"
-                    disabled
-                    aria-disabled="true"
-                    title="Module 06 (Review & Publication) is not yet implemented"
-                    className="w-full py-1.5 px-3 rounded-lg border border-[#BCD7F5] bg-white text-xs font-semibold text-[#8FA0BF] cursor-not-allowed select-none shadow-xs"
-                  >
-                    Submit for Review
-                  </button>
-                )}
               </div>
 
               {/* Optional Expandable Details Section */}
@@ -667,7 +683,7 @@ export const KnowledgeEditorPage: React.FC = () => {
                   onClick={() => setShowDetailsSection(!showDetailsSection)}
                   className="w-full flex items-center justify-between text-xs font-semibold text-[#536780] hover:text-[#12345A] py-1"
                 >
-                  <span>Additional Information</span>
+                  <span>{captureKind === 'notes' ? 'Practical Knowledge Notes' : 'Additional Information'}</span>
                   {showDetailsSection ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
 
@@ -675,14 +691,15 @@ export const KnowledgeEditorPage: React.FC = () => {
                   <div className="pt-3 space-y-3 animate-in fade-in">
                     <div>
                       <label className="block text-[10px] uppercase font-semibold text-[#536780] mb-1">
-                        Full Description / Prerequisites
+                        Practical knowledge and notes
                       </label>
                       {isEditable ? (
                         <textarea
                           value={localDescription}
                           onChange={handleDescriptionChange}
-                          placeholder="Comprehensive procedure background, pre-operational checks…"
+                          placeholder="Describe the practical know-how, what to watch for, and useful operating context…"
                           rows={3}
+                          autoFocus={captureKind === 'notes'}
                           className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-1 focus:ring-[#1473E6] outline-none"
                         />
                       ) : (
@@ -707,21 +724,6 @@ export const KnowledgeEditorPage: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Submit for Review (Required by tests: disabled with Module 06 text) */}
-                    <div className="pt-2 border-t border-[#DCE8F5]">
-                      <div className="text-[11px] text-[#536780] mb-2 leading-tight">
-                        <strong className="text-[#12345A]">Submit for Review</strong> is unavailable — the review &amp; publication workflow (Module 06) has not been implemented yet.
-                      </div>
-                      <button
-                        type="button"
-                        disabled
-                        aria-disabled="true"
-                        title="Module 06 (Review & Publication) is not yet implemented"
-                        className="w-full py-1.5 px-3 rounded-lg border border-[#DCE8F5] bg-[#F7FAFE] text-xs font-semibold text-[#8FA0BF] cursor-not-allowed select-none"
-                      >
-                        Submit for Review
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>

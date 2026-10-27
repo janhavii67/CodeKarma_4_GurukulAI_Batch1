@@ -38,7 +38,7 @@ export const MedicalTopNav: React.FC = () => {
   const roleLabel = user?.role_id === 'EXPERT' ? 'Expert' : user?.role_id === 'TRAINEE' ? 'Trainee' : user?.role_id ?? 'User';
 
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-[#DCE8F5] shadow-[0_2px_8px_rgba(20,115,230,0.04)]">
+    <header className="bg-white border-b border-[#DCE8F5] shadow-[0_2px_8px_rgba(20,115,230,0.04)]">
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Left: Brand Logo & Wordmark */}
         <div

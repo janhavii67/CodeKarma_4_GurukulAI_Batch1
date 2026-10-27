@@ -73,7 +73,7 @@ export const AppLayout: React.FC = () => {
       </div>
 
       {/* ─── 2. EXACTLY ONE HORIZONTAL NAVBAR (BELOW STATUS STRIP) ─── */}
-      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-3 pb-1 sticky top-0 z-30">
+      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-3 pb-1">
         <header className="bg-white rounded-2xl border border-[#E2E8F0] px-5 sm:px-6 py-3 shadow-xs flex items-center justify-between gap-4">
           {/* Left: Gurukul AI brandmark & tagline */}
           <Link to="/app" className="flex items-center gap-3 shrink-0 group">

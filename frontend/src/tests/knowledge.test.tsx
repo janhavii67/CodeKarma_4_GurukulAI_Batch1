@@ -305,7 +305,7 @@ describe('LibraryPage', () => {
 // ─── KnowledgeEditorPage Tests ────────────────────────────────────────────────
 
 describe('KnowledgeEditorPage', () => {
-  function renderEditor(versionStatus = 'draft', authorId = 'user-1') {
+  function renderEditor(versionStatus = 'draft', authorId = 'user-1', permissions = ['knowledge.create']) {
     const item = {
       ...mockItemDetail,
       author_id: authorId,
@@ -313,7 +313,7 @@ describe('KnowledgeEditorPage', () => {
     };
     mockApi.get.mockImplementation((path: string) => {
       if (path === '/auth/me')
-        return Promise.resolve({ user: mockUser, permissions: ['knowledge.create'] });
+        return Promise.resolve({ user: mockUser, permissions });
       if (path.includes('/versions'))
         return Promise.resolve([{ ...mockVersion, status: versionStatus }]);
       if (path.startsWith('/knowledge/item-1'))
@@ -398,17 +398,10 @@ describe('KnowledgeEditorPage', () => {
     );
   });
 
-  it('renders disabled Submit for Review with M06 explanation', async () => {
-    renderEditor('draft', 'user-1');
-    await waitFor(() => {
-      // The M06 explanation text must be visible
-      expect(screen.getByText(/Module 06/i)).toBeInTheDocument();
-    });
-    // The submit button must be disabled
-    const submitBtn = screen.getByRole('button', {
-      name: /Submit for Review/i,
-    });
-    expect(submitBtn).toBeDisabled();
+  it('offers Submit for Review to an author with the submission permission', async () => {
+    renderEditor('draft', 'user-1', ['knowledge.create', 'knowledge.submit_review']);
+    const submitBtn = await screen.findByRole('button', { name: /Submit for Review/i });
+    expect(submitBtn).toBeEnabled();
   });
 
   it('renders media attachments panel', async () => {

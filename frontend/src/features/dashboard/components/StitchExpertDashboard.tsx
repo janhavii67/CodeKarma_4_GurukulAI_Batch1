@@ -17,7 +17,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
   hasPermission,
 }) => {
   const canCreate = hasPermission('knowledge.create');
-  const pendingReviewsForUser = stats?.pending_reviews_for_user ?? 4;
+  const pendingReviewsForUser = stats?.pending_reviews_for_user;
   const latestDraftId = stats?.latest_draft_id;
   const recentArticles = stats?.recent_articles || [];
 
@@ -75,7 +75,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
             <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto mb-6">
               {canCreate && (
                 <Link
-                  to="/app/knowledge/new"
+                  to="/app/knowledge/new?capture=notes"
                   className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#1976C9] hover:bg-[#125EA3] text-white font-semibold text-sm transition-all shadow-md shadow-[#1976C9]/20 hover:-translate-y-0.5"
                 >
                   <span className="material-symbols-outlined text-[19px]">videocam</span>
@@ -129,7 +129,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           
           {/* Card A: Capture Knowledge (Large Flagship Panel — ~50% width / 6 cols of 12) */}
-          <div className="lg:col-span-6 bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6 lg:p-7 flex flex-col justify-between relative overflow-hidden group hover:border-[#1976C9] transition-all">
+          <div className="lg:col-span-5 bg-white rounded-2xl border border-[#C8D6E4] shadow-sm p-6 lg:p-7 flex flex-col justify-between relative overflow-hidden group hover:border-[#1976C9] transition-all">
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
@@ -168,7 +168,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
 
                 <div className="sm:col-span-7 grid grid-cols-2 gap-2">
                   <Link
-                    to="/app/knowledge/new"
+                    to="/app/knowledge/new?capture=video"
                     className="px-2.5 py-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-2 text-xs font-semibold text-[#173B5E] hover:border-[#1976C9] hover:text-[#1976C9] hover:bg-white transition-all cursor-pointer shadow-xs"
                   >
                     <span className="material-symbols-outlined text-[16px] text-[#1976C9]">videocam</span>
@@ -176,7 +176,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   </Link>
 
                   <Link
-                    to="/app/voice-capture"
+                    to="/app/knowledge/new?capture=audio"
                     className="px-2.5 py-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-2 text-xs font-semibold text-[#173B5E] hover:border-[#19A995] hover:text-[#19A995] hover:bg-white transition-all cursor-pointer shadow-xs"
                   >
                     <span className="material-symbols-outlined text-[16px] text-[#19A995]">mic</span>
@@ -184,7 +184,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   </Link>
 
                   <Link
-                    to="/app/knowledge/new"
+                    to="/app/knowledge/new?capture=notes"
                     className="px-2.5 py-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-2 text-xs font-semibold text-[#173B5E] hover:border-[#1976C9] hover:text-[#1976C9] hover:bg-white transition-all cursor-pointer shadow-xs"
                   >
                     <span className="material-symbols-outlined text-[16px] text-slate-500">edit_note</span>
@@ -192,7 +192,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   </Link>
 
                   <Link
-                    to="/app/knowledge/new"
+                    to="/app/knowledge/new?capture=photo"
                     className="px-2.5 py-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-2 text-xs font-semibold text-[#173B5E] hover:border-[#1976C9] hover:text-[#1976C9] hover:bg-white transition-all cursor-pointer shadow-xs"
                   >
                     <span className="material-symbols-outlined text-[16px] text-slate-500">photo_camera</span>
@@ -205,7 +205,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
               <span className="text-[11px] text-[#536779] flex items-center gap-1.5 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                Ready for Shift 1 Recording
+                Record practical knowledge for the next operator
               </span>
               <Link
                 to="/app/knowledge/new"
@@ -242,7 +242,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   <span className="text-xs font-medium text-white/90">Pending peer evaluations</span>
                 </div>
                 <span className="text-sm font-extrabold text-white bg-white/20 px-2.5 py-0.5 rounded-md border border-white/20 font-mono">
-                  {loading ? '--' : pendingReviewsForUser}
+                  {loading || pendingReviewsForUser === undefined ? '—' : pendingReviewsForUser}
                 </span>
               </div>
             </div>
@@ -259,7 +259,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
           </div>
 
           {/* Card C: Knowledge Assistant (Compact Search Panel — ~20% width / 2 cols of 12) */}
-          <div className="lg:col-span-2 bg-[#F8F9FF] rounded-2xl p-6 border border-[#E2E8F0] shadow-xs hover:shadow-md transition-all flex flex-col justify-between group">
+          <div className="lg:col-span-3 bg-[#F8F9FF] rounded-2xl p-6 border border-[#C8D6E4] shadow-xs hover:shadow-md transition-all flex flex-col justify-between group">
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div className="w-10 h-10 rounded-xl bg-white text-[#1976C9] flex items-center justify-center group-hover:scale-105 transition-transform border border-[#1976C9]/20 shadow-xs">
@@ -274,7 +274,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                 Knowledge Assistant
               </h3>
               <p className="text-[11px] text-[#536779] leading-relaxed mb-4">
-                Instant answers from verified plant procedures.
+                Search documented procedures and practical shop-floor knowledge.
               </p>
 
               <Link to="/app/assistant" className="block">
@@ -318,7 +318,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   to="/app/knowledge"
                   className="text-xs font-bold text-[#1976C9] hover:underline flex items-center gap-1"
                 >
-                  <span>View All Archive ({stats?.user_sops_created || 38}) →</span>
+                  <span>View My Knowledge ({stats?.user_sops_created ?? 0}) →</span>
                 </Link>
               </div>
 

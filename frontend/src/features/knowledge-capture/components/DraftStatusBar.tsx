@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info, Save, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Info, Save, Loader2, CheckCircle2, AlertTriangle, Send } from 'lucide-react';
 
 interface DraftStatusBarProps {
   status: string;
@@ -10,6 +10,9 @@ interface DraftStatusBarProps {
   onSave: () => void;
   canEdit: boolean;
   isDirty?: boolean;
+  onSubmitReview?: () => void;
+  canSubmitReview?: boolean;
+  isSubmittingReview?: boolean;
 }
 
 export const DraftStatusBar: React.FC<DraftStatusBarProps> = ({
@@ -21,6 +24,9 @@ export const DraftStatusBar: React.FC<DraftStatusBarProps> = ({
   onSave,
   canEdit,
   isDirty: _isDirty = false,
+  onSubmitReview,
+  canSubmitReview = false,
+  isSubmittingReview = false,
 }) => {
   const statusDisplay = status === 'draft' ? 'Draft' : status.replace('_', ' ');
 
@@ -32,7 +38,7 @@ export const DraftStatusBar: React.FC<DraftStatusBarProps> = ({
           <Info className="w-3.5 h-3.5" />
         </div>
         <p className="text-xs sm:text-sm text-[#536780] leading-snug">
-          Review and publication will be available when the review workflow is enabled.
+          Save your draft or submit it for peer review when it is ready.
         </p>
       </div>
 
@@ -80,6 +86,13 @@ export const DraftStatusBar: React.FC<DraftStatusBarProps> = ({
                 <span>Save Draft</span>
               </>
             )}
+          </button>
+        )}
+        {canSubmitReview && onSubmitReview && (
+          <button type="button" onClick={onSubmitReview} disabled={isSaving || isSubmittingReview}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#173B5E] hover:bg-[#102C49] text-white font-semibold text-xs shadow-xs disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[#19A995]/50">
+            {isSubmittingReview ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            <span>{isSubmittingReview ? 'Submitting…' : 'Submit for Review'}</span>
           </button>
         )}
       </div>
