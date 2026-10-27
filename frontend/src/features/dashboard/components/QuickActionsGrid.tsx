@@ -39,7 +39,7 @@ const ActionCard: React.FC<ActionCardProps> = ({
     to={route}
     className={`p-4 rounded-xl border transition-all duration-200 flex flex-col justify-between group shadow-xs hover:shadow-md ${
       isPrimary
-        ? 'bg-gradient-to-br from-white to-[#F0F6FF] border-[#1976D2]/40 hover:border-[#1976D2] ring-1 ring-[#1976D2]/10'
+        ? 'bg-white hover:bg-[#F5F9FF] border-[#1976D2] ring-1 ring-[#1976D2]/20'
         : 'bg-white hover:bg-[#F8FAFD] border-[#DCE6F0] hover:border-[#1976D2]/40'
     }`}
   >

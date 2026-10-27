@@ -59,7 +59,7 @@ export const WelcomeBanner: React.FC<WelcomeBannerProps> = ({
   return (
     <section
       aria-labelledby="welcome-heading"
-      className="rounded-2xl bg-gradient-to-r from-white via-[#F5F9FF] to-[#EAF3FF] border border-[#DCE6F0] p-6 md:p-7 shadow-xs relative overflow-hidden"
+      className="rounded-2xl bg-white border border-[#DCE6F0] p-5 md:p-6 shadow-xs relative overflow-hidden"
     >
       <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2.5 max-w-3xl">
