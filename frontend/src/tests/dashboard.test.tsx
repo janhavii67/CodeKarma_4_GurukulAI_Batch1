@@ -131,32 +131,46 @@ describe('Redesigned Operational Dashboard Tests', () => {
     expect(screen.getByText(/Healthcare & Diagnostics Expert/i)).toBeInTheDocument();
     expect(screen.getByText(/Authorized Peer Reviewer/i)).toBeInTheDocument();
 
+    // Primary headline and editorial messaging
+    expect(screen.getByText(/Your Experience./i)).toBeInTheDocument();
+    expect(screen.getByText(/Their Future./i)).toBeInTheDocument();
+
     // Primary action buttons for expert
-    expect(screen.getByText(/Capture New Knowledge/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Capture Knowledge/i).length).toBeGreaterThan(0);
 
     await waitFor(() => {
       expect(screen.getByText(/Continue Draft/i)).toBeInTheDocument();
     });
 
-    // Contribution metrics
-    await waitFor(() => {
-      expect(screen.getByText('SOPs Created')).toBeInTheDocument();
-      expect(screen.getByText('Approved SOPs')).toBeInTheDocument();
-      expect(screen.getByText('Assigned Reviews')).toBeInTheDocument();
-      expect(screen.getByText('Expertise Captured')).toBeInTheDocument();
-      expect(screen.getByText('SOP Revisions')).toBeInTheDocument();
-      expect(screen.getByText('Equipment Covered')).toBeInTheDocument();
-    });
+    // Stitch Asymmetric Feature Cards & Lower Supporting Grid
+    expect(screen.getByText(/Review & Verify Knowledge/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Knowledge Assistant/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/My Knowledge Overview/i)).toBeInTheDocument();
+    expect(screen.getByText(/Still to Capture · Priority Gaps/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recently Shared/i)).toBeInTheDocument();
+    expect(screen.getByText(/Start Capturing →/i)).toBeInTheDocument();
+    expect(screen.getByText(/Review Knowledge/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ask the Assistant →/i)).toBeInTheDocument();
+
+    // MANDATORY REMOVALS: Verify the 6 legacy metrics are completely ABSENT from DOM
+    expect(screen.queryByText('SOPs Created')).not.toBeInTheDocument();
+    expect(screen.queryByText('Approved SOPs')).not.toBeInTheDocument();
+    expect(screen.queryByText('Assigned Reviews')).not.toBeInTheDocument();
+    expect(screen.queryByText('Expertise Captured')).not.toBeInTheDocument();
+    expect(screen.queryByText('SOP Revisions')).not.toBeInTheDocument();
+    expect(screen.queryByText('Equipment Covered')).not.toBeInTheDocument();
+
+    // MANDATORY REMOVALS: Verify the Quality & Governance panel is ABSENT from DOM
+    expect(screen.queryByText(/Peer Approval Rate/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Approved Contributions/i)).not.toBeInTheDocument();
 
     // Verify the THREE removed technical cards are NOT present on dashboard
     expect(screen.queryByText(/System & Database Health/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Role-Based Access \(RBAC\)/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Grounded Industrial Assets/i)).not.toBeInTheDocument();
 
-    // Recent activity list
-    expect(screen.getByText(/Recent Knowledge Stream/i)).toBeInTheDocument();
+    // Live recorded procedures stream
     expect(screen.getByText(/Centrifuge High-Speed Calibration SOP/i)).toBeInTheDocument();
-    expect(screen.getByText(/Beckman Coulter Optima/i)).toBeInTheDocument();
     expect(screen.getByText(/Spectrophotometer Alignment Protocol/i)).toBeInTheDocument();
   });
 
