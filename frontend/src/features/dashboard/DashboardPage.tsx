@@ -11,6 +11,10 @@ import { QuickActionsGrid } from './components/QuickActionsGrid';
 import { AdminDiagnosticsModal } from './components/AdminDiagnosticsModal';
 import { Shield } from 'lucide-react';
 
+import { EditorialHero } from './components/EditorialHero';
+import { EditorialFeatureCards } from './components/EditorialFeatureCards';
+import { EditorialKnowledgeStreams } from './components/EditorialKnowledgeStreams';
+
 export const DashboardPage: React.FC = () => {
   const { user, permissions, hasPermission, hasRole } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -20,6 +24,7 @@ export const DashboardPage: React.FC = () => {
   const [isAdminDiagOpen, setIsAdminDiagOpen] = useState(false);
 
   const isAdmin = hasRole('ADMIN');
+  const isExpert = hasRole('EXPERT') || isAdmin;
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
@@ -53,44 +58,87 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="space-y-7 max-w-7xl mx-auto pb-8">
-      {/* 3.1 Welcome Section */}
-      <WelcomeBanner
-        user={user}
-        stats={stats}
-        loading={loading}
-        hasPermission={hasPermission}
-        hasRole={hasRole}
-      />
+      {isExpert ? (
+        <>
+          {/* Stitch Editorial Hero Banner */}
+          <EditorialHero
+            user={user}
+            stats={stats}
+            loading={loading}
+            hasPermission={hasPermission}
+            hasRole={hasRole}
+          />
 
-      {/* 3.2 Contribution Statistics (Replaces the 3 technical cards) */}
-      <ContributionMetrics
-        stats={stats}
-        loading={loading}
-        hasRole={hasRole}
-        hasPermission={hasPermission}
-      />
+          {/* Stitch 3 Floating Feature Cards */}
+          <EditorialFeatureCards
+            hasPermission={hasPermission}
+            pendingReviewsCount={stats?.pending_reviews_for_user ?? 0}
+          />
 
-      {/* 3.3 Your Expertise Journey / Milestone Tracking */}
-      <ExpertiseJourney
-        stats={stats}
-        loading={loading}
-        hasRole={hasRole}
-      />
+          {/* Authoritative Contribution Statistics (6 metrics) */}
+          <ContributionMetrics
+            stats={stats}
+            loading={loading}
+            hasRole={hasRole}
+            hasPermission={hasPermission}
+          />
 
-      {/* 3.4 Recent Knowledge Stream & Audit Trail */}
-      <RecentActivityList
-        items={stats?.recent_articles}
-        loading={loading}
-        error={error}
-        onRetry={fetchDashboardData}
-        canCreateKnowledge={hasPermission('knowledge.create')}
-      />
+          {/* Stitch 3-Column Knowledge Stream & Media Activity */}
+          <EditorialKnowledgeStreams
+            stats={stats}
+            loading={loading}
+            canCreateKnowledge={hasPermission('knowledge.create')}
+          />
 
-      {/* 3.5 Operational Quick Actions */}
-      <QuickActionsGrid
-        hasPermission={hasPermission}
-        pendingReviewsCount={stats?.pending_reviews_for_user ?? 0}
-      />
+          {/* Quality & Governance Milestone Journey */}
+          <ExpertiseJourney
+            stats={stats}
+            loading={loading}
+            hasRole={hasRole}
+          />
+        </>
+      ) : (
+        <>
+          {/* Trainee Welcome Banner */}
+          <WelcomeBanner
+            user={user}
+            stats={stats}
+            loading={loading}
+            hasPermission={hasPermission}
+            hasRole={hasRole}
+          />
+
+          {/* Trainee Diagnostic & Learning Metrics */}
+          <ContributionMetrics
+            stats={stats}
+            loading={loading}
+            hasRole={hasRole}
+            hasPermission={hasPermission}
+          />
+
+          {/* Trainee Execution & Training Progress */}
+          <ExpertiseJourney
+            stats={stats}
+            loading={loading}
+            hasRole={hasRole}
+          />
+
+          {/* Trainee Recent Knowledge Stream */}
+          <RecentActivityList
+            items={stats?.recent_articles}
+            loading={loading}
+            error={error}
+            onRetry={fetchDashboardData}
+            canCreateKnowledge={hasPermission('knowledge.create')}
+          />
+
+          {/* Trainee Operational Quick Actions */}
+          <QuickActionsGrid
+            hasPermission={hasPermission}
+            pendingReviewsCount={stats?.pending_reviews_for_user ?? 0}
+          />
+        </>
+      )}
 
       {/* Admin Diagnostics Link (Restricted to System Administrators) */}
       {isAdmin && (
