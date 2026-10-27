@@ -142,7 +142,7 @@ describe('Redesigned Operational Dashboard Tests', () => {
     expect(screen.getByText(/Review & Verify Knowledge/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Knowledge Assistant/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/My Knowledge Overview/i)).toBeInTheDocument();
-    expect(screen.getByText(/Still to Capture · Priority Gaps/i)).toBeInTheDocument();
+    expect(screen.getByText(/Continue a Draft/i)).toBeInTheDocument();
     expect(screen.getByText(/Recently Shared/i)).toBeInTheDocument();
     expect(screen.getByText(/Start Capturing →/i)).toBeInTheDocument();
     expect(screen.getByText(/Review Knowledge/i)).toBeInTheDocument();

@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { User } from '../../../types/auth';
 import { DashboardStats } from '../../../types/dashboard';
+import { searchVectorKnowledge, VectorSearchResultItem } from '../../voice/voiceApi';
 
 interface StitchExpertDashboardProps {
   user: User | null;
@@ -20,28 +21,33 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
   const pendingReviewsForUser = stats?.pending_reviews_for_user;
   const latestDraftId = stats?.latest_draft_id;
   const recentArticles = stats?.recent_articles || [];
+  const [assistantQuery, setAssistantQuery] = useState('');
+  const [assistantResults, setAssistantResults] = useState<VectorSearchResultItem[]>([]);
+  const [assistantError, setAssistantError] = useState('');
+  const [assistantLoading, setAssistantLoading] = useState(false);
 
-  // Actionable knowledge gaps
-  const knowledgeGaps = [
-    {
-      id: 'gap-01',
-      code: '01',
-      title: 'DMG MORI DMU 50 Spindle Thermal Expansion',
-      subtitle: 'Critical 15-minute warm-up stabilization & probe offset protocol',
-      actionText: 'Capture',
-      actionTo: '/app/knowledge/new',
-      isPrimary: true,
-    },
-    {
-      id: 'gap-02',
-      code: '02',
-      title: 'Carbide Endmill Chattering Diagnostics',
-      subtitle: 'Acoustic frequency detection & speed override adjustments',
-      actionText: 'Resume Draft',
-      actionTo: latestDraftId ? `/app/knowledge/${latestDraftId}` : '/app/knowledge/new',
-      isPrimary: false,
-    },
-  ];
+  const askAssistant = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!assistantQuery.trim()) return;
+    setAssistantLoading(true); setAssistantError('');
+    try {
+      const response = await searchVectorKnowledge(assistantQuery.trim(), 3);
+      setAssistantResults(response.results ?? []);
+    } catch (error) {
+      setAssistantResults([]);
+      setAssistantError(error instanceof Error ? error.message : 'Knowledge search failed. Please try again.');
+    } finally { setAssistantLoading(false); }
+  };
+
+  const knowledgeGaps: Array<{ id: string; code: string; title: string; subtitle: string; actionText: string; actionTo: string; isPrimary: boolean }> = latestDraftId ? [{
+    id: latestDraftId,
+    code: 'D',
+    title: stats?.latest_draft_title || 'Continue your latest draft',
+    subtitle: 'Resume documenting practical knowledge for peer review.',
+    actionText: 'Resume Draft',
+    actionTo: `/app/knowledge/${latestDraftId}`,
+    isPrimary: true,
+  }] : [];
 
   const hasKnowledgeGaps = knowledgeGaps.length > 0;
 
@@ -149,7 +155,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
               </div>
 
               <p className="text-xs sm:text-sm text-[#536779] leading-relaxed mb-5 max-w-[560px]">
-                Record practical experience through video, audio, notes, and photos. Automatically formatted into structured procedures.
+                Preserve setup details, observations, and media in a reviewable knowledge draft.
               </p>
 
               {/* Visual Media Preview & Format Chips */}
@@ -162,7 +168,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   />
                   <div className="absolute bottom-1.5 left-1.5 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded text-[9px] font-semibold text-white flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                    Live Cell 04
+                    Manufacturing floor
                   </div>
                 </div>
 
@@ -258,7 +264,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
             </div>
           </div>
 
-          {/* Card C: Knowledge Assistant (Compact Search Panel — ~20% width / 2 cols of 12) */}
+          {/* Card C: Knowledge Assistant (compact search panel) */}
           <div className="lg:col-span-3 bg-[#F8F9FF] rounded-2xl p-6 border border-[#C8D6E4] shadow-xs hover:shadow-md transition-all flex flex-col justify-between group">
             <div>
               <div className="flex items-center justify-between mb-4">
@@ -266,34 +272,37 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   <span className="material-symbols-outlined text-[22px]">smart_toy</span>
                 </div>
                 <span className="px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider uppercase bg-[#EFF4FF] text-[#1976C9] border border-[#1976C9]/20 font-semibold">
-                  AI DISPATCH
+                  INDEXED KNOWLEDGE
                 </span>
               </div>
 
               <h3 className="text-base font-bold text-[#173B5E] mb-1.5 leading-snug">
                 Knowledge Assistant
               </h3>
-              <p className="text-[11px] text-[#536779] leading-relaxed mb-4">
-                Search documented procedures and practical shop-floor knowledge.
+              <p className="text-xs text-[#536779] leading-relaxed mb-4">
+                Search indexed expert recordings for practical knowledge and machine guidance.
               </p>
 
-              <Link to="/app/assistant" className="block">
-                <div className="relative w-full rounded-xl border border-[#E2E8F0] bg-white p-2.5 mb-4 shadow-xs group-hover:border-[#1976C9]/40 transition-colors">
-                  <div className="flex items-center gap-1.5 text-xs text-[#536779]">
-                    <span className="material-symbols-outlined text-[15px] text-[#1976C9] shrink-0">search</span>
-                    <span className="text-[10px] italic text-slate-500 truncate">Spindle runout...</span>
-                  </div>
-                </div>
-              </Link>
+              <form id="knowledge-assistant-query-form" onSubmit={askAssistant} className="space-y-2">
+                <label className="sr-only" htmlFor="knowledge-assistant-query">Search expert knowledge</label>
+                <input id="knowledge-assistant-query" value={assistantQuery} onChange={(event) => setAssistantQuery(event.target.value)}
+                  placeholder="Ask about a setup or fault…" className="w-full min-w-0 rounded-xl border border-[#C8D6E4] bg-white px-3 py-2.5 text-sm text-[#173B5E] placeholder:text-slate-400 shadow-xs focus:border-[#1976C9] focus:outline-none focus:ring-2 focus:ring-[#1976C9]/20" />
+                {assistantError && <p role="alert" className="text-xs text-rose-700">{assistantError}</p>}
+                {assistantResults.length > 0 && <div className="max-h-36 overflow-y-auto space-y-2" aria-live="polite">
+                  {assistantResults.map((result) => <article key={result.id} className="rounded-lg border border-[#DCE6F0] bg-white p-2.5">
+                    <p className="text-xs text-[#173B5E] leading-relaxed">{result.chunk_text}</p>
+                    <p className="mt-1 text-[10px] text-[#536779]">{result.media_title || 'Indexed expert knowledge'}</p>
+                  </article>)}
+                </div>}
+                {assistantResults.length === 0 && !assistantLoading && assistantQuery && !assistantError && <p className="text-xs text-[#536779]" role="status">No matching indexed knowledge found.</p>}
+              </form>
             </div>
 
             <div className="pt-2 border-t border-slate-200/80">
-              <Link
-                to="/app/assistant"
-                className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-[#EFF4FF] border border-[#1976C9] text-[#1976C9] font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs"
-              >
-                <span>Ask Assistant →</span>
-              </Link>
+              <button type="submit" form="knowledge-assistant-query-form" disabled={assistantLoading || !assistantQuery.trim()}
+                className="w-full py-2.5 px-3 rounded-xl bg-[#1976C9] hover:bg-[#125EA3] border border-[#1976C9] text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[#1976C9]/40">
+                <span>{assistantLoading ? 'Searching…' : 'Ask Assistant →'}</span>
+              </button>
             </div>
           </div>
 
@@ -318,7 +327,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   to="/app/knowledge"
                   className="text-xs font-bold text-[#1976C9] hover:underline flex items-center gap-1"
                 >
-                  <span>View My Knowledge ({stats?.user_sops_created ?? 0}) →</span>
+                  <span>View My Knowledge ({stats?.user_sops_created ?? '—'}) →</span>
                 </Link>
               </div>
 
@@ -331,7 +340,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-lg font-extrabold text-[#173B5E] font-mono">
-                      {loading ? '--' : stats?.user_sops_approved ?? 24}
+                      {loading ? '--' : stats?.user_sops_approved ?? '—'}
                     </span>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#10B981] bg-[#ECFDF5] px-2 py-0.5 rounded-md border border-[#10B981]/20">
                       Audited
@@ -346,7 +355,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-lg font-extrabold text-[#173B5E] font-mono">
-                      {loading ? '--' : stats?.user_sops_pending ?? 6}
+                      {loading ? '--' : stats?.user_sops_pending ?? '—'}
                     </span>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#B45309] bg-[#FEF3C7] px-2 py-0.5 rounded-md border border-[#F59E0B]/20">
                       In Review
@@ -361,7 +370,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-lg font-extrabold text-[#173B5E] font-mono">
-                      {loading ? '--' : stats?.user_sops_draft ?? 8}
+                      {loading ? '--' : stats?.user_sops_draft ?? '—'}
                     </span>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#1976C9] bg-[#EFF4FF] px-2 py-0.5 rounded-md border border-[#1976C9]/20">
                       Scheduled
@@ -371,11 +380,6 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
               </div>
             </div>
 
-            {/* Bottom Progress Tracker */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-[#536779]">
-              <span className="font-medium">Standardization Milestone</span>
-              <span className="font-bold text-[#173B5E]">Overall Completeness: 78% Standardized</span>
-            </div>
           </div>
 
           {/* Column 2: Still to Capture (Priority Gaps) */}
@@ -388,11 +392,11 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                       <span className="material-symbols-outlined text-[20px]">assignment_turned_in</span>
                     </div>
                     <h3 className="text-base font-bold text-[#173B5E]">
-                      Still to Capture · Priority Gaps
+                      Continue a Draft
                     </h3>
                   </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-[#536779]">
-                    Shift 1 Protocol
+                    DRAFT
                   </span>
                 </div>
 
@@ -439,11 +443,11 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
               {/* Audit Note */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-[#536779]">
                 <span className="flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[15px] text-[#F59E0B]">verified</span>
-                  <span>Required for ISO Audit: 2 Outstanding</span>
+                  <span className="material-symbols-outlined text-[15px] text-[#1976C9]">edit_note</span>
+                  <span>Your in-progress knowledge draft</span>
                 </span>
-                <Link to="/app/knowledge/new" className="text-[#1976C9] font-bold hover:underline">
-                  Resolve Gaps
+                <Link to={knowledgeGaps[0]?.actionTo || '/app/knowledge'} className="text-[#1976C9] font-bold hover:underline">
+                  Open Draft
                 </Link>
               </div>
             </div>
@@ -464,89 +468,11 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                 </Link>
               </div>
 
-              {/* List of Recent Assets */}
-              <div className="space-y-3">
-                {/* Item 1 */}
-                <div className="flex items-center gap-3 p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
-                  <div className="w-16 h-14 rounded-lg overflow-hidden shrink-0 border border-slate-200 bg-slate-100 relative group">
-                    <img
-                      alt="CNC Spindle Taper Runout Benchmark"
-                      className="w-full h-full object-cover"
-                      src="/assets/stitch_spindle_runout.jpg"
-                    />
-                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center text-white">
-                      <span className="material-symbols-outlined text-[16px]">play_circle</span>
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-xs font-bold text-[#173B5E] truncate">
-                      CNC Spindle Taper Runout Benchmark
-                    </h4>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-[#536779]">Video · 04:12</span>
-                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#ECFDF5] text-[#10B981] border border-[#10B981]/20">
-                        Verified
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 mt-0.5 block truncate">
-                      Mitutoyo 0.000 mm datum protocol
-                    </span>
-                  </div>
-                </div>
-
-                {/* Item 2 */}
-                <Link to="/app/sound-analysis" className="block">
-                  <div className="flex items-center gap-3 p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] hover:border-slate-300 transition-colors">
-                    <div className="w-16 h-14 rounded-lg bg-[#E6F8F5] border border-[#19A995]/20 shrink-0 flex flex-col items-center justify-center text-[#19A995]">
-                      <span className="material-symbols-outlined text-[20px]">mic</span>
-                      <span className="text-[8px] font-bold">AUDIO</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-[#173B5E] truncate">
-                        Harmonic Vibration Diagnostics
-                      </h4>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-[#536779]">Audio Note · 02:45</span>
-                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#ECFDF5] text-[#10B981] border border-[#10B981]/20">
-                          Verified
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 mt-0.5 block truncate">
-                        Titanium roughing resonance cues
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-
-                {/* Item 3 */}
-                <Link to="/app/guided-workflows" className="block">
-                  <div className="flex items-center gap-3 p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] hover:border-slate-300 transition-colors">
-                    <div className="w-16 h-14 rounded-lg bg-[#EFF4FF] border border-[#1976C9]/20 shrink-0 flex flex-col items-center justify-center text-[#1976C9]">
-                      <span className="material-symbols-outlined text-[20px]">checklist</span>
-                      <span className="text-[8px] font-bold">GUIDE</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-[#173B5E] truncate">
-                        Thermal Expansion Offset Protocol
-                      </h4>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-[#536779]">Procedure · 8 Steps</span>
-                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#ECFDF5] text-[#10B981] border border-[#10B981]/20">
-                          Verified
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 mt-0.5 block truncate">
-                        5-Axis aerospace tolerance lock
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-
                 {/* Live Articles Stream if backend has recorded entries */}
                 {recentArticles.length > 0 ? (
                   <div className="pt-2 border-t border-slate-100">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#536779] block mb-1.5">
-                      Live Recorded Procedures ({recentArticles.length})
+                      Recent Knowledge ({recentArticles.length})
                     </span>
                     <div className="space-y-1.5">
                       {recentArticles.slice(0, 2).map((art) => (
@@ -585,16 +511,6 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                 )}
               </div>
             </div>
-
-            {/* Deployment Footer */}
-            <div className="text-[11px] text-[#536779] flex items-center justify-between pt-3 border-t border-slate-100">
-              <span className="flex items-center gap-1.5 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                Last active deployment: Today at 09:14
-              </span>
-              <span className="text-[#1976C9] font-bold">Active in Shift 2</span>
-            </div>
-          </div>
 
         </div>
       </section>

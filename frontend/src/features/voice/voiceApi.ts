@@ -90,6 +90,7 @@ export interface VectorSearchResponse {
 export interface VoiceUploadResponse {
   media: MediaAsset;
   job: ProcessingJob;
+  knowledge_item_id?: string;
 }
 
 export async function uploadVoiceNarration(

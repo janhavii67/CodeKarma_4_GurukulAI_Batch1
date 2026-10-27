@@ -11,7 +11,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useMediaRecorder } from './useMediaRecorder';
-import { MediaAsset, MediaConfig } from './types';
+import { MediaAsset, MediaConfig, UploadProgress } from './types';
 import {
   formatDuration,
   formatBytes,
@@ -25,7 +25,7 @@ interface AudioRecorderProps {
   versionId: string;
   config?: MediaConfig;
   onUploaded?: (media: MediaAsset) => void;
-  onUploadFile: (file: File) => Promise<MediaAsset>;
+  onUploadFile: (file: File, onProgress: (progress: UploadProgress) => void) => Promise<MediaAsset>;
 }
 
 export const AudioRecorder: React.FC<AudioRecorderProps> = ({
@@ -129,7 +129,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
     setUploadProgress(0);
 
     try {
-      const asset = await onUploadFile(file);
+      const asset = await onUploadFile(file, (progress) => setUploadProgress(progress.percent));
       handleUploadSuccess();
       announce('Recording uploaded successfully');
       onUploaded?.(asset);

@@ -99,8 +99,8 @@ export const MediaPanel: React.FC<MediaPanelProps> = ({
     await deleteMutation.mutateAsync(mediaId);
   };
 
-  const handleUploadFile = async (file: File): Promise<MediaAsset> => {
-    return await uploadMutation.mutateAsync({ file });
+  const handleUploadFileWithProgress = async (file: File, onProgress: (progress: import('./types').UploadProgress) => void): Promise<MediaAsset> => {
+    return await uploadMutation.mutateAsync({ file, options: { onProgress } });
   };
 
   const assets = mediaList || [];
@@ -166,10 +166,10 @@ export const MediaPanel: React.FC<MediaPanelProps> = ({
               versionId={versionId}
               config={config}
               onUploaded={onUploaded}
-              onUploadFile={handleUploadFile}
+              onUploadFile={handleUploadFileWithProgress}
             />}
 
-            {captureKind === 'video' && <VideoCapture config={config} onUpload={handleUploadFile} onUploaded={onUploaded} />}
+            {captureKind === 'video' && <VideoCapture config={config} onUpload={handleUploadFileWithProgress} onUploaded={onUploaded} />}
 
             {/* Media Uploader */}
             <MediaUploader
@@ -179,7 +179,7 @@ export const MediaPanel: React.FC<MediaPanelProps> = ({
               onUploaded={onUploaded}
               onUploadSuccess={() => refetchList()}
               isVersionFrozen={!canEdit}
-              kindFilter={captureKind === 'photo' ? 'images' : captureKind === 'video' ? 'video' : undefined}
+              kindFilter={captureKind === 'photo' ? 'images' : captureKind === 'video' ? 'video' : captureKind === 'audio' ? 'audio' : undefined}
               captureMode={captureKind === 'photo'}
             />
           </div>

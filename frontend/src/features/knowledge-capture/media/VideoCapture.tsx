@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Camera, Circle, RotateCcw, Square, Upload } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
-import type { MediaAsset, MediaConfig } from './types';
+import type { MediaAsset, MediaConfig, UploadProgress } from './types';
 import { formatBytes, generateRecordingFilename, mapMediaErrorToMessage, recorderMimeToExtension } from './mediaUtils';
 
 interface VideoCaptureProps {
   config: MediaConfig;
-  onUpload: (file: File) => Promise<MediaAsset>;
+  onUpload: (file: File, onProgress: (progress: UploadProgress) => void) => Promise<MediaAsset>;
   onUploaded?: (asset: MediaAsset) => void;
 }
 
@@ -22,6 +22,7 @@ export const VideoCapture: React.FC<VideoCaptureProps> = ({ config, onUpload, on
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -66,7 +67,7 @@ export const VideoCapture: React.FC<VideoCaptureProps> = ({ config, onUpload, on
     if (!stream) return;
     const serverTypes = config.allowed_mime_types.video ?? [];
     const candidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
-    const mimeType = candidates.find((type) => MediaRecorder.isTypeSupported(type) &&
+    const mimeType = candidates.find((type) => (typeof MediaRecorder.isTypeSupported !== 'function' || MediaRecorder.isTypeSupported(type)) &&
       (!serverTypes.length || serverTypes.some((serverType) => type.startsWith(serverType))));
     if (!mimeType) { setError('This browser cannot record a video format accepted by the server. Use video upload instead.'); return; }
     chunksRef.current = [];
@@ -101,7 +102,7 @@ export const VideoCapture: React.FC<VideoCaptureProps> = ({ config, onUpload, on
     setBusy(true); setError(''); setMessage('Uploading video…');
     try {
       const file = new File([blob], generateRecordingFilename(recorderMimeToExtension(blob.type)), { type: blob.type });
-      const asset = await onUpload(file); onUploaded?.(asset); reset(); setMessage('Video saved to this knowledge draft.');
+      const asset = await onUpload(file, (progress) => setUploadProgress(progress.percent)); onUploaded?.(asset); reset(); setMessage('Video saved to this knowledge draft.');
     } catch (reason) { setError(mapMediaErrorToMessage(reason, config)); setMessage(''); }
     finally { setBusy(false); }
   };
@@ -109,7 +110,7 @@ export const VideoCapture: React.FC<VideoCaptureProps> = ({ config, onUpload, on
   return <section className="rounded-xl border border-[#BCD7F5] bg-[#F4F8FD] p-4 space-y-3" aria-label="Video capture">
     <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-bold text-[#12345A]">Video capture</h3><p className="text-xs text-[#536780] mt-0.5">Record a real clip or upload existing footage. The file is attached to this draft.</p></div><span className="font-mono text-xs text-[#536780]">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</span></div>
     {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 flex gap-2"><AlertCircle className="w-4 h-4 shrink-0" />{error}</div>}
-    {message && <p role="status" className="text-xs font-medium text-[#16865C]">{message}</p>}
+    {message && <p role="status" className="text-xs font-medium text-[#16865C]">{busy ? `${message} ${uploadProgress}%` : message}</p>}
     {stream && !blob && <video ref={liveRef} autoPlay muted playsInline className="w-full max-h-72 rounded-lg bg-slate-950" aria-label="Live camera preview" />}
     {previewUrl && <video ref={previewRef} controls playsInline className="w-full max-h-72 rounded-lg bg-slate-950" aria-label="Recorded video preview" />}
     <div className="flex flex-wrap gap-2">
