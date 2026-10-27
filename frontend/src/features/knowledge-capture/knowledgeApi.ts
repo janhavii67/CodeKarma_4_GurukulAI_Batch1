@@ -78,3 +78,7 @@ export async function createRevision(
 ): Promise<KnowledgeVersion> {
   return api.post<KnowledgeVersion>(`/knowledge/${itemId}/versions`, payload);
 }
+
+export async function submitKnowledge(itemId: string): Promise<KnowledgeItemDetail> {
+  return api.post<KnowledgeItemDetail>(`/knowledge/${itemId}/submit`, {});
+}

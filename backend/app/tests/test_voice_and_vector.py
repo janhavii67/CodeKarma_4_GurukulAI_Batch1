@@ -265,8 +265,12 @@ def test_media_transcript_and_steps_endpoints(client, db_session: Session):
     from app.models.media import MediaAsset
     from app.models.transcript import Transcript, TranscriptSegment
     from app.models.knowledge import KnowledgeItem, KnowledgeVersion
+    from app.models.user import User
 
-    item = KnowledgeItem(title="CNC Maintenance Voice SOP", author_id="seed-user-expert-a", status="DRAFT")
+    expert = db_session.query(User).filter(User.email == "expert.a@demo.local").first()
+    author_id = expert.id if expert else "seed-user-expert-a"
+
+    item = KnowledgeItem(title="CNC Maintenance Voice SOP", author_id=author_id, status="DRAFT")
     db_session.add(item)
     db_session.flush()
 
@@ -280,7 +284,7 @@ def test_media_transcript_and_steps_endpoints(client, db_session: Session):
         status="draft",
         origin="ai_draft",
         steps=json.dumps(steps),
-        created_by="seed-user-expert-a",
+        created_by=author_id,
     )
     db_session.add(version)
     db_session.flush()
@@ -294,7 +298,7 @@ def test_media_transcript_and_steps_endpoints(client, db_session: Session):
         mime_type="audio/webm",
         size_bytes=1024,
         duration_seconds=12.5,
-        uploaded_by="seed-user-expert-a",
+        uploaded_by=author_id,
     )
     db_session.add(media)
     db_session.flush()

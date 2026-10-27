@@ -122,9 +122,14 @@ class StepDraftResponse(BaseModel):
 class StepsListResponse(BaseModel):
     media_id: str
     version_id: Optional[str] = None
+    item_id: Optional[str] = None
     origin: str = "ai_draft"
     steps: List[StepDraftResponse] = []
     unclear_segments: List[int] = []
+    flagged_count: int = 0
+    can_submit: bool = True
+    is_demo: bool = False
+    submission_gate_status: str = "OPEN"
 
 
 class CreateDraftFromVoiceResponse(BaseModel):

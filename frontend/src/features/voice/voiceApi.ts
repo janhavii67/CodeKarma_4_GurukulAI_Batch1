@@ -154,9 +154,14 @@ export async function getMediaTranscript(mediaId: string): Promise<Transcript> {
 export interface StepsListResponse {
   media_id: string;
   version_id?: string;
+  item_id?: string;
   origin: string;
   steps: StepDraft[];
   unclear_segments: number[];
+  flagged_count?: number;
+  can_submit?: boolean;
+  is_demo?: boolean;
+  submission_gate_status?: string;
 }
 
 export interface CreateDraftResponse {
@@ -170,6 +175,17 @@ export interface CreateDraftResponse {
 
 export async function getMediaSteps(mediaId: string): Promise<StepsListResponse> {
   return api.get<StepsListResponse>(`/voice/assets/${mediaId}/steps`);
+}
+
+export async function verifyCandidateStep(
+  mediaId: string,
+  stepIdx: number
+): Promise<StepsListResponse> {
+  return api.patch<StepsListResponse>(`/voice/assets/${mediaId}/steps/${stepIdx}/verify`);
+}
+
+export async function submitVoiceSOP(itemId: string): Promise<any> {
+  return api.post(`/knowledge/${itemId}/submit`);
 }
 
 export async function createDraftFromVoice(mediaId: string): Promise<CreateDraftResponse> {

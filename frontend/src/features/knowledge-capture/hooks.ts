@@ -14,6 +14,7 @@ import {
   fetchMachines,
   fetchVersionList,
   updateKnowledge,
+  submitKnowledge,
 } from './knowledgeApi';
 
 // ─── Query Keys ───────────────────────────────────────────────────────────────
@@ -64,7 +65,14 @@ export function useKnowledgeDetail(itemId: string, versionId?: string) {
     enabled: !!itemId,
     retry: (failureCount, error) => {
       // Never retry 404 — another expert's draft or truly missing
-      if (error instanceof ApiClientError && error.status === 404) return false;
+      if (
+        (error instanceof ApiClientError && (error.status === 404 || error.code === 'not_found')) ||
+        (error as any)?.status === 404 ||
+        (error as any)?.code === 'not_found' ||
+        (error as any)?.status === 'not_found' ||
+        String((error as any)?.code).toLowerCase() === 'not_found'
+      )
+        return false;
       return failureCount < 2;
     },
   });
@@ -121,3 +129,16 @@ export function useCreateRevision(itemId: string) {
     },
   });
 }
+
+// ─── Submit Knowledge For Review Mutation ──────────────────────────────────────
+
+export function useSubmitKnowledge(itemId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => submitKnowledge(itemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: knowledgeKeys.all });
+    },
+  });
+}
+

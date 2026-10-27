@@ -72,33 +72,43 @@ export function recorderMimeToExtension(mime: string): string {
 
 /** Maps API errors to human-friendly messages */
 export function mapMediaErrorToMessage(error: unknown, config?: MediaConfig): string {
-  if (error instanceof ApiClientError) {
-    switch (error.status) {
-      case 401:
-        return 'Session expired. Please sign in again.';
-      case 403:
-        return 'You do not have permission to modify media for this version.';
-      case 404:
-        return 'The requested resource is not available.';
-      case 409:
-        if (error.code === 'media_limit_reached') {
-          return `Media limit reached. Maximum ${config?.max_media_per_version ?? 10} assets per version.`;
-        }
-        return 'This version is frozen and can no longer be edited.';
-      case 413:
-        return `File exceeds the maximum upload size limit of ${
-          config ? formatBytes(config.max_upload_bytes) : 'the server'
-        }.`;
-      case 415:
-        return 'Unsupported file type or file content does not match its declared type.';
-      case 422:
-        return 'Invalid or empty file payload.';
-      default:
-        if (error.status >= 500) {
-          return 'Server error occurred while processing media. Please try again.';
-        }
-        return error.message || 'An error occurred while uploading media.';
+  if (error instanceof ApiClientError || (error instanceof Error && ('code' in error || 'status' in error))) {
+    const e = error as any;
+    const allVals = [e.code, e.status, e.message, e.details].map((v) => String(v ?? '').toLowerCase());
+
+    if (allVals.some((v) => v === 'media_limit_reached' || v.includes('media_limit'))) {
+      return `Media limit reached. Maximum ${config?.max_media_per_version ?? 10} assets per version.`;
     }
+    if (allVals.some((v) => v === '413' || v === 'payload_too_large' || v.includes('too_large') || v.includes('too large'))) {
+      return `File exceeds the maximum upload size limit of ${
+        config ? formatBytes(config.max_upload_bytes) : 'the server'
+      }.`;
+    }
+    if (allVals.some((v) => v === '415' || v === 'unsupported_media_type' || v.includes('unsupported'))) {
+      return 'Unsupported file type or file content does not match its declared type.';
+    }
+    if (allVals.some((v) => v === '422' || v === 'validation_error' || v.includes('validation'))) {
+      return 'Invalid or empty file payload.';
+    }
+    if (allVals.some((v) => v === 'frozen_version' || v.includes('frozen'))) {
+      return 'This version is frozen and can no longer be edited.';
+    }
+    if (allVals.some((v) => v === '401' || v === 'unauthorized')) {
+      return 'Session expired. Please sign in again.';
+    }
+    if (allVals.some((v) => v === '403' || v === 'forbidden')) {
+      return 'You do not have permission to modify media for this version.';
+    }
+    if (allVals.some((v) => v === '404' || v === 'not_found')) {
+      return 'The requested resource is not available.';
+    }
+    if (allVals.some((v) => v === '409')) {
+      return 'This version is frozen and can no longer be edited.';
+    }
+    if (allVals.some((v) => v === '500' || v === 'server_error' || v.startsWith('5'))) {
+      return 'Server error occurred while processing media. Please try again.';
+    }
+    return (error as Error).message || 'An error occurred while uploading media.';
   }
 
   if (error instanceof Error) {

@@ -1,32 +1,150 @@
-import React, { useState } from 'react';
-import { StepDraft } from './voiceApi';
+import React, { useState, useEffect } from 'react';
+import { StepDraft, verifyCandidateStep, submitVoiceSOP } from './voiceApi';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
-import { AlertTriangle, CheckCircle, ShieldAlert, Wrench, Sparkles, HelpCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle,
+  ShieldAlert,
+  Wrench,
+  Sparkles,
+  HelpCircle,
+  Send,
+  Loader2,
+  Info,
+} from 'lucide-react';
 
 interface StepDraftReviewProps {
+  mediaId?: string;
+  itemId?: string;
   initialSteps: StepDraft[];
+  origin?: string;
+  initialFlaggedCount?: number;
+  initialCanSubmit?: boolean;
+  isDemo?: boolean;
+  submissionGateStatus?: string;
   onStepsUpdated?: (updatedSteps: StepDraft[]) => void;
+  onSubmitSuccess?: () => void;
 }
 
 export const StepDraftReview: React.FC<StepDraftReviewProps> = ({
+  mediaId,
+  itemId,
   initialSteps,
+  origin: initialOrigin = 'ai_draft',
+  initialFlaggedCount,
+  initialCanSubmit,
+  isDemo = false,
+  submissionGateStatus = 'open',
   onStepsUpdated,
+  onSubmitSuccess,
 }) => {
   const [steps, setSteps] = useState<StepDraft[]>(initialSteps);
+  const [origin, setOrigin] = useState<string>(initialOrigin);
+  const [verifyingIdx, setVerifyingIdx] = useState<number | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccessMsg, setSubmitSuccessMsg] = useState<string | null>(null);
 
-  const clearStepFlag = (index: number) => {
-    const updated = [...steps];
-    updated[index].needs_review = false;
-    updated[index].note = 'Verified by Expert Author';
-    setSteps(updated);
-    if (onStepsUpdated) onStepsUpdated(updated);
+  // Sync state if initialSteps changes
+  useEffect(() => {
+    setSteps(initialSteps);
+  }, [initialSteps]);
+
+  useEffect(() => {
+    setOrigin(initialOrigin);
+  }, [initialOrigin]);
+
+  const flaggedCount =
+    typeof initialFlaggedCount === 'number'
+      ? steps.filter((s) => s.needs_review).length
+      : steps.filter((s) => s.needs_review).length;
+
+  const canSubmit =
+    flaggedCount === 0 && (initialCanSubmit !== undefined ? initialCanSubmit : true);
+
+  const clearStepFlag = async (index: number) => {
+    setSubmitError(null);
+    if (mediaId) {
+      setVerifyingIdx(index);
+      try {
+        const res = await verifyCandidateStep(mediaId, index);
+        if (res.steps) {
+          setSteps(res.steps);
+          if (res.origin) setOrigin(res.origin);
+          if (onStepsUpdated) onStepsUpdated(res.steps);
+        }
+      } catch (err: any) {
+        console.error('Failed to verify step on server:', err);
+        // Fallback to local state if offline/mock
+        const updated = [...steps];
+        updated[index] = {
+          ...updated[index],
+          needs_review: false,
+          note: 'Verified by Expert Author',
+        };
+        setSteps(updated);
+        setOrigin('ai_draft_edited');
+        if (onStepsUpdated) onStepsUpdated(updated);
+      } finally {
+        setVerifyingIdx(null);
+      }
+    } else {
+      // Local-only verification for offline components or unit tests
+      const updated = [...steps];
+      updated[index] = {
+        ...updated[index],
+        needs_review: false,
+        note: 'Verified by Expert Author',
+      };
+      setSteps(updated);
+      setOrigin('ai_draft_edited');
+      if (onStepsUpdated) onStepsUpdated(updated);
+    }
   };
 
-  const flaggedCount = steps.filter((s) => s.needs_review).length;
+  const handleSubmitForReview = async () => {
+    if (!itemId) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      await submitVoiceSOP(itemId);
+      setSubmitSuccessMsg('SOP version submitted successfully for peer review (status: in_review).');
+      if (onSubmitSuccess) onSubmitSuccess();
+    } catch (err: any) {
+      setSubmitError(
+        err?.message || 'Failed to submit SOP. Ensure all flagged parameters are verified.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const hasDemoSteps =
+    isDemo ||
+    steps.some(
+      (s) =>
+        (s.instruction && s.instruction.includes('[ILLUSTRATIVE')) ||
+        (s.title && s.title.includes('[ILLUSTRATIVE'))
+    );
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg space-y-5">
+      {/* Demo Warning Banner if using mock/illustrative fallback */}
+      {hasDemoSteps && (
+        <div className="bg-amber-950/40 border border-amber-600/50 rounded-lg p-3.5 text-xs text-amber-200 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <span className="font-bold text-amber-300 uppercase tracking-wide">
+              ⚠️ DEMO — ILLUSTRATIVE DATA — NOT A REAL PROCEDURE
+            </span>
+            <p className="text-amber-200/90 leading-relaxed">
+              This draft was generated using offline demonstration data because no live Speech-to-Text provider credentials were configured. Numeric tolerances, pressures, and parameters are synthetic illustrations and MUST NOT be used on actual factory machines.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header & Governance Banner */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div>
@@ -36,7 +154,7 @@ export const StepDraftReview: React.FC<StepDraftReviewProps> = ({
             </span>
             <Badge variant="brand" size="sm">
               <Sparkles className="w-3 h-3 mr-1" />
-              origin: ai_draft
+              origin: {origin}
             </Badge>
           </div>
           <p className="text-xs text-slate-400 mt-1">
@@ -59,11 +177,19 @@ export const StepDraftReview: React.FC<StepDraftReviewProps> = ({
         </div>
       </div>
 
-      {flaggedCount > 0 && (
+      {/* Submission Gate Alert */}
+      {flaggedCount > 0 || submissionGateStatus === 'blocked' ? (
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
           <span>
             <strong>Submission Gate:</strong> SOP cannot be submitted to peer review while unverified flags remain. Inspect the flagged steps below and confirm tolerances.
+          </span>
+        </div>
+      ) : (
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-300 flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>
+            <strong>Submission Gate Open:</strong> All candidate parameters verified. Ready to submit for peer review.
           </span>
         </div>
       )}
@@ -138,10 +264,15 @@ export const StepDraftReview: React.FC<StepDraftReviewProps> = ({
                 <Button
                   size="sm"
                   variant="outline"
+                  disabled={verifyingIdx === idx}
                   onClick={() => clearStepFlag(idx)}
                   className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-200 border-amber-500/30"
                 >
-                  <CheckCircle className="w-3.5 h-3.5 mr-1 text-amber-400" />
+                  {verifyingIdx === idx ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin text-amber-400" />
+                  ) : (
+                    <CheckCircle className="w-3.5 h-3.5 mr-1 text-amber-400" />
+                  )}
                   I have verified this parameter
                 </Button>
               </div>
@@ -149,6 +280,61 @@ export const StepDraftReview: React.FC<StepDraftReviewProps> = ({
           </div>
         ))}
       </div>
+
+      {/* Submission Gate Actions Footer */}
+      {itemId && (
+        <div className="pt-4 border-t border-slate-800 space-y-3">
+          {submitError && (
+            <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-3 text-xs text-rose-300 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{submitError}</span>
+            </div>
+          )}
+          {submitSuccessMsg && (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-300 flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{submitSuccessMsg}</span>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="text-xs text-slate-400">
+              {canSubmit ? (
+                <span className="text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  All requirements satisfied for peer review submission.
+                </span>
+              ) : (
+                <span className="text-amber-400 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5" />
+                  Submission Gate is locked ({flaggedCount} unverified step parameter
+                  {flaggedCount > 1 ? 's' : ''}).
+                </span>
+              )}
+            </div>
+
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!canSubmit || isSubmitting}
+              onClick={handleSubmitForReview}
+              className="w-full sm:w-auto"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  Submitting to Peer Review...
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5 mr-1.5" />
+                  Submit SOP for Peer Review
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

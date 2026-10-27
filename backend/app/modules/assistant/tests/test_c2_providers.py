@@ -144,3 +144,34 @@ def test_fake_embedding_provider_deterministic_math():
     assert len(batch_resp.embeddings) == 2
     assert batch_resp.embeddings[0] == v_a
     assert batch_resp.embeddings[1] == v_c
+
+
+def test_gemini_provider_guard_and_initialization():
+    """
+    Verify Gemini provider requires API key and initializes with google-genai Client.
+    """
+    from app.modules.assistant.providers import GeminiLLMProvider, LLMAuthenticationError
+
+    # 1. Without API key, fails with LLMAuthenticationError
+    original_key = settings.GEMINI_API_KEY
+    original_allow = settings.ALLOW_EXTERNAL_LLM
+    try:
+        settings.GEMINI_API_KEY = ""
+        settings.ALLOW_EXTERNAL_LLM = False
+        with pytest.raises(LLMExternalDisabledError):
+            get_llm_provider("gemini")
+
+        settings.ALLOW_EXTERNAL_LLM = True
+        with pytest.raises(LLMAuthenticationError):
+            get_llm_provider("gemini")
+
+        # 2. With mock API key, successfully instantiates GeminiLLMProvider
+        settings.GEMINI_API_KEY = "mock-gemini-api-key-xyz123"
+        provider = get_llm_provider("gemini")
+        assert isinstance(provider, GeminiLLMProvider)
+        assert provider.provider_name == "gemini"
+        assert provider.model_name == "gemini-2.5-flash"
+    finally:
+        settings.GEMINI_API_KEY = original_key
+        settings.ALLOW_EXTERNAL_LLM = original_allow
+

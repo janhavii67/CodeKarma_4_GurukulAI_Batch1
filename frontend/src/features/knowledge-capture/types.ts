@@ -58,6 +58,11 @@ export interface KnowledgeVersion {
   origin: VersionOrigin;
   revision_reason: string | null;
   created_by: string;
+  operating_conditions?: string | null;
+  prerequisites?: string | null;
+  safety_warnings?: string | null;
+  common_mistakes?: string | null;
+  corrective_actions?: string | null;
   submitted_at: string | null;
   published_at: string | null;
   created_at: string;
@@ -123,6 +128,14 @@ export interface KnowledgeCreateRequest {
   machine_id?: string | null;
   description?: string | null;
   summary?: string | null;
+  category?: string | null;
+  tags?: string | null;
+  content?: string | null;
+  operating_conditions?: string | null;
+  prerequisites?: string | null;
+  safety_warnings?: string | null;
+  common_mistakes?: string | null;
+  corrective_actions?: string | null;
 }
 
 export interface KnowledgeUpdateRequest {
@@ -133,6 +146,14 @@ export interface KnowledgeUpdateRequest {
   steps?: Step[] | null;
   revision_reason?: string | null;
   version_id?: string | null;
+  category?: string | null;
+  tags?: string | null;
+  content?: string | null;
+  operating_conditions?: string | null;
+  prerequisites?: string | null;
+  safety_warnings?: string | null;
+  common_mistakes?: string | null;
+  corrective_actions?: string | null;
 }
 
 export interface RevisionCreateRequest {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, BookOpen, Sparkles } from 'lucide-react';
+import { Plus, BookOpen, Sparkles, Cpu } from 'lucide-react';
 
 interface MedicalHeroBannerProps {
   onCreateClick?: () => void;
@@ -19,23 +19,23 @@ export const MedicalHeroBanner: React.FC<MedicalHeroBannerProps> = ({ onCreateCl
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-white via-[#F0F7FF] to-[#E5F1FC] border border-[#DCE8F5] shadow-sm mb-6">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between min-h-[220px]">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between min-h-[200px]">
         {/* Left Content Area */}
-        <div className="flex-1 p-6 sm:p-8 lg:p-10 space-y-4 z-10">
+        <div className="flex-1 p-6 sm:p-8 lg:p-10 space-y-3.5 z-10">
           {/* Eyebrow Pill */}
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#EFF7FF] border border-[#BCD7F5] shadow-xs text-xs font-semibold text-[#1473E6] uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5 text-[#1473E6]" />
-            <span>Capture • Share • Preserve</span>
+            <span>Industrial Knowledge Capture • Module 01</span>
           </div>
 
           {/* Heading */}
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#12345A] tracking-tight leading-tight">
-            Capture Medical Equipment Knowledge
+            Capture Precision Equipment Knowledge
           </h1>
 
           {/* Description */}
           <p className="text-sm sm:text-base text-[#536780] max-w-xl leading-relaxed">
-            Document verified procedures for safe, consistent equipment operation.
+            Document verified Standard Operating Procedures, machine parameters, tools, and safety warnings for shopfloor execution and AI Assistant RAG.
           </p>
 
           {/* Action Buttons */}
@@ -60,15 +60,12 @@ export const MedicalHeroBanner: React.FC<MedicalHeroBannerProps> = ({ onCreateCl
           </div>
         </div>
 
-        {/* Right Laboratory Professional Hero Image */}
-        <div className="lg:w-[48%] h-56 sm:h-64 lg:h-full lg:self-stretch relative overflow-hidden flex items-center justify-end">
-          <div className="absolute inset-0 bg-gradient-to-r from-white via-transparent to-transparent lg:from-[#F0F7FF]/90 lg:to-transparent z-1 pointer-events-none" />
-          <img
-            src="/assets/lab_hero_banner.jpg"
-            alt="Laboratory technician operating automated medical diagnostic equipment"
-            className="w-full h-full object-cover object-center lg:object-right select-none"
-            loading="eager"
-          />
+        {/* Right Geometric/Industrial Graphic Area */}
+        <div className="lg:w-[35%] p-6 lg:p-8 flex items-center justify-center lg:justify-end">
+          <div className="w-32 h-32 lg:w-40 lg:h-40 rounded-3xl bg-gradient-to-tr from-[#1473E6]/10 to-[#1473E6]/25 border border-[#BCD7F5] flex flex-col items-center justify-center text-[#1473E6] shadow-sm">
+            <Cpu className="w-14 h-14 mb-2 opacity-90" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#12345A]">Shopfloor SOPs</span>
+          </div>
         </div>
       </div>
     </div>

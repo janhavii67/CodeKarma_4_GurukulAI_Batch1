@@ -52,6 +52,46 @@ def get_segment_text(seg) -> str:
     return getattr(seg, "text", "")
 
 
+def determine_segment_flags(text: str) -> tuple[bool, Optional[str]]:
+    """
+    Deterministic backend validator enforcing Industrial Safety Invariant 2:
+    Flags true for:
+    1. Missing values ('correct value', 'as needed', 'standard pressure', etc.)
+    2. Numbers with units ('25 bar', '4.5 Nm', '1200 rpm', etc.)
+    3. Safety critical warnings ('warning', 'danger', 'hazard', 'caution')
+    4. Strict negations ('never', 'must not', 'do not', 'cannot')
+    5. Tooling and insert codes ('cnmg', 'wnmg', 'torque wrench', etc.)
+    """
+    lower = text.lower()
+
+    # 1. Missing values (highest priority)
+    vague_phrases = [
+        "correct value", "appropriate value", "as needed", "as required",
+        "standard value", "proper setting", "usual setting", "specified limit",
+        "appropriate setting", "required value",
+    ]
+    for vp in vague_phrases:
+        if vp in lower:
+            return True, f"Value not stated in narration: '{vp}' requires explicit numerical tolerance."
+
+    # 2. Numbers with technical units
+    unit_match = re.search(r"\b\d+(?:\.\d+)?\s*(?:bar|nm|mm|rpm|°c|c|deg|kn|psi|kg|m/min|mm/rev|v|a|kw)\b", lower)
+    if unit_match:
+        return True, f"Critical technical tolerance '{unit_match.group(0)}' requires human verification."
+
+    # 3. Negations
+    negation_match = re.search(r"\b(never|must not|do not|don't|shall not)\b", lower)
+    if negation_match:
+        return True, f"Safety negation directive '{negation_match.group(0)}' requires human verification."
+
+    # 4. Safety warnings
+    warning_match = re.search(r"\b(warning|danger|hazard|caution)\b", lower)
+    if warning_match:
+        return True, "Safety critical warning requires human verification."
+
+    return False, None
+
+
 def post_validate_structured_draft(
     draft: StructuredDraftResponse,
     segments: List[Any],
@@ -62,25 +102,13 @@ def post_validate_structured_draft(
     2. Drops steps with empty instruction and adds cited segments to unclear_segments.
     3. Checks any numeric token in a step against the cited segments' text.
        If an invented number/unit is found, immediately flags needs_review=True!
-    4. Detects vague phrases like 'correct value', 'as needed', 'standard pressure'
-       and flags needs_review=True with note 'value not stated'.
+    4. Detects numbers, units, negations, safety warnings, and missing values deterministically.
     """
     valid_segment_ids = {seg.idx for seg in segments}
     segment_text_map = {seg.idx: get_segment_text(seg).lower() for seg in segments}
 
     validated_steps: List[StepDraftSchema] = []
     unclear_ids = set(draft.unclear_segments)
-
-    vague_phrases = [
-        "correct value",
-        "appropriate value",
-        "as needed",
-        "as required",
-        "standard value",
-        "proper setting",
-        "usual setting",
-        "specified limit",
-    ]
 
     for step in draft.steps:
         # 1. Drop steps with empty instruction
@@ -109,13 +137,12 @@ def post_validate_structured_draft(
                     step.needs_review = True
                     step.note = (step.note or "") + f" Value '{num}' not found in cited transcript segments."
 
-        # 4. Check for unstated parameters
-        instruction_lower = step.instruction.lower()
-        for phrase in vague_phrases:
-            if phrase in instruction_lower:
-                step.needs_review = True
-                if not step.note or "value not stated" not in step.note:
-                    step.note = (step.note or "") + " Value not stated in narration."
+        # 4. Deterministic flagging rules for numbers, warnings, negations, missing values
+        is_flagged, flag_reason = determine_segment_flags(step.instruction)
+        if is_flagged:
+            step.needs_review = True
+            if not step.note or flag_reason not in step.note:
+                step.note = ((step.note + " ") if step.note else "") + flag_reason
 
         validated_steps.append(step)
 
@@ -130,10 +157,44 @@ async def structure_transcript_with_ai(
 ) -> StructuredDraftResponse:
     """
     Structures timestamped narration segments into candidate procedural steps.
-    Uses Anthropic Claude if ANTHROPIC_API_KEY is configured; otherwise uses deterministic
-    manufacturing parser that enforces all zero-hallucination rules.
+    Uses Gemini API if configured; falls back to Claude API or deterministic expert engine.
     """
-    # 1. Try Anthropic Claude API if key is present
+    prompt_segments = "\n".join([f"[{s.idx}] {s.text}" for s in segments])
+
+    # 1. Try Gemini API first
+    if settings.GEMINI_API_KEY:
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            config = types.GenerateContentConfig(
+                system_instruction=STRUCTURING_SYSTEM_PROMPT,
+                temperature=0.0,
+                response_mime_type="application/json",
+            )
+            user_prompt = (
+                f"Machine context: {machine_name or 'General Machine'}\n\n"
+                f"Transcript segments:\n{prompt_segments}\n\n"
+                "Output structured JSON matching StructuredDraftResponse schema."
+            )
+            res = client.models.generate_content(
+                model=getattr(settings, "ASSISTANT_LLM_MODEL", "gemini-2.5-flash"),
+                contents=user_prompt,
+                config=config,
+            )
+            content_text = res.text or "{}"
+            if "```json" in content_text:
+                content_text = content_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in content_text:
+                content_text = content_text.split("```")[1].split("```")[0].strip()
+            parsed = json.loads(content_text)
+            draft = StructuredDraftResponse(**parsed)
+            return post_validate_structured_draft(draft, segments)
+        except Exception as e:
+            logger.warning(f"Gemini structuring API call failed ({e}). Trying fallback.")
+
+    # 2. Try Anthropic Claude API if key is present
     if settings.ANTHROPIC_API_KEY:
         try:
             import httpx
@@ -142,7 +203,6 @@ async def structure_transcript_with_ai(
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             }
-            prompt_segments = "\n".join([f"[{s.idx}] {s.text}" for s in segments])
             payload = {
                 "model": settings.ANTHROPIC_MODEL or "claude-3-5-sonnet-20241022",
                 "max_tokens": 2048,
@@ -155,12 +215,11 @@ async def structure_transcript_with_ai(
                     }
                 ],
             }
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                res = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+            async with httpx.AsyncClient(timeout=45.0) as http_client:
+                res = await http_client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
                 if res.status_code == 200:
                     resp_json = res.json()
                     content_text = resp_json["content"][0]["text"]
-                    # Extract JSON from markdown fence if present
                     if "```json" in content_text:
                         content_text = content_text.split("```json")[1].split("```")[0].strip()
                     elif "```" in content_text:
@@ -186,8 +245,9 @@ async def structure_transcript_with_ai(
 
         summary_parts.append(text)
         is_warning = any(w in text.lower() for w in ["warning", "danger", "caution", "never", "blast shield", "coolant"])
-        needs_review = any(v in text.lower() for v in ["correct value", "as needed", "proper setting", "appropriate value"])
-        note = "Value not stated in narration." if needs_review else None
+        is_flagged, flag_reason = determine_segment_flags(text)
+        needs_review = is_flagged
+        note = flag_reason if is_flagged else None
 
         # Detect tools
         tools = []

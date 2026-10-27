@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
+import { DEMO_PERSONAS } from '../features/knowledge-capture/components/MedicalTopNav';
 import {
   Factory,
   LayoutDashboard,
@@ -24,14 +26,62 @@ import {
   ExternalLink,
   ShieldCheck,
   UserCheck,
+  ChevronDown,
 } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
-  const { user, logout, hasRole } = useAuth();
+  const { user, login, logout, hasRole, hasPermission } = useAuth();
+  const queryClient = useQueryClient();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const location = useLocation();
+  const switcherRef = useRef<HTMLDivElement>(null);
 
   const isExpert = hasRole('EXPERT');
+  const isAdmin = user?.role_id === 'ADMIN';
+  const isTrainee = user?.role_id === 'TRAINEE';
+  const isOperator = user?.role_id === 'OPERATOR';
+  const canApprove = hasPermission('knowledge.approve') || isAdmin;
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (switcherRef.current && !switcherRef.current.contains(e.target as Node)) {
+        setSwitcherOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  const currentPersona = DEMO_PERSONAS.find((p) => p.email === user?.email) || {
+    id: 'custom',
+    name: user?.name || 'User',
+    role: user?.role_id || 'USER',
+    roleTitle: user?.role_id === 'ADMIN' ? 'Platform Admin' : user?.role_id === 'EXPERT' ? 'Manufacturing Expert' : user?.role_id === 'OPERATOR' ? 'Machine Operator' : user?.role_id === 'TRAINEE' ? 'Workshop Apprentice' : 'User',
+    email: user?.email || '',
+    badgeBg: 'bg-slate-800 text-slate-200 border-slate-700',
+    avatarBg: 'bg-slate-700',
+    icon: '👤',
+    description: 'Active Platform Account',
+  };
+
+  const handleSwitchPersona = async (persona: (typeof DEMO_PERSONAS)[0]) => {
+    if (persona.email === user?.email) {
+      setSwitcherOpen(false);
+      return;
+    }
+    setSwitching(true);
+    try {
+      await login(persona.email, persona.password);
+      await queryClient.invalidateQueries();
+      setSwitcherOpen(false);
+    } catch (err) {
+      console.error('Failed to switch persona:', err);
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   const navItemClass = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 select-none ${
@@ -67,7 +117,7 @@ export const AppLayout: React.FC = () => {
                 <span className="text-[10px] block font-mono text-slate-400">Mfg Knowledge Engine</span>
               </div>
             </div>
-            <Badge variant={isExpert ? 'brand' : 'info'} size="sm">
+            <Badge variant={isExpert ? 'brand' : isAdmin ? 'warning' : isTrainee ? 'success' : 'info'} size="sm">
               {user?.role_id}
             </Badge>
           </div>
@@ -91,38 +141,42 @@ export const AppLayout: React.FC = () => {
               </div>
             </div>
 
-            {/* Group 2: Capture & Governance */}
+            {/* Group 2: Capture & Governance (Gated by Role) */}
             <div>
               <span className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5 flex items-center justify-between">
-                <span>Capture & Review</span>
+                <span>{isTrainee ? 'Apprentice Library' : isOperator ? 'Shopfloor Procedures' : 'Capture & Review'}</span>
                 {isExpert && <span className="text-[9px] text-brand-400 lowercase">expert</span>}
               </span>
               <div className="space-y-0.5">
                 <NavLink to="/app/knowledge" className={navItemClass}>
                   <FileText className="w-4 h-4 shrink-0" />
-                  <span>Knowledge Capture (M01)</span>
+                  <span>{isTrainee ? 'Learning Library (M01)' : 'Knowledge Library (M01)'}</span>
                 </NavLink>
-                <NavLink to="/app/voice-capture" className={navItemClass}>
-                  <Mic className="w-4 h-4 shrink-0" />
-                  <span className="flex-1">Voice-to-Knowledge (M04)</span>
-                  <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono border border-emerald-500/30">Live</span>
-                </NavLink>
-                <NavLink to="/app/reviews" className={navItemClass}>
-                  <CheckSquare className="w-4 h-4 shrink-0" />
-                  <span>Review Queue (M06)</span>
-                </NavLink>
+                {!isTrainee && (
+                  <NavLink to="/app/voice-capture" className={navItemClass}>
+                    <Mic className="w-4 h-4 shrink-0" />
+                    <span className="flex-1">{isOperator ? 'Voice Diagnostics (M04)' : 'Voice-to-Knowledge (M04)'}</span>
+                    <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono border border-emerald-500/30">Live</span>
+                  </NavLink>
+                )}
+                {canApprove && (
+                  <NavLink to="/app/reviews" className={navItemClass}>
+                    <CheckSquare className="w-4 h-4 shrink-0" />
+                    <span>Review Queue (M06)</span>
+                  </NavLink>
+                )}
               </div>
             </div>
 
             {/* Group 3: Training & AI Assistant */}
             <div>
               <span className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
-                Operator Training
+                {isTrainee ? 'Apprentice Learning' : isOperator ? 'Machine Operations' : 'Training & Assistance'}
               </span>
               <div className="space-y-0.5">
                 <NavLink to="/app/assistant" className={navItemClass}>
                   <Bot className="w-4 h-4 shrink-0" />
-                  <span>AI Assistant (M02)</span>
+                  <span>{isTrainee ? 'AI Tutor (M02)' : 'AI Assistant (M02)'}</span>
                 </NavLink>
                 <NavLink to="/app/guided-workflows" className={navItemClass}>
                   <Layers className="w-4 h-4 shrink-0" />
@@ -219,6 +273,55 @@ export const AppLayout: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Quick Persona Switcher */}
+            <div className="relative" ref={switcherRef}>
+              <button
+                type="button"
+                onClick={() => setSwitcherOpen(!switcherOpen)}
+                disabled={switching}
+                className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-200 transition-all"
+                title="Switch persona to test role-tailored frontend views"
+              >
+                <span>{currentPersona.icon}</span>
+                <span className="hidden sm:inline font-bold">{currentPersona.name.split(' ')[0]}</span>
+                <span className="text-[10px] text-brand-300 font-mono">({currentPersona.role})</span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+
+              {switcherOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-1.5 z-50 text-xs space-y-1">
+                  <div className="px-3 py-2 border-b border-slate-800 text-[10px] uppercase font-bold text-slate-400 flex items-center justify-between">
+                    <span>Switch Role Persona</span>
+                    <span className="text-brand-400">1-Click Test</span>
+                  </div>
+                  {DEMO_PERSONAS.map((p) => {
+                    const isCur = p.email === user?.email;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleSwitchPersona(p)}
+                        className={`w-full text-left p-2 rounded-lg flex items-center justify-between gap-2 transition-colors ${
+                          isCur ? 'bg-brand-500/20 text-brand-300 border border-brand-500/40' : 'text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <span>{p.icon}</span>
+                          <div className="truncate">
+                            <span className="font-semibold block truncate">{p.name}</span>
+                            <span className="text-[10px] text-slate-400 block">{p.roleTitle}</span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-slate-300 shrink-0">
+                          {p.role}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-[11px] text-slate-300">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span>Phase 1 Baseline</span>
@@ -234,7 +337,7 @@ export const AppLayout: React.FC = () => {
               <ExternalLink className="w-3 h-3" />
             </a>
 
-            <Badge variant={isExpert ? 'brand' : 'info'} size="sm">
+            <Badge variant={isExpert ? 'brand' : isAdmin ? 'warning' : isTrainee ? 'success' : 'info'} size="sm">
               {user?.role_id}
             </Badge>
           </div>

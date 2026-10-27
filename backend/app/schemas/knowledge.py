@@ -100,6 +100,11 @@ class KnowledgeVersionResponse(BaseModel):
     origin: str
     revision_reason: Optional[str] = None
     created_by: str
+    operating_conditions: Optional[str] = None
+    prerequisites: Optional[str] = None
+    safety_warnings: Optional[str] = None
+    common_mistakes: Optional[str] = None
+    corrective_actions: Optional[str] = None
     submitted_at: Optional[datetime] = None
     published_at: Optional[datetime] = None
     created_at: datetime

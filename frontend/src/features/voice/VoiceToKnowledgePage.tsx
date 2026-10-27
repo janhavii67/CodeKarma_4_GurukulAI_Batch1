@@ -34,6 +34,14 @@ export const VoiceToKnowledgePage: React.FC = () => {
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [currentTranscript, setCurrentTranscript] = useState<Transcript | null>(null);
   const [currentSteps, setCurrentSteps] = useState<StepDraft[]>([]);
+  const [stepsMeta, setStepsMeta] = useState<{
+    itemId?: string;
+    origin?: string;
+    flaggedCount?: number;
+    canSubmit?: boolean;
+    isDemo?: boolean;
+    submissionGateStatus?: string;
+  }>({});
   const [voiceAssets, setVoiceAssets] = useState<MediaAsset[]>([]);
   const [isLoadingReview, setIsLoadingReview] = useState(false);
 
@@ -73,8 +81,18 @@ export const VoiceToKnowledgePage: React.FC = () => {
       if (tData) {
         setCurrentTranscript(tData);
       }
-      if (stepsData && stepsData.steps) {
-        setCurrentSteps(stepsData.steps);
+      if (stepsData) {
+        if (stepsData.steps) {
+          setCurrentSteps(stepsData.steps);
+        }
+        setStepsMeta({
+          itemId: stepsData.item_id,
+          origin: stepsData.origin,
+          flaggedCount: stepsData.flagged_count,
+          canSubmit: stepsData.can_submit,
+          isDemo: stepsData.is_demo,
+          submissionGateStatus: stepsData.submission_gate_status,
+        });
       }
       setActiveTab('review');
     } catch (err) {
@@ -96,7 +114,17 @@ export const VoiceToKnowledgePage: React.FC = () => {
           getMediaSteps(targetMediaId).catch(() => null),
         ]);
         if (tData) setCurrentTranscript(tData);
-        if (stepsData?.steps) setCurrentSteps(stepsData.steps);
+        if (stepsData) {
+          if (stepsData.steps) setCurrentSteps(stepsData.steps);
+          setStepsMeta({
+            itemId: stepsData.item_id,
+            origin: stepsData.origin,
+            flaggedCount: stepsData.flagged_count,
+            canSubmit: stepsData.can_submit,
+            isDemo: stepsData.is_demo,
+            submissionGateStatus: stepsData.submission_gate_status,
+          });
+        }
         setActiveTab('review');
       } catch (err) {
         console.error('Failed to load transcript/steps after job completion:', err);
@@ -138,36 +166,17 @@ export const VoiceToKnowledgePage: React.FC = () => {
           </Badge>
           <Badge variant="info" size="sm">
             <Database className="w-3 h-3 mr-1" />
-            384-d Vector Store
+            Vector RAG
+          </Badge>
+          <Badge variant="warning" size="sm">
+            <ShieldAlert className="w-3 h-3 mr-1" />
+            Zero-Hallucination Gate
           </Badge>
         </div>
       </div>
 
-      {/* Industrial Safety Invariant Banner */}
-      <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex items-start gap-3 text-xs text-slate-300">
-        <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <span className="font-semibold text-slate-100">
-            System Invariants & Governance Rules Active
-          </span>
-          <p className="text-slate-400">
-            1. Every audio narration is strictly transcribed with timestamped segments.
-            2. Unknown machine parameters and tolerances are explicitly flagged (<code className="text-amber-300">needs_review: true</code>) with zero tolerance for hallucinations.
-            3. All spoken knowledge is vector-embedded into the knowledge database for grounded RAG query retrieval.
-          </p>
-        </div>
-      </div>
-
-      {/* Active Processing Card if Job is Running */}
-      {polledJob && (
-        <JobStatusCard
-          job={polledJob}
-          onRetried={(newJob) => setActiveJobId(newJob.id)}
-        />
-      )}
-
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
         <Button
           size="sm"
           variant={activeTab === 'record' ? 'primary' : 'ghost'}
@@ -182,9 +191,11 @@ export const VoiceToKnowledgePage: React.FC = () => {
           onClick={() => setActiveTab('review')}
         >
           <FileText className="w-4 h-4 mr-1.5" />
-          Transcript & Step Review
-          {currentTranscript && (
-            <span className="ml-1.5 w-2 h-2 rounded-full bg-brand-400 inline-block" />
+          Review Transcript & Steps
+          {currentSteps.length > 0 && (
+            <span className="ml-1.5 px-1.5 py-0.2 bg-brand-500/20 text-brand-300 rounded text-[10px]">
+              {currentSteps.length}
+            </span>
           )}
         </Button>
         <Button
@@ -193,9 +204,14 @@ export const VoiceToKnowledgePage: React.FC = () => {
           onClick={() => setActiveTab('search')}
         >
           <Database className="w-4 h-4 mr-1.5" />
-          Semantic Vector Search (RAG)
+          Semantic Vector Search
         </Button>
       </div>
+
+      {/* Active Processing Job Card (Polls automatically) */}
+      {polledJob && polledJob.status !== 'completed' && polledJob.status !== 'failed' && (
+        <JobStatusCard job={polledJob} />
+      )}
 
       {/* Tab 1: Record / Upload */}
       {activeTab === 'record' && (
@@ -244,6 +260,7 @@ export const VoiceToKnowledgePage: React.FC = () => {
 
                     <audio
                       src={`/api/v1/voice/stream/${asset.id}`}
+                      preload="none"
                       controls
                       className="w-full h-8 pt-1"
                     />
@@ -286,8 +303,18 @@ export const VoiceToKnowledgePage: React.FC = () => {
                 mediaId={activeMediaId}
               />
               <StepDraftReview
+                mediaId={activeMediaId}
+                itemId={stepsMeta.itemId}
                 initialSteps={currentSteps}
+                origin={stepsMeta.origin}
+                initialFlaggedCount={stepsMeta.flaggedCount}
+                initialCanSubmit={stepsMeta.canSubmit}
+                isDemo={stepsMeta.isDemo}
+                submissionGateStatus={stepsMeta.submissionGateStatus}
                 onStepsUpdated={setCurrentSteps}
+                onSubmitSuccess={() => {
+                  loadAssets();
+                }}
               />
             </>
           ) : (

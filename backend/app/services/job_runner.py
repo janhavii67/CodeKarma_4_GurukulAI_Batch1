@@ -10,7 +10,7 @@ from app.models.knowledge import KnowledgeVersion
 from app.integrations.media.ffmpeg import extract_audio_wav, probe_duration
 from app.integrations.speech.factory import get_speech_provider
 from app.services.vector_service import index_voice_transcript
-from app.services.structuring_service import structure_transcript_with_ai
+from app.services.structuring_service import structure_transcript_with_ai, determine_segment_flags
 from app.core.logging import logger
 
 
@@ -93,13 +93,14 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
         db.flush()
 
         for seg in segments_data:
+            is_seg_flagged, _ = determine_segment_flags(seg.text)
             t_seg = TranscriptSegment(
                 transcript_id=transcript.id,
                 idx=seg.idx,
                 start_s=seg.start_s,
                 end_s=seg.end_s,
                 original_text=seg.text,
-                needs_review=False,
+                needs_review=is_seg_flagged,
             )
             db.add(t_seg)
 
@@ -109,7 +110,7 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
         job.progress = 60
         db.commit()
 
-        # 3. Vector Embedding Storage for RAG Model
+        # 3. Vector Embedding Storage for RAG Model (Voice Segment Search during Drafting)
         try:
             index_voice_transcript(db=db, transcript=transcript, media=media, version_id=job.version_id)
         except Exception as e:

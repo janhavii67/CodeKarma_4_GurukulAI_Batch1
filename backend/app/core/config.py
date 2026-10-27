@@ -69,15 +69,17 @@ class Settings(BaseSettings):
     TRAINEE_PASSWORD: str = "Trainee@Gurukul2026!"
 
     # AI & Speech
+    DEMO_MODE: bool = False
+    GEMINI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
-    STT_PROVIDER: str = "whisper_api"
+    STT_PROVIDER: str = "gemini"
     OPENAI_API_KEY: str = ""
 
     # Module 02 Assistant & RAG Settings
-    ASSISTANT_LLM_PROVIDER: str = "fake"
+    ASSISTANT_LLM_PROVIDER: str = "gemini"
     ALLOW_EXTERNAL_LLM: bool = False
-    ASSISTANT_LLM_MODEL: str = "claude-3-5-sonnet-20241022"
+    ASSISTANT_LLM_MODEL: str = "gemini-2.5-flash"
     ASSISTANT_LLM_TIMEOUT_S: int = 30
     ASSISTANT_LLM_MAX_RETRIES: int = 2
     ASSISTANT_RETRIEVAL_TOP_K: int = 6

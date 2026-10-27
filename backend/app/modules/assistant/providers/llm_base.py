@@ -76,6 +76,18 @@ def get_llm_provider(provider_name: Optional[str] = None) -> LLMProvider:
         from app.modules.assistant.providers.llm_fake import FakeLLMProvider
         return FakeLLMProvider()
 
+    if selected == "gemini":
+        if not settings.ALLOW_EXTERNAL_LLM and not settings.GEMINI_API_KEY:
+            raise LLMExternalDisabledError(
+                "External LLM calls are disabled. "
+                "Set ALLOW_EXTERNAL_LLM=true and GEMINI_API_KEY in your .env."
+            )
+        if not settings.GEMINI_API_KEY:
+            raise LLMAuthenticationError("GEMINI_API_KEY is not configured.")
+
+        from app.modules.assistant.providers.llm_gemini import GeminiLLMProvider
+        return GeminiLLMProvider()
+
     if selected == "anthropic":
         if not settings.ALLOW_EXTERNAL_LLM:
             raise LLMExternalDisabledError(
@@ -89,4 +101,4 @@ def get_llm_provider(provider_name: Optional[str] = None) -> LLMProvider:
         from app.modules.assistant.providers.llm_anthropic import AnthropicLLMProvider
         return AnthropicLLMProvider()
 
-    raise LLMError(f"Unknown LLM provider: '{selected}'. Supported: 'fake', 'anthropic'")
+    raise LLMError(f"Unknown LLM provider: '{selected}'. Supported: 'gemini', 'fake', 'anthropic'")

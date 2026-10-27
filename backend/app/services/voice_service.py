@@ -97,6 +97,17 @@ def create_voice_capture_job(
     db.refresh(job)
 
     logger.info(f"Created voice media asset {media.id} and processing job {job.id}.")
+
+    from app.services.audit_service import AuditService
+    AuditService.log(
+        db=db,
+        action="voice.upload",
+        entity_type="media_asset",
+        entity_id=media.id,
+        actor_id=user_id,
+        detail={"title": media.title, "mime": media.mime_type, "size_bytes": size_bytes, "job_id": job.id},
+        commit=True,
+    )
     return media, job
 
 
@@ -137,6 +148,13 @@ def update_transcript_segment(
     if not segment:
         raise NotFoundError(code="segment_not_found", message=f"Segment '{segment_id}' not found.")
 
+    media = segment.transcript.media if segment.transcript else None
+    if media and media.uploaded_by != user_id:
+        from app.models.user import User
+        u = db.get(User, user_id)
+        if not u or u.role_id != "ADMIN":
+            raise ForbiddenError(code="not_author", message="Only the author or admin can edit this transcript segment.")
+
     if edited_text is not None:
         segment.edited_text = edited_text
 
@@ -144,6 +162,17 @@ def update_transcript_segment(
         segment.needs_review = needs_review
 
     db.commit()
+
+    from app.services.audit_service import AuditService
+    AuditService.log(
+        db=db,
+        action="voice.segment_edited",
+        entity_type="transcript_segment",
+        entity_id=segment.id,
+        actor_id=user_id,
+        detail={"edited_text": edited_text, "needs_review": needs_review},
+        commit=True,
+    )
 
     # Re-index updated segment vector in vector store
     new_text = segment.edited_text if segment.edited_text else segment.original_text

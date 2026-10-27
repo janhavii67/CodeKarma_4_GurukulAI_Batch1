@@ -1,18 +1,15 @@
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app
 from app.core.config import settings
 
-client = TestClient(app)
 
-
-def login(email: str, password: str):
+def login(client: TestClient, email: str, password: str):
     return client.post("/api/v1/auth/login", json={"email": email, "password": password})
 
 
-def test_dashboard_stats_authenticated():
+def test_dashboard_stats_authenticated(client: TestClient):
     # Login as trainee
-    res = login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+    res = login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     assert res.status_code == 200
 
     resp = client.get("/api/v1/dashboard/stats")
@@ -25,8 +22,8 @@ def test_dashboard_stats_authenticated():
     assert len(data["recent_articles"]) > 0
 
 
-def test_machines_catalog():
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+def test_machines_catalog(client: TestClient):
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     resp = client.get("/api/v1/machines")
     data = resp.json()
     machines = data["items"] if isinstance(data, dict) and "items" in data else data
@@ -37,8 +34,8 @@ def test_machines_catalog():
     assert len(haas["tools"]) >= 2
 
 
-def test_knowledge_search_and_detail():
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+def test_knowledge_search_and_detail(client: TestClient):
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     resp = client.get("/api/v1/knowledge?q=thermal")
     assert resp.status_code == 200
     data = resp.json()
@@ -53,9 +50,9 @@ def test_knowledge_search_and_detail():
     assert "Z-axis drift" in detail["current_revision"]["content"]
 
 
-def test_knowledge_workflow_and_self_review_prevention():
+def test_knowledge_workflow_and_self_review_prevention(client: TestClient):
     # 1. Expert A logs in and creates a new knowledge draft
-    login(settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
     # Get CSRF token
     csrf_res = client.get("/api/v1/auth/csrf")
     csrf_token = csrf_res.json()["csrf_token"]
@@ -90,7 +87,7 @@ def test_knowledge_workflow_and_self_review_prevention():
     assert "self_review_forbidden" in self_review_res.json()["error"]["code"]
 
     # 4. Expert B (Peer Reviewer) logs in and approves the submission
-    login(settings.EXPERT_B_EMAIL, settings.EXPERT_B_PASSWORD)
+    login(client, settings.EXPERT_B_EMAIL, settings.EXPERT_B_PASSWORD)
     csrf_res_b = client.get("/api/v1/auth/csrf")
     headers_b = {"X-CSRF-Token": csrf_res_b.json()["csrf_token"]}
 
@@ -103,8 +100,8 @@ def test_knowledge_workflow_and_self_review_prevention():
     assert peer_review_res.json()["status"] == "APPROVED"
 
 
-def test_procedures_and_execution_runner():
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+def test_procedures_and_execution_runner(client: TestClient):
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     csrf_res = client.get("/api/v1/auth/csrf")
     headers = {"X-CSRF-Token": csrf_res.json()["csrf_token"]}
 
@@ -137,8 +134,8 @@ def test_procedures_and_execution_runner():
     assert step_1_exec["operator_notes"] == "6.2 bar verified."
 
 
-def test_troubleshooting_case_and_tree():
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+def test_troubleshooting_case_and_tree(client: TestClient):
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     resp = client.get("/api/v1/troubleshooting")
     assert resp.status_code == 200
     cases = resp.json()
@@ -154,8 +151,8 @@ def test_troubleshooting_case_and_tree():
     assert "Tool Overhang" in root_node["title"]
 
 
-def test_audio_analysis_calibrated_matching_and_rejections():
-    login(settings.OPERATOR_EMAIL if hasattr(settings, "OPERATOR_EMAIL") else "operator@demo.local", "Operator@Gurukul2026!")
+def test_audio_analysis_calibrated_matching_and_rejections(client: TestClient):
+    login(client, settings.OPERATOR_EMAIL if hasattr(settings, "OPERATOR_EMAIL") else "operator@demo.local", "Operator@Gurukul2026!")
     csrf_res = client.get("/api/v1/auth/csrf")
     headers = {"X-CSRF-Token": csrf_res.json()["csrf_token"]}
 

@@ -10,6 +10,7 @@ from app.modules.assistant.providers.llm_base import (
     get_llm_provider,
 )
 from app.modules.assistant.providers.llm_fake import FakeLLMProvider
+from app.modules.assistant.providers.llm_gemini import GeminiLLMProvider
 from app.modules.assistant.providers.embedding_base import (
     EmbeddingProvider,
     EmbeddingRequest,
@@ -29,6 +30,7 @@ __all__ = [
     "LLMRateLimitError",
     "get_llm_provider",
     "FakeLLMProvider",
+    "GeminiLLMProvider",
     "EmbeddingProvider",
     "EmbeddingRequest",
     "EmbeddingResponse",

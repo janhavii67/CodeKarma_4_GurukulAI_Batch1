@@ -217,6 +217,10 @@ def submit_knowledge(
             .first()
         )
 
+    if version:
+        from app.services.voice_service import validate_version_for_submission
+        validate_version_for_submission(db, version.id)
+
     if version and version.status != STATUS_IN_REVIEW:
         version.status = STATUS_IN_REVIEW
         item.status = "PENDING_REVIEW"

@@ -22,10 +22,16 @@ vi.mock('../lib/api/client', () => ({
   ApiClientError: class extends Error {
     status: number;
     code: string;
-    constructor(status: number, code: string, message: string) {
-      super(message);
-      this.status = status;
-      this.code = code;
+    constructor(arg1: any, arg2?: any, arg3?: any) {
+      if (typeof arg1 === 'number') {
+        super(arg3 || '');
+        this.status = arg1;
+        this.code = String(arg2 || '');
+      } else {
+        super(arg2 || '');
+        this.code = String(arg1 || '');
+        this.status = typeof arg3 === 'number' ? arg3 : 400;
+      }
     }
   },
 }));

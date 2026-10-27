@@ -131,12 +131,32 @@ def list_voice_assets(
     auth_ctx: AuthenticatedContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List expert voice recordings available across the platform."""
+    """List expert voice recordings available to the current user."""
+    # Trainees cannot view raw voice draft recordings
+    if auth_ctx.user.role_id == "TRAINEE":
+        return []
+
     query = db.query(MediaAsset).filter(MediaAsset.kind == "audio")
     if machine_id:
         query = query.filter(MediaAsset.machine_id == machine_id)
 
-    return query.order_by(desc(MediaAsset.created_at)).all()
+    # Experts only see their own recordings unless Admin
+    if auth_ctx.user.role_id != "ADMIN":
+        query = query.filter(MediaAsset.uploaded_by == auth_ctx.user.id)
+
+    assets = query.order_by(desc(MediaAsset.created_at)).all()
+    media_root = Path(settings.MEDIA_ROOT).resolve()
+
+    valid_assets = []
+    for a in assets:
+        p = Path(a.file_path)
+        if (p.is_absolute() and p.exists()) or \
+           (media_root / a.storage_key).resolve().exists() or \
+           (media_root / Path(a.storage_key).name).resolve().exists() or \
+           (Path("data/media") / Path(a.storage_key).name).resolve().exists():
+            valid_assets.append(a)
+
+    return valid_assets
 
 
 @router.get("/assets/{media_id}", response_model=MediaAssetResponse)
@@ -145,10 +165,17 @@ def get_voice_asset(
     auth_ctx: AuthenticatedContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Retrieve details for a specific expert voice capture."""
+    """Retrieve details for a specific expert voice capture with IDOR check."""
     media = db.get(MediaAsset, media_id)
     if not media:
         raise NotFoundError(code="media_not_found", message=f"Media asset '{media_id}' not found.")
+
+    if auth_ctx.user.role_id == "TRAINEE":
+        raise ForbiddenError(code="trainee_draft_forbidden", message="Trainees cannot access unapproved draft procedures.")
+
+    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+        raise ForbiddenError(code="not_author", message="You do not have access to this voice recording.")
+
     return media
 
 
@@ -160,6 +187,16 @@ def get_media_transcript(
     db: Session = Depends(get_db),
 ):
     """Retrieve timestamped narration transcript and segments for a specific media asset."""
+    media = db.get(MediaAsset, media_id)
+    if not media:
+        raise NotFoundError(code="media_not_found", message=f"Media asset '{media_id}' not found.")
+
+    if auth_ctx.user.role_id == "TRAINEE":
+        raise ForbiddenError(code="trainee_draft_forbidden", message="Trainees cannot access unapproved draft procedures.")
+
+    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+        raise ForbiddenError(code="not_author", message="You do not have access to this voice recording.")
+
     transcript = (
         db.query(Transcript)
         .filter(Transcript.media_id == media_id)
@@ -178,19 +215,27 @@ def get_media_steps(
     auth_ctx: AuthenticatedContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Retrieve structured candidate SOP steps for an expert voice recording."""
+    """Retrieve structured candidate SOP steps for an expert voice recording with server-side gate metrics."""
     media = db.get(MediaAsset, media_id)
     if not media:
         raise NotFoundError(code="media_not_found", message=f"Media asset '{media_id}' not found.")
 
+    if auth_ctx.user.role_id == "TRAINEE":
+        raise ForbiddenError(code="trainee_draft_forbidden", message="Trainees cannot access unapproved draft procedures.")
+
+    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+        raise ForbiddenError(code="not_author", message="You do not have access to this voice recording.")
+
     steps: List[dict] = []
     origin = "ai_draft"
     unclear: List[int] = []
+    item_id = None
 
     if media.version_id:
         version = db.get(KnowledgeVersion, media.version_id)
         if version:
             origin = version.origin or "ai_draft"
+            item_id = version.item_id
             if version.steps:
                 steps = json.loads(version.steps) if isinstance(version.steps, str) else version.steps
 
@@ -198,12 +243,94 @@ def get_media_steps(
         if isinstance(s, dict) and s.get("needs_review") and s.get("source_segment_ids"):
             unclear.extend(s.get("source_segment_ids"))
 
+    flagged_count = sum(1 for s in steps if isinstance(s, dict) and s.get("needs_review") is True)
+    can_submit = (flagged_count == 0)
+    is_demo = getattr(settings, "DEMO_MODE", False) or any(
+        "[ILLUSTRATIVE" in str(s.get("instruction", "")) for s in steps if isinstance(s, dict)
+    )
+
     return StepsListResponse(
         media_id=media.id,
         version_id=media.version_id,
+        item_id=item_id,
         origin=origin,
         steps=steps,
         unclear_segments=list(set(unclear)),
+        flagged_count=flagged_count,
+        can_submit=can_submit,
+        is_demo=is_demo,
+        submission_gate_status="OPEN" if can_submit else "BLOCKED_UNRESOLVED_FLAGS",
+    )
+
+
+@router.patch("/assets/{media_id}/steps/{step_idx}/verify", response_model=StepsListResponse)
+def verify_candidate_step(
+    media_id: str,
+    step_idx: int,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_KNOWLEDGE_CREATE)),
+    db: Session = Depends(get_db),
+):
+    """
+    Expert author clears the 'needs_review' flag on a specific procedural step.
+    Persists verification state to database and updates origin to 'ai_draft_edited'.
+    """
+    media = db.get(MediaAsset, media_id)
+    if not media:
+        raise NotFoundError(code="media_not_found", message=f"Media asset '{media_id}' not found.")
+
+    if auth_ctx.user.role_id == "TRAINEE":
+        raise ForbiddenError(code="trainee_edit_forbidden", message="Trainees cannot edit drafts.")
+
+    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+        raise ForbiddenError(code="not_author", message="Only the author or admin can verify draft steps.")
+
+    if not media.version_id:
+        raise NotFoundError(code="version_not_found", message="No knowledge version linked to this voice asset.")
+
+    version = db.get(KnowledgeVersion, media.version_id)
+    if not version:
+        raise NotFoundError(code="version_not_found", message=f"Version '{media.version_id}' not found.")
+
+    steps = json.loads(version.steps) if isinstance(version.steps, str) else (version.steps or [])
+    target_idx = step_idx if step_idx < len(steps) else (step_idx - 1)
+    if target_idx < 0 or target_idx >= len(steps):
+        raise NotFoundError(code="step_not_found", message=f"Step index {step_idx} is out of bounds.")
+
+    steps[target_idx]["needs_review"] = False
+    verifier_name = auth_ctx.user.name or auth_ctx.user.email
+    steps[target_idx]["note"] = f"Verified by Expert Author ({verifier_name})"
+
+    version.steps = json.dumps(steps) if isinstance(version.steps, str) else steps
+    version.origin = "ai_draft_edited"
+    db.commit()
+    db.refresh(version)
+
+    from app.services.audit_service import AuditService
+    AuditService.log(
+        db=db,
+        action="voice.step_verified",
+        entity_type="knowledge_version",
+        entity_id=version.id,
+        actor_id=auth_ctx.user.id,
+        detail={"step_idx": target_idx, "step_title": steps[target_idx].get("title")},
+        commit=True,
+    )
+
+    unclear = [sid for s in steps if isinstance(s, dict) and s.get("needs_review") for sid in s.get("source_segment_ids", [])]
+    flagged_count = sum(1 for s in steps if isinstance(s, dict) and s.get("needs_review") is True)
+    can_submit = (flagged_count == 0)
+
+    return StepsListResponse(
+        media_id=media.id,
+        version_id=version.id,
+        item_id=version.item_id,
+        origin=version.origin,
+        steps=steps,
+        unclear_segments=list(set(unclear)),
+        flagged_count=flagged_count,
+        can_submit=can_submit,
+        is_demo=getattr(settings, "DEMO_MODE", False),
+        submission_gate_status="OPEN" if can_submit else "BLOCKED_UNRESOLVED_FLAGS",
     )
 
 
@@ -393,11 +520,27 @@ def stream_voice_audio(
     Stream audio file directly to browser audio player for click-to-seek playback.
     """
     media = db.get(MediaAsset, media_id)
-    if not media or not Path(media.file_path).exists():
+    if not media:
+        raise NotFoundError(code="media_not_found", message="Media asset not found.")
+
+    target_path = None
+    media_root = Path(settings.MEDIA_ROOT).resolve()
+
+    raw_path = Path(media.file_path)
+    if raw_path.is_absolute() and raw_path.exists():
+        target_path = raw_path
+    elif (media_root / media.storage_key).resolve().exists():
+        target_path = (media_root / media.storage_key).resolve()
+    elif (media_root / Path(media.storage_key).name).resolve().exists():
+        target_path = (media_root / Path(media.storage_key).name).resolve()
+    elif (Path("data/media") / Path(media.storage_key).name).resolve().exists():
+        target_path = (Path("data/media") / Path(media.storage_key).name).resolve()
+
+    if not target_path or not target_path.exists():
         raise NotFoundError(code="audio_not_found", message="Audio media file not found on disk.")
 
     return FileResponse(
-        path=media.file_path,
+        path=str(target_path),
         media_type=media.mime_type or "audio/webm",
         filename=media.original_name,
     )

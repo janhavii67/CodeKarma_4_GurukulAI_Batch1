@@ -114,7 +114,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
       <div className="space-y-3">
         <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-800 pb-2">
           <span>Timestamped Speech Segments ({segments.length})</span>
-          <span>Original audio preserved in database</span>
+          <span>Audio preserved in secure media storage</span>
         </div>
 
         <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">

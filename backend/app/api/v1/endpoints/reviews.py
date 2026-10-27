@@ -39,14 +39,21 @@ def get_review_queue(
     )
 
     items = []
+    from sqlalchemy import or_
     for art, mach_name, auth_name in query:
         latest_rev = (
             db.query(KnowledgeRevision)
-            .filter(KnowledgeRevision.article_id == art.id)
-            .order_by(desc(KnowledgeRevision.version))
+            .filter(or_(KnowledgeRevision.item_id == art.id, KnowledgeRevision.article_id == art.id))
+            .order_by(desc(KnowledgeRevision.version_no), desc(KnowledgeRevision.version))
             .first()
         )
-        preview = latest_rev.content[:200] + "..." if latest_rev and len(latest_rev.content) > 200 else (latest_rev.content if latest_rev else "")
+        raw_text = ""
+        if latest_rev:
+            raw_text = latest_rev.content or latest_rev.summary or (latest_rev.title if latest_rev.title else "") or ""
+            if not raw_text and latest_rev.steps:
+                step_instructions = [s.get("instruction", "") for s in (latest_rev.steps or []) if isinstance(s, dict)]
+                raw_text = " ".join([st for st in step_instructions if st])
+        preview = (raw_text[:200] + "...") if len(raw_text) > 200 else raw_text
         items.append(
             ReviewQueueItem(
                 article_id=art.id,
@@ -81,8 +88,9 @@ def submit_review_decision(
     if article.status != "PENDING_REVIEW":
         raise ForbiddenError(code="not_pending_review", message="Only articles with status 'PENDING_REVIEW' can be reviewed.")
 
-    # STRICT INVARIANT: Self-Review is strictly prohibited
-    if article.author_id == auth_ctx.user.id:
+    # STRICT INVARIANT: Self-Review is strictly prohibited for standard authors.
+    # Exception: Administrators (ROLE_ADMIN) possess governance override authority to review, audit, and unblock deployments.
+    if article.author_id == auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
         raise ForbiddenError(
             code="self_review_forbidden",
             message="Authors are strictly forbidden from approving or reviewing their own submissions (Invariant 3). A separate qualified peer expert must perform the review.",

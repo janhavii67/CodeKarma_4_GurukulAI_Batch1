@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Calendar,
   BookOpen,
+  FileText,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useKnowledgeList, useMachines, useCreateKnowledge } from './hooks';
@@ -87,39 +88,177 @@ export const LibraryPage: React.FC = () => {
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
+  const role = user?.role_id;
+  const isTrainee = role === 'TRAINEE';
+  const isOperator = role === 'OPERATOR';
+  const isExpert = role === 'EXPERT';
+  const isAdmin = role === 'ADMIN';
+  const canApprove = hasPermission('knowledge.approve') || isAdmin;
+
+  // Count items awaiting review
+  const pendingReviewCount = items.filter((i) => i.version_status === 'in_review').length;
+
   return (
     <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
       <MedicalTopNav />
 
       <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#1473E6] bg-[#EFF7FF] px-2.5 py-0.5 rounded-full border border-[#BCD7F5]">
-                Module 01 • Medical SOPs
+        {/* Dynamic Role Perspective Hero Banner */}
+        {isTrainee && (
+          <div className="rounded-2xl p-6 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-white border border-emerald-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-600/20">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    🎓 Apprentice Learning Portal
+                  </span>
+                  <span className="text-xs text-emerald-700 font-medium">Logged in as {user?.name || 'Trainee'}</span>
+                </div>
+                <h1 className="text-2xl font-extrabold text-[#12345A] tracking-tight">
+                  Manufacturing Standard Operating Procedures
+                </h1>
+                <p className="text-xs sm:text-sm text-[#536780] mt-1 max-w-2xl leading-relaxed">
+                  Study verified machine operating protocols, tolerance limits, and mandatory safety warnings. Click any approved SOP to begin interactive training.
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0 flex items-center gap-2">
+              <span className="px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-emerald-800 text-xs font-semibold shadow-xs">
+                Verified Training Curriculum
               </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12345A] tracking-tight">
-              Knowledge Library
-            </h1>
-            <p className="text-xs sm:text-sm text-[#536780] mt-1">
-              Browse, search, and manage verified Standard Operating Procedures and expert drafts.
-            </p>
           </div>
+        )}
 
-          {canCreate && (
-            <Button
-              id="create-knowledge-btn"
-              variant="primary"
-              icon={<Plus className="w-4 h-4" />}
-              onClick={() => setShowCreate(true)}
-              className="bg-[#1473E6] hover:bg-[#1060C4] text-white shadow-xs"
+        {isOperator && (
+          <div className="rounded-2xl p-6 bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-white border border-amber-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-amber-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-amber-600/20">
+                <Cpu className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-100/80 px-2.5 py-0.5 rounded-full border border-amber-200">
+                    ⚙️ Shopfloor SOP Execution Center
+                  </span>
+                  <span className="text-xs text-amber-800 font-medium">Logged in as {user?.name || 'Operator'}</span>
+                </div>
+                <h1 className="text-2xl font-extrabold text-[#12345A] tracking-tight">
+                  Machine Operating &amp; Diagnostic Procedures
+                </h1>
+                <p className="text-xs sm:text-sm text-[#536780] mt-1 max-w-2xl leading-relaxed">
+                  Active standard procedures for CNC milling, hydraulic presses, and precision workstations. Select a procedure to execute tool setups, operating conditions, and safety checklists.
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0 flex items-center gap-2">
+              <span className="px-3 py-1.5 rounded-xl bg-white border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs">
+                Production Floor Active
+              </span>
+            </div>
+          </div>
+        )}
+
+        {isExpert && (
+          <div className="rounded-2xl p-6 bg-gradient-to-r from-blue-500/10 via-indigo-500/5 to-white border border-[#BCD7F5] shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-[#1473E6] text-white flex items-center justify-center shrink-0 shadow-md shadow-[#1473E6]/20">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#1473E6] bg-[#EFF7FF] px-2.5 py-0.5 rounded-full border border-[#BCD7F5]">
+                    🔬 Knowledge Engineering Studio
+                  </span>
+                  <span className="text-xs text-[#536780] font-medium">Authoring &amp; Peer Verification Portal</span>
+                </div>
+                <h1 className="text-2xl font-extrabold text-[#12345A] tracking-tight">
+                  Knowledge Library &amp; Authoring Repository
+                </h1>
+                <p className="text-xs sm:text-sm text-[#536780] mt-1 max-w-2xl leading-relaxed">
+                  Capture tacit machining knowledge, calibrate tolerance bands, and peer-review colleague submissions for shopfloor release and AI Assistant grounding.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              {canCreate && (
+                <Button
+                  id="create-knowledge-btn"
+                  variant="primary"
+                  icon={<Plus className="w-4 h-4" />}
+                  onClick={() => setShowCreate(true)}
+                  className="bg-[#1473E6] hover:bg-[#1060C4] text-white shadow-xs"
+                >
+                  + New Knowledge Item
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isAdmin && (
+          <div className="rounded-2xl p-6 bg-gradient-to-r from-purple-500/10 via-indigo-500/5 to-white border border-purple-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-purple-700 text-white flex items-center justify-center shrink-0 shadow-md shadow-purple-700/20">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-800 bg-purple-100/80 px-2.5 py-0.5 rounded-full border border-purple-200">
+                    🛡️ Quality &amp; Compliance Governance
+                  </span>
+                  <span className="text-xs text-purple-700 font-medium">Platform Administration</span>
+                </div>
+                <h1 className="text-2xl font-extrabold text-[#12345A] tracking-tight">
+                  Enterprise Knowledge Governance
+                </h1>
+                <p className="text-xs sm:text-sm text-[#536780] mt-1 max-w-2xl leading-relaxed">
+                  Full administrative oversight. Inspect procedure revisions, enforce two-person peer review invariants, or execute compliance force-approval overrides.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button
+                id="create-knowledge-btn"
+                variant="primary"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => setShowCreate(true)}
+                className="bg-purple-700 hover:bg-purple-800 text-white shadow-xs"
+              >
+                + New Knowledge Item
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Pending Review Alert Banner for Reviewers & Admins */}
+        {canApprove && pendingReviewCount > 0 && (
+          <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-300 text-amber-900 flex items-center justify-between gap-3 shadow-xs animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 font-bold text-xs">
+                {pendingReviewCount}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-amber-900">
+                  {pendingReviewCount} Procedure draft(s) currently awaiting formal peer review &amp; verification
+                </p>
+                <p className="text-[11px] text-amber-800">
+                  Open any draft marked "IN REVIEW" below or navigate to the Review Queue to inspect and approve.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/app/reviews')}
+              className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shrink-0 shadow-xs transition-colors"
             >
-              New Knowledge Item
-            </Button>
-          )}
-        </div>
+              Open Review Queue →
+            </button>
+          </div>
+        )}
 
         {/* Search & Filters Bar in White Card */}
         <div className="bg-white rounded-2xl border border-[#DCE8F5] p-4 shadow-xs flex flex-col sm:flex-row gap-3">
@@ -215,7 +354,7 @@ export const LibraryPage: React.FC = () => {
               {search || machineFilter || statusFilter
                 ? 'Try adjusting your filters or search keywords.'
                 : canCreate
-                ? 'Create your first medical equipment procedure to get started.'
+                ? 'Create your first precision equipment procedure to get started.'
                 : 'No published procedures are available yet.'}
             </p>
             {canCreate && !search && !machineFilter && !statusFilter && (
@@ -290,12 +429,47 @@ export const LibraryPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Status badge */}
+                  {/* Status badge & Role-Specific Action CTA */}
                   <div className="shrink-0 flex items-center gap-3">
                     <StatusBadge status={item.version_status} />
-                    <span className="hidden sm:inline-block text-xs font-semibold text-[#1473E6] group-hover:translate-x-0.5 transition-transform">
-                      Open →
-                    </span>
+                    {item.version_status === 'in_review' ? (
+                      canApprove ? (
+                        item.author_id !== user?.id || isAdmin ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 group-hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors">
+                            <span>Review &amp; Approve</span>
+                            <span className="text-indigo-200">→</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
+                            <span>Inspect Draft →</span>
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-xs font-semibold text-[#1473E6] group-hover:translate-x-0.5 transition-transform">
+                          View Draft →
+                        </span>
+                      )
+                    ) : item.version_status === 'published' ? (
+                      isTrainee ? (
+                        <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 group-hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-xs transition-colors">
+                          <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Study Protocol →</span>
+                        </span>
+                      ) : isOperator ? (
+                        <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-50 group-hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold shadow-xs transition-colors">
+                          <Cpu className="w-3.5 h-3.5 text-amber-700" />
+                          <span>Execute SOP →</span>
+                        </span>
+                      ) : (
+                        <span className="hidden sm:inline-block text-xs font-semibold text-[#1473E6] group-hover:translate-x-0.5 transition-transform">
+                          Open →
+                        </span>
+                      )
+                    ) : (
+                      <span className="hidden sm:inline-block text-xs font-semibold text-[#1473E6] group-hover:translate-x-0.5 transition-transform">
+                        {item.version_status === 'draft' ? 'Edit Draft →' : 'Open →'}
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -346,7 +520,7 @@ export const LibraryPage: React.FC = () => {
                   New Knowledge Item
                 </h2>
                 <p className="text-xs text-[#536780] mt-0.5">
-                  Author a verified Standard Operating Procedure for laboratory assets.
+                  Author an authoritative Standard Operating Procedure for precision machinery.
                 </p>
               </div>
 
@@ -367,7 +541,7 @@ export const LibraryPage: React.FC = () => {
                     type="text"
                     value={createTitle}
                     onChange={(e) => setCreateTitle(e.target.value)}
-                    placeholder="e.g. Diagnostic Analyzer Daily Calibration"
+                    placeholder="e.g. CNC Spindle Warm-Up & Concentricity Protocol"
                     className="w-full px-3 py-2 bg-white border border-[#DCE8F5] rounded-lg text-sm text-[#12345A] focus:outline-none focus:ring-2 focus:ring-[#1473E6]/20 focus:border-[#1473E6]"
                     autoFocus
                   />

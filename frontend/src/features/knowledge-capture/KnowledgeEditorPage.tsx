@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   FileText,
@@ -14,8 +15,15 @@ import {
   Image as ImageIcon,
   ChevronDown,
   ChevronUp,
+  CheckSquare,
+  CheckCircle2,
+  XCircle,
+  ShieldAlert,
+  ArrowRightLeft,
+  GraduationCap,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { api } from '../../lib/api/client';
 import {
   useKnowledgeDetail,
   useUpdateKnowledge,
@@ -23,6 +31,8 @@ import {
   useCreateRevision,
   useMachines,
   useCreateKnowledge,
+  useSubmitKnowledge,
+  knowledgeKeys,
 } from './hooks';
 import { StepEditor } from './StepEditor';
 import { MediaPanel } from './media/MediaPanel';
@@ -197,7 +207,8 @@ export const KnowledgeEditorPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, hasPermission } = useAuth();
+  const queryClient = useQueryClient();
+  const { user, login, hasPermission } = useAuth();
   const { data: machinesData } = useMachines();
   const machines = machinesData?.items ?? [];
 
@@ -205,7 +216,7 @@ export const KnowledgeEditorPage: React.FC = () => {
   const versionIdParam = searchParams.get('version_id') ?? undefined;
 
   // New Draft Creation Modal State (if accessing /app/knowledge/new)
-  const [newTitle, setNewTitle] = useState('Diagnostic Analyzer Calibration');
+  const [newTitle, setNewTitle] = useState('');
   const [newMachineId, setNewMachineId] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
   const createMutation = useCreateKnowledge();
@@ -220,6 +231,10 @@ export const KnowledgeEditorPage: React.FC = () => {
   const [localTitle, setLocalTitle] = useState('');
   const [localSummary, setLocalSummary] = useState('');
   const [localDescription, setLocalDescription] = useState('');
+  const [localOperatingConditions, setLocalOperatingConditions] = useState('');
+  const [localSafetyWarnings, setLocalSafetyWarnings] = useState('');
+  const [localPrerequisites, setLocalPrerequisites] = useState('');
+  const [localCorrectiveActions, setLocalCorrectiveActions] = useState('');
   const [localSteps, setLocalSteps] = useState<Step[]>([]);
   const [localRevisionReason, setLocalRevisionReason] = useState('');
   const [isVerified, setIsVerified] = useState(false);
@@ -229,10 +244,51 @@ export const KnowledgeEditorPage: React.FC = () => {
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [showRevisionDialog, setShowRevisionDialog] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
+  // Reviewer Decision State (Module 06)
+  const [reviewComments, setReviewComments] = useState('');
+  const [reviewActionLoading, setReviewActionLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
+
+  const handleReviewDecision = async (decision: 'APPROVED' | 'REJECTED') => {
+    if (!id) return;
+    setReviewError(null);
+    setReviewSuccess(null);
+
+    if (data?.author_id === user?.id && user?.role_id !== 'ADMIN') {
+      setReviewError(
+        'System Governance Rule: Authors cannot approve their own submissions (Invariant 3). Switch to Expert B or Admin to approve.'
+      );
+      return;
+    }
+
+    setReviewActionLoading(true);
+    try {
+      await api.post(`/reviews/${id}/decision`, {
+        decision,
+        comments: reviewComments.trim() || undefined,
+      });
+      setReviewSuccess(
+        decision === 'APPROVED'
+          ? '🎉 Procedure successfully approved and published! Now live on the shopfloor and grounded in AI Knowledge Assistant (RAG).'
+          : 'Draft returned to author with requested modifications.'
+      );
+      setReviewComments('');
+      await queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
+    } catch (err: any) {
+      setReviewError(err?.message || 'Failed to submit review decision.');
+    } finally {
+      setReviewActionLoading(false);
+    }
+  };
+
   const updateMutation = useUpdateKnowledge(id || '');
+  const submitMutation = useSubmitKnowledge(id || '');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Populate state on data load
@@ -242,11 +298,16 @@ export const KnowledgeEditorPage: React.FC = () => {
     setLocalTitle(data.title);
     setLocalSummary(v.summary ?? '');
     setLocalDescription(v.description ?? '');
+    setLocalOperatingConditions(v.operating_conditions ?? '');
+    setLocalSafetyWarnings(v.safety_warnings ?? '');
+    setLocalPrerequisites(v.prerequisites ?? '');
+    setLocalCorrectiveActions(v.corrective_actions ?? '');
     setLocalSteps(v.steps ?? []);
     setLocalRevisionReason(v.revision_reason ?? '');
     setIsDirty(false);
     setSaveStatus('idle');
     setSaveError(null);
+    setSubmitError(null);
   }, [data]);
 
   // Handle new creation submission
@@ -282,10 +343,12 @@ export const KnowledgeEditorPage: React.FC = () => {
   // Determine editability
   const version = data?.version;
   const canCreate = hasPermission('knowledge.create');
+  const canSubmitReview = hasPermission('knowledge.submit_review');
   const isAuthor = version?.created_by === user?.id;
   const editableStatus = version ? isEditableStatus(version.status) : false;
   const isEditable = canCreate && isAuthor && editableStatus;
   const isFrozen = !!version && !editableStatus;
+  const canSubmit = isEditable && isAuthor && canSubmitReview && (version?.status === 'draft' || version?.status === 'changes_requested');
 
   const markDirty = () => setIsDirty(true);
 
@@ -319,6 +382,10 @@ export const KnowledgeEditorPage: React.FC = () => {
         title: localTitle.trim() || undefined,
         summary: localSummary.trim() || null,
         description: localDescription.trim() || null,
+        operating_conditions: localOperatingConditions.trim() || null,
+        safety_warnings: localSafetyWarnings.trim() || null,
+        prerequisites: localPrerequisites.trim() || null,
+        corrective_actions: localCorrectiveActions.trim() || null,
         steps: localSteps,
         revision_reason: localRevisionReason.trim() || null,
         version_id: version.id,
@@ -329,6 +396,33 @@ export const KnowledgeEditorPage: React.FC = () => {
     } catch (err) {
       setSaveStatus('error');
       setSaveError(err instanceof ApiClientError ? err.message : 'Save failed.');
+    }
+  };
+
+  const handleSubmitForReview = async () => {
+    if (!id || !version || !canSubmit) return;
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    try {
+      if (isDirty) {
+        await updateMutation.mutateAsync({
+          title: localTitle.trim() || undefined,
+          summary: localSummary.trim() || null,
+          description: localDescription.trim() || null,
+          operating_conditions: localOperatingConditions.trim() || null,
+          safety_warnings: localSafetyWarnings.trim() || null,
+          prerequisites: localPrerequisites.trim() || null,
+          corrective_actions: localCorrectiveActions.trim() || null,
+          steps: localSteps,
+          revision_reason: localRevisionReason.trim() || null,
+          version_id: version.id,
+        });
+        setIsDirty(false);
+      }
+      await submitMutation.mutateAsync();
+      setSubmitSuccess('Draft successfully submitted for peer review!');
+    } catch (err) {
+      setSubmitError(err instanceof ApiClientError ? err.message : 'Failed to submit draft for review.');
     }
   };
 
@@ -367,9 +461,9 @@ export const KnowledgeEditorPage: React.FC = () => {
           
           <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-[#DCE8F5] shadow-sm p-6 sm:p-8 space-y-6">
             <div className="border-b border-[#DCE8F5] pb-4">
-              <h2 className="text-xl font-bold text-[#12345A]">Create Medical Procedure</h2>
+              <h2 className="text-xl font-bold text-[#12345A]">Create Standard Operating Procedure</h2>
               <p className="text-xs text-[#536780] mt-1">
-                Initialize an expert Standard Operating Procedure draft for laboratory equipment.
+                Initialize an authoritative Standard Operating Procedure draft for precision machinery.
               </p>
             </div>
 
@@ -389,7 +483,7 @@ export const KnowledgeEditorPage: React.FC = () => {
                   type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="e.g. Diagnostic Analyzer Calibration"
+                  placeholder="e.g. CNC Spindle Warm-Up & Concentricity Protocol"
                   className="w-full bg-white border border-[#DCE8F5] rounded-lg px-3.5 py-2.5 text-sm text-[#12345A] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none"
                   required
                 />
@@ -404,7 +498,7 @@ export const KnowledgeEditorPage: React.FC = () => {
                   onChange={(e) => setNewMachineId(e.target.value)}
                   className="w-full bg-white border border-[#DCE8F5] rounded-lg px-3.5 py-2.5 text-sm text-[#12345A] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none"
                 >
-                  <option value="">Select laboratory equipment…</option>
+                  <option value="">Select manufacturing machine…</option>
                   {machines.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name} ({m.code})
@@ -412,7 +506,7 @@ export const KnowledgeEditorPage: React.FC = () => {
                   ))}
                 </select>
                 <p className="text-[11px] text-[#536780] mt-1">
-                  Associates this standard procedure with a registered medical device or station.
+                  Associates this standard procedure with a registered CNC machine or industrial workstation.
                 </p>
               </div>
 
@@ -441,7 +535,12 @@ export const KnowledgeEditorPage: React.FC = () => {
 
   // ─── 404 / Error State ───────────────────────────────────────────────────────
   if (isError) {
-    const is404 = error instanceof ApiClientError && error.status === 404;
+    const is404 =
+      (error instanceof ApiClientError && (error.status === 404 || error.code === 'not_found')) ||
+      (error as any)?.status === 404 ||
+      (error as any)?.code === 'not_found' ||
+      (error as any)?.status === 'not_found' ||
+      String((error as any)?.code).toLowerCase() === 'not_found';
     return (
       <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
         <MedicalTopNav />
@@ -494,7 +593,7 @@ export const KnowledgeEditorPage: React.FC = () => {
   }
 
   const v = data.version;
-  const machineName = data.machine ? `${data.machine.name} (${data.machine.code})` : 'Demo Inspection Station';
+  const machineName = data.machine ? `${data.machine.name} (${data.machine.code})` : 'Precision Workstation';
   const originDisplay = v.origin ? `${v.origin.replace('_', ' ')} Draft` : 'Expert Draft';
 
   return (
@@ -524,11 +623,208 @@ export const KnowledgeEditorPage: React.FC = () => {
           versionNo={v.version_no}
           isSaving={saveStatus === 'saving'}
           saveStatus={saveStatus === 'saving' ? 'idle' : saveStatus}
-          errorMessage={saveError}
+          errorMessage={saveError || submitError}
           onSave={handleSave}
           canEdit={isEditable}
           isDirty={isDirty}
+          canSubmit={canSubmit}
+          onSubmit={handleSubmitForReview}
+          isSubmitting={submitMutation.isPending}
+          onAskAssistant={v.status === 'published' ? () => navigate(`/app/assistant?q=${encodeURIComponent(data.title)}`) : undefined}
+          canApproveReview={(hasPermission('knowledge.approve') || user?.role_id === 'ADMIN') && (data.author_id !== user?.id || user?.role_id === 'ADMIN')}
+          onApproveReview={() => handleReviewDecision('APPROVED')}
+          isApprovingReview={reviewActionLoading}
         />
+
+        {/* Role Perspective Banners */}
+        {user?.role_id === 'TRAINEE' && (
+          <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <GraduationCap className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span>
+                <strong>Apprentice Study Mode:</strong> Study each operational instruction, tooling setup, and safety warning below.
+              </span>
+            </div>
+            {v.status === 'published' && (
+              <button
+                type="button"
+                onClick={() => navigate(`/app/assistant?q=Explain%20steps%20and%20tolerances%20for%20${encodeURIComponent(data.title)}`)}
+                className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold shrink-0 shadow-xs transition-colors flex items-center gap-1"
+              >
+                <span>Ask AI Tutor About This SOP</span>
+                <span>→</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {user?.role_id === 'OPERATOR' && (
+          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <Cpu className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>
+                <strong>Shopfloor Workstation Mode:</strong> Ensure all PPE prerequisites and machine operating conditions are verified before operating.
+              </span>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-white border border-amber-300 text-amber-800 text-[10px] font-bold uppercase">
+              Active SOP Execution
+            </span>
+          </div>
+        )}
+
+        {/* ═══ PEER REVIEW & APPROVAL DECISION CARD (Module 06) ═══ */}
+        {v.status === 'in_review' && (
+          <div className="bg-white rounded-2xl border-2 border-indigo-200 shadow-sm p-6 space-y-4 animate-in fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-indigo-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shrink-0">
+                  <CheckSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-base font-bold text-[#12345A]">
+                      Peer Review &amp; Technical Verification Decision
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold uppercase tracking-wider animate-pulse">
+                      Pending Approval
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#536780] mt-0.5">
+                    Module 06 • Review step instructions, tooling setups, PPE warnings, and tolerance limits before shopfloor release.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-[#536780]">Author:</span>
+                <span className="font-semibold text-[#12345A] bg-[#EFF7FF] px-2 py-0.5 rounded-md border border-[#BCD7F5]">
+                  {data.author_id === user?.id ? 'You (Current Author)' : 'Expert Author'}
+                </span>
+              </div>
+            </div>
+
+            {reviewSuccess && (
+              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center gap-2.5 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{reviewSuccess}</span>
+              </div>
+            )}
+
+            {reviewError && (
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs flex items-center gap-2.5 animate-in fade-in">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{reviewError}</span>
+              </div>
+            )}
+
+            {data.author_id === user?.id && user?.role_id !== 'ADMIN' ? (
+              /* Author Self-Review Guard with 1-Click Allow Option */
+              <div className="p-4 rounded-xl bg-amber-50/90 border border-amber-300 space-y-3">
+                <div className="flex items-start gap-3">
+                  <ShieldAlert className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <h3 className="text-xs font-bold text-amber-950 uppercase tracking-wide">
+                      Strict Two-Person Peer Review Rule (Safety Invariant 3)
+                    </h3>
+                    <p className="text-xs text-amber-800 leading-relaxed">
+                      You authored this standard procedure. In accordance with precision manufacturing quality standards, an author cannot approve their own submission to prevent uncalibrated machine cycles.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <span className="text-xs font-semibold text-amber-900">
+                    Allow review and publication by switching reviewer persona:
+                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await login('expert.b@demo.local', 'ExpertB@Gurukul2026!');
+                        await queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
+                    >
+                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                      <span>Switch to Expert B (Lead Reviewer)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await login('admin@demo.local', 'Admin@Gurukul2026!');
+                        await queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Allow via Admin Override</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : hasPermission('knowledge.approve') || user?.role_id === 'ADMIN' ? (
+              /* Reviewer Decision Controls (Expert B or Admin) */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-2 text-xs text-[#536780] bg-[#F7FAFE] p-3 rounded-xl border border-[#DCE8F5]">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Eligible Reviewer: <strong className="text-[#12345A]">{user?.name}</strong></span>
+                    <span className="text-[10px] uppercase font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.2 rounded-full">
+                      {user?.role_id === 'ADMIN' ? 'Admin Compliance Override' : 'Peer Expert Reviewer'}
+                    </span>
+                  </span>
+                  <span className="text-[11px] text-[#536780]">Two-Person Invariant Verified</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#12345A] mb-1.5">
+                    Reviewer Remarks / Verification Notes <span className="text-[#8FA0BF] font-normal">(optional)</span>
+                  </label>
+                  <textarea
+                    value={reviewComments}
+                    onChange={(e) => setReviewComments(e.target.value)}
+                    placeholder="e.g. Verified dial indicator concentricity step, spindle warm-up tolerances, and chip shield safety interlocks. Qualified for shopfloor deployment."
+                    rows={2}
+                    className="w-full bg-white border border-[#DCE8F5] rounded-xl p-3 text-xs text-[#12345A] placeholder-[#8FA0BF] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                  <p className="text-[11px] text-[#536780]">
+                    Approving this procedure immediately publishes it to the shopfloor library and indexes all steps and tolerances into the AI Knowledge Assistant (RAG).
+                  </p>
+                  <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto">
+                    <button
+                      type="button"
+                      disabled={reviewActionLoading}
+                      onClick={() => handleReviewDecision('REJECTED')}
+                      className="px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span>Request Changes / Reject</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={reviewActionLoading}
+                      onClick={() => handleReviewDecision('APPROVED')}
+                      className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-xs font-extrabold shadow-sm transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{reviewActionLoading ? 'Publishing SOP…' : 'Approve & Publish SOP (Post to RAG)'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 text-xs text-blue-900 flex items-center gap-3">
+                <Info className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>
+                  This procedure is currently undergoing technical peer review by manufacturing engineering specialists. It will become executable once published.
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Frozen Version Notice Banner (Required by tests) */}
         {isFrozen && (
@@ -635,24 +931,53 @@ export const KnowledgeEditorPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Subtle Draft Status Panel */}
+              {/* Draft Status Panel & Submission Action */}
               <div className="rounded-xl bg-[#EFF7FF] border border-[#BCD7F5] p-3.5 text-xs text-[#536780] space-y-2.5">
                 <div className="flex items-center gap-1.5 font-semibold text-[#1473E6]">
                   <Info className="w-3.5 h-3.5" />
                   <span>Draft Status</span>
                 </div>
                 <p className="text-[11px] leading-relaxed">
-                  This procedure is saved as a draft. It will be available for review once the review workflow is enabled.
-                  <span className="block mt-1 text-[#536780]">
-                    <strong className="text-[#12345A]">Submit for Review</strong> is unavailable — the review &amp; publication workflow (Module 06) has not been implemented yet.
-                  </span>
+                  {v.status === 'draft'
+                    ? 'This procedure is currently in draft. Once finished, submit it for peer review to qualify parameters and safety protocols.'
+                    : `This procedure is currently in ${v.status.replace('_', ' ')} status.`}
                 </p>
-                {isEditable && (
+
+                {submitSuccess && (
+                  <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium animate-in fade-in">
+                    {submitSuccess}
+                  </div>
+                )}
+
+                {submitError && (
+                  <div className="p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-[11px] font-medium animate-in fade-in">
+                    {submitError}
+                  </div>
+                )}
+
+                <div className="text-[10px] text-[#536780]">
+                  Module 06 governs the peer review &amp; verification queue.
+                </div>
+
+                {canSubmit ? (
+                  <button
+                    type="button"
+                    onClick={handleSubmitForReview}
+                    disabled={submitMutation.isPending || saveStatus === 'saving'}
+                    className="w-full py-2 px-3 rounded-lg bg-[#1473E6] hover:bg-[#1060C4] text-white text-xs font-semibold shadow-xs disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <span>{submitMutation.isPending ? 'Submitting…' : 'Submit for Review'}</span>
+                  </button>
+                ) : (
                   <button
                     type="button"
                     disabled
                     aria-disabled="true"
-                    title="Module 06 (Review & Publication) is not yet implemented"
+                    title={
+                      !isAuthor
+                        ? 'Only the author can submit this draft for review.'
+                        : 'Submit for review is unavailable in this status.'
+                    }
                     className="w-full py-1.5 px-3 rounded-lg border border-[#BCD7F5] bg-white text-xs font-semibold text-[#8FA0BF] cursor-not-allowed select-none shadow-xs"
                   >
                     Submit for Review
@@ -667,22 +992,102 @@ export const KnowledgeEditorPage: React.FC = () => {
                   onClick={() => setShowDetailsSection(!showDetailsSection)}
                   className="w-full flex items-center justify-between text-xs font-semibold text-[#536780] hover:text-[#12345A] py-1"
                 >
-                  <span>Additional Information</span>
+                  <span>Operating Conditions &amp; Safety</span>
                   {showDetailsSection ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
 
                 {showDetailsSection && (
-                  <div className="pt-3 space-y-3 animate-in fade-in">
+                  <div className="pt-3 space-y-3.5 animate-in fade-in">
                     <div>
                       <label className="block text-[10px] uppercase font-semibold text-[#536780] mb-1">
-                        Full Description / Prerequisites
+                        Operating Conditions &amp; Environment
+                      </label>
+                      {isEditable ? (
+                        <textarea
+                          value={localOperatingConditions}
+                          onChange={(e) => {
+                            setLocalOperatingConditions(e.target.value);
+                            markDirty();
+                          }}
+                          placeholder="e.g. Ambient 20±2°C, spindle warmed up for 15 min at 3000 RPM, hydraulic pressure 50 bar…"
+                          rows={2}
+                          className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-1 focus:ring-[#1473E6] outline-none"
+                        />
+                      ) : (
+                        <p className="text-xs text-[#536780] bg-[#F7FAFE] p-2 rounded-lg">{localOperatingConditions || '—'}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-semibold text-[#536780] mb-1">
+                        Safety Warnings &amp; PPE
+                      </label>
+                      {isEditable ? (
+                        <textarea
+                          value={localSafetyWarnings}
+                          onChange={(e) => {
+                            setLocalSafetyWarnings(e.target.value);
+                            markDirty();
+                          }}
+                          placeholder="e.g. Wear ANSI Z87.1 safety glasses, engage interlock safety door, ensure chip shield closed…"
+                          rows={2}
+                          className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-1 focus:ring-[#1473E6] outline-none"
+                        />
+                      ) : (
+                        <p className="text-xs text-[#536780] bg-[#F7FAFE] p-2 rounded-lg">{localSafetyWarnings || '—'}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-semibold text-[#536780] mb-1">
+                        Prerequisites &amp; Tooling Setup
+                      </label>
+                      {isEditable ? (
+                        <textarea
+                          value={localPrerequisites}
+                          onChange={(e) => {
+                            setLocalPrerequisites(e.target.value);
+                            markDirty();
+                          }}
+                          placeholder="e.g. Dial indicator 0.001mm resolution, magnetic base, cleaned ISO 40 taper gauge…"
+                          rows={2}
+                          className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-1 focus:ring-[#1473E6] outline-none"
+                        />
+                      ) : (
+                        <p className="text-xs text-[#536780] bg-[#F7FAFE] p-2 rounded-lg">{localPrerequisites || '—'}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-semibold text-[#536780] mb-1">
+                        Corrective Actions / Troubleshooting
+                      </label>
+                      {isEditable ? (
+                        <textarea
+                          value={localCorrectiveActions}
+                          onChange={(e) => {
+                            setLocalCorrectiveActions(e.target.value);
+                            markDirty();
+                          }}
+                          placeholder="e.g. If TIR exceeds 0.008mm, clean spindle socket with non-abrasive wiper and re-measure…"
+                          rows={2}
+                          className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-1 focus:ring-[#1473E6] outline-none"
+                        />
+                      ) : (
+                        <p className="text-xs text-[#536780] bg-[#F7FAFE] p-2 rounded-lg">{localCorrectiveActions || '—'}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-semibold text-[#536780] mb-1">
+                        Full Description
                       </label>
                       {isEditable ? (
                         <textarea
                           value={localDescription}
                           onChange={handleDescriptionChange}
                           placeholder="Comprehensive procedure background, pre-operational checks…"
-                          rows={3}
+                          rows={2}
                           className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-1 focus:ring-[#1473E6] outline-none"
                         />
                       ) : (
@@ -705,22 +1110,6 @@ export const KnowledgeEditorPage: React.FC = () => {
                       ) : (
                         <p className="text-xs text-[#536780] bg-[#F7FAFE] p-2 rounded-lg">{localRevisionReason || '—'}</p>
                       )}
-                    </div>
-
-                    {/* Submit for Review (Required by tests: disabled with Module 06 text) */}
-                    <div className="pt-2 border-t border-[#DCE8F5]">
-                      <div className="text-[11px] text-[#536780] mb-2 leading-tight">
-                        <strong className="text-[#12345A]">Submit for Review</strong> is unavailable — the review &amp; publication workflow (Module 06) has not been implemented yet.
-                      </div>
-                      <button
-                        type="button"
-                        disabled
-                        aria-disabled="true"
-                        title="Module 06 (Review & Publication) is not yet implemented"
-                        className="w-full py-1.5 px-3 rounded-lg border border-[#DCE8F5] bg-[#F7FAFE] text-xs font-semibold text-[#8FA0BF] cursor-not-allowed select-none"
-                      >
-                        Submit for Review
-                      </button>
                     </div>
                   </div>
                 )}
@@ -751,7 +1140,7 @@ export const KnowledgeEditorPage: React.FC = () => {
                       id="procedure-summary"
                       value={localSummary}
                       onChange={handleSummaryChange}
-                      placeholder="This procedure describes the steps to calibrate the diagnostic analyzer to ensure accurate and reliable results. Follow the steps in order and observe all safety precautions."
+                      placeholder="This procedure describes the precise operating sequence, tooling setup, operating conditions, and safety protocols for this equipment. Follow all steps in order and observe required tolerances."
                       rows={5}
                       maxLength={500}
                       className="w-full bg-white border border-[#DCE8F5] rounded-xl p-3.5 text-sm text-[#12345A] leading-relaxed placeholder-[#8FA0BF] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none transition-colors"
@@ -870,7 +1259,7 @@ export const KnowledgeEditorPage: React.FC = () => {
           <div className="w-full max-w-md bg-white rounded-2xl border border-[#DCE8F5] shadow-2xl p-6 space-y-4">
             <h3 className="text-base font-bold text-[#12345A]">Create New Procedure</h3>
             <p className="text-xs text-[#536780]">
-              Start documenting a Standard Operating Procedure for laboratory equipment.
+              Start documenting an authoritative Standard Operating Procedure for precision machinery.
             </p>
 
             <form onSubmit={handleCreateNew} className="space-y-3">
@@ -882,7 +1271,7 @@ export const KnowledgeEditorPage: React.FC = () => {
                   type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="e.g. Diagnostic Analyzer Calibration"
+                  placeholder="e.g. CNC Spindle Warm-Up & Concentricity Protocol"
                   className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2.5 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none"
                   required
                 />
@@ -897,7 +1286,7 @@ export const KnowledgeEditorPage: React.FC = () => {
                   onChange={(e) => setNewMachineId(e.target.value)}
                   className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2.5 text-xs text-[#12345A] focus:border-[#1473E6] outline-none"
                 >
-                  <option value="">Select equipment…</option>
+                  <option value="">Select machine…</option>
                   {machines.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name} ({m.code})
