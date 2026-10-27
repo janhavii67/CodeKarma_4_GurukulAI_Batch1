@@ -126,20 +126,16 @@ describe('Redesigned Operational Dashboard Tests', () => {
       </BrowserRouter>
     );
 
-    // Welcome greeting with real display name and role
-    expect(screen.getByText(/Welcome back, Dr. Jane Smith/i)).toBeInTheDocument();
-    expect(screen.getByText(/Healthcare & Diagnostics Expert/i)).toBeInTheDocument();
-    expect(screen.getByText(/Authorized Peer Reviewer/i)).toBeInTheDocument();
-
     // Primary headline and editorial messaging
     expect(screen.getByText(/Your Experience./i)).toBeInTheDocument();
     expect(screen.getByText(/Their Future./i)).toBeInTheDocument();
 
     // Primary action buttons for expert
     expect(screen.getAllByText(/Capture Knowledge/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Explore My Knowledge/i)).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText(/Continue Draft/i)).toBeInTheDocument();
+      expect(screen.getByText(/Resume Draft/i)).toBeInTheDocument();
     });
 
     // Stitch Asymmetric Feature Cards & Lower Supporting Grid
@@ -150,7 +146,7 @@ describe('Redesigned Operational Dashboard Tests', () => {
     expect(screen.getByText(/Recently Shared/i)).toBeInTheDocument();
     expect(screen.getByText(/Start Capturing →/i)).toBeInTheDocument();
     expect(screen.getByText(/Review Knowledge/i)).toBeInTheDocument();
-    expect(screen.getByText(/Ask the Assistant →/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ask Assistant →/i)).toBeInTheDocument();
 
     // MANDATORY REMOVALS: Verify the 6 legacy metrics are completely ABSENT from DOM
     expect(screen.queryByText('SOPs Created')).not.toBeInTheDocument();

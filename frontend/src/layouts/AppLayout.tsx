@@ -1,326 +1,375 @@
-import React, { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { NavLink, Outlet, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { Badge } from '../components/ui/Badge';
-import { Button } from '../components/ui/Button';
 import {
-  LayoutDashboard,
-  Cpu,
-  FileText,
-  Mic,
-  CheckSquare,
-  Bot,
-  Layers,
-  Wrench,
-  Volume2,
-  GitFork,
-  AlertOctagon,
-  Eye,
-  Film,
   LogOut,
+  Cpu,
+  Mic,
+  Volume2,
   Menu,
   X,
-  ExternalLink,
-  ShieldCheck,
-  UserCheck,
 } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
   const { user, logout, hasRole } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const location = useLocation();
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
 
   const isExpert = hasRole('EXPERT');
 
-  const navItemClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150 select-none ${
-      isActive
-        ? 'bg-[#EAF3FF] text-[#1976D2] border border-[#BCD7F5] font-semibold shadow-xs'
-        : 'text-[#5D7188] hover:text-[#17324D] hover:bg-[#F3F8FE] border border-transparent'
-    }`;
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        profileDropdownRef.current &&
+        !profileDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
-  // Module 01: Full-width medical layout
-  if (location.pathname.startsWith('/app/knowledge')) {
-    return (
-      <div className="min-h-screen bg-[#F5F8FC] text-[#17324D] font-sans">
-        <Outlet />
-      </div>
-    );
-  }
+  // User initials for monogram
+  const userInitials = user?.name
+    ? user.name
+        .split(' ')
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase()
+    : 'EM';
 
   return (
-    <div className="min-h-screen bg-[#F5F8FC] flex flex-col md:flex-row text-[#17324D] font-sans">
-      {/* Sidebar for Desktop */}
-      <aside className="hidden md:flex w-64 bg-white border-r border-[#DCE6F0] flex-col justify-between shrink-0 h-screen sticky top-0 z-30 shadow-[1px_0_4px_rgba(25,118,210,0.03)]">
-        <div className="flex flex-col h-full overflow-hidden">
-          {/* Logo & Platform Title */}
-          <div className="p-4 border-b border-[#DCE6F0] flex items-center justify-between bg-white">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#1976D2] to-[#1677F2] flex items-center justify-center text-white shadow-xs">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m-8-8h16" />
-                </svg>
-              </div>
-              <div>
-                <span className="font-bold text-sm tracking-wide text-[#17324D]">GURUKUL AI</span>
-                <span className="text-[10px] block font-medium text-[#7C8DA1]">Medical Knowledge Engine</span>
-              </div>
-            </div>
-            <Badge variant={isExpert ? 'brand' : 'info'} size="sm">
-              {user?.role_id}
-            </Badge>
-          </div>
-
-          {/* Nav Links */}
-          <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-            {/* Group 1: Core Portal */}
-            <div>
-              <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#7C8DA1] block mb-1.5">
-                Core Operations
+    <div className="min-h-screen bg-[#F5F8FC] flex flex-col text-[#0F172A] font-sans antialiased">
+      {/* ─── 1. SLIM BLUE INDUSTRIAL STATUS STRIP (TOP) ─── */}
+      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-3">
+        <div className="rounded-xl bg-[#0B2545] text-white px-5 sm:px-6 h-9 flex items-center justify-between text-xs font-medium tracking-wide shadow-sm select-none">
+          <div className="flex items-center gap-4 sm:gap-5">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
+              <span className="uppercase font-semibold tracking-wider text-[11px]">
+                PLANT FLOOR LINE 04 · SHIFT 01
               </span>
-              <div className="space-y-0.5">
-                <NavLink to="/app" end className={navItemClass}>
-                  <LayoutDashboard className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>Dashboard</span>
-                </NavLink>
-                <NavLink to="/app/machines" className={navItemClass}>
-                  <Cpu className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>Machine Assets (M00)</span>
-                </NavLink>
-              </div>
             </div>
-
-            {/* Group 2: Capture & Governance */}
-            <div>
-              <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#7C8DA1] block mb-1.5 flex items-center justify-between">
-                <span>Capture & Review</span>
-                {isExpert && <span className="text-[9px] text-[#1976D2] lowercase font-semibold">expert</span>}
-              </span>
-              <div className="space-y-0.5">
-                <NavLink to="/app/knowledge" className={navItemClass}>
-                  <FileText className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>Knowledge Capture (M01)</span>
-                </NavLink>
-                <NavLink to="/app/voice-capture" className={navItemClass}>
-                  <Mic className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span className="flex-1">Voice-to-Knowledge (M04)</span>
-                  <span className="text-[9px] bg-emerald-50 text-[#15966A] px-1.5 py-0.5 rounded font-medium border border-emerald-200">Live</span>
-                </NavLink>
-                <NavLink to="/app/reviews" className={navItemClass}>
-                  <CheckSquare className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>Review Queue (M06)</span>
-                </NavLink>
-              </div>
-            </div>
-
-            {/* Group 3: Training & AI Assistant */}
-            <div>
-              <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#7C8DA1] block mb-1.5">
-                Operator Training
-              </span>
-              <div className="space-y-0.5">
-                <NavLink to="/app/assistant" className={navItemClass}>
-                  <Bot className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>AI Assistant (M02)</span>
-                </NavLink>
-                <NavLink to="/app/guided-workflows" className={navItemClass}>
-                  <Layers className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>Guided Workflows (M03)</span>
-                </NavLink>
-                <NavLink to="/app/troubleshooting" className={navItemClass}>
-                  <Wrench className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>Troubleshooting (M05)</span>
-                </NavLink>
-                <NavLink to="/app/synchronized-simulation" className={navItemClass}>
-                  <Film className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>Sync Simulation (M11)</span>
-                </NavLink>
-              </div>
-            </div>
-
-            {/* Group 4: Advanced Verification */}
-            <div>
-              <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#7C8DA1] block mb-1.5">
-                Diagnostics & Skills
-              </span>
-              <div className="space-y-0.5">
-                <NavLink to="/app/sound-analysis" className={navItemClass}>
-                  <Volume2 className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>Sound Analysis (M07)</span>
-                </NavLink>
-                <NavLink to="/app/knowledge-graph" className={navItemClass}>
-                  <GitFork className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>Knowledge Graph (M08)</span>
-                </NavLink>
-                <NavLink to="/app/failure-simulator" className={navItemClass}>
-                  <AlertOctagon className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>Failure Simulator (M09)</span>
-                </NavLink>
-                <NavLink to="/app/skill-verification" className={navItemClass}>
-                  <Eye className="w-4 h-4 shrink-0 text-[#1976D2]" />
-                  <span>Skill Verification (M10)</span>
-                </NavLink>
-              </div>
+            <span className="text-white/20 hidden sm:inline">|</span>
+            <div className="hidden sm:flex items-center gap-1.5 text-white/90 text-[11px]">
+              <span className="material-symbols-outlined text-[15px] text-[#10B981]">verified</span>
+              <span>AS9100 / ISO 9001 Knowledge Integrity Assured</span>
             </div>
           </div>
-
-          {/* User Profile Card & Logout */}
-          <div className="p-3 border-t border-[#DCE6F0] bg-[#F3F8FE]/80">
-            <div className="flex items-center justify-between mb-2.5">
-              <div className="flex items-center gap-2 overflow-hidden">
-                <div className="w-8 h-8 rounded-full bg-[#124A78] text-white flex items-center justify-center shrink-0 shadow-xs">
-                  {isExpert ? <ShieldCheck className="w-4 h-4 text-[#EAF3FF]" /> : <UserCheck className="w-4 h-4 text-[#EAF3FF]" />}
-                </div>
-                <div className="overflow-hidden">
-                  <span className="text-xs font-bold text-[#17324D] block truncate">
-                    {user?.name}
-                  </span>
-                  <span className="text-[10px] text-[#5D7188] block truncate">
-                    {user?.email}
-                  </span>
-                </div>
-              </div>
+          <div className="flex items-center gap-4 text-[11px] text-white/90">
+            <div className="flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[15px]">cloud_done</span>
+              <span className="hidden sm:inline">Cloud Sync: Active (Real-Time)</span>
+              <span className="sm:hidden">Sync: Active</span>
             </div>
-
-            <Button
-              variant="secondary"
-              size="sm"
-              className="w-full justify-center text-xs py-1.5 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"
-              icon={<LogOut className="w-3.5 h-3.5" />}
-              onClick={() => logout()}
-            >
-              Sign Out
-            </Button>
           </div>
         </div>
-      </aside>
+      </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header */}
-        <header className="h-14 bg-white border-b border-[#DCE6F0] px-4 md:px-6 flex items-center justify-between sticky top-0 z-20 shadow-[0_1px_4px_rgba(25,118,210,0.03)]">
-          <div className="flex items-center gap-3">
+      {/* ─── 2. EXACTLY ONE HORIZONTAL NAVBAR (BELOW STATUS STRIP) ─── */}
+      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-3 pb-1 sticky top-0 z-30">
+        <header className="bg-white rounded-2xl border border-[#E2E8F0] px-5 sm:px-6 py-3 shadow-xs flex items-center justify-between gap-4">
+          {/* Left: Gurukul AI brandmark & tagline */}
+          <Link to="/app" className="flex items-center gap-3 shrink-0 group">
+            <div className="w-9 h-9 rounded-xl bg-[#1976C9] text-white flex items-center justify-center font-bold shadow-sm group-hover:bg-[#125EA3] transition-colors">
+              <span className="material-symbols-outlined text-[20px]">precision_manufacturing</span>
+            </div>
+            <div>
+              <span className="font-extrabold text-sm tracking-tight text-[#173B5E] block leading-none">
+                Gurukul AI
+              </span>
+              <span className="text-[10px] font-semibold tracking-wider text-[#536779] uppercase">
+                TACIT ENGINEERING CORE
+              </span>
+            </div>
+          </Link>
+
+          {/* Center: Desktop Navigation Links (all fit on one line) */}
+          <nav className="hidden lg:flex items-center gap-1.5 justify-center text-xs font-semibold">
+            <NavLink
+              to="/app"
+              end
+              className={({ isActive }) =>
+                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
+                  isActive
+                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
+                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
+                  <span>Home</span>
+                </>
+              )}
+            </NavLink>
+
+            <NavLink
+              to="/app/knowledge/new"
+              className={({ isActive }) =>
+                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
+                  isActive
+                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
+                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
+                  <span>Capture Knowledge</span>
+                </>
+              )}
+            </NavLink>
+
+            <NavLink
+              to="/app/knowledge"
+              end
+              className={({ isActive }) =>
+                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
+                  isActive
+                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
+                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
+                  <span>My Knowledge</span>
+                </>
+              )}
+            </NavLink>
+
+            <NavLink
+              to="/app/reviews"
+              className={({ isActive }) =>
+                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
+                  isActive
+                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
+                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
+                  <span>Review &amp; Verify</span>
+                </>
+              )}
+            </NavLink>
+
+            <NavLink
+              to="/app/assistant"
+              className={({ isActive }) =>
+                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
+                  isActive
+                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
+                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
+                  <span>Knowledge Assistant</span>
+                </>
+              )}
+            </NavLink>
+
+            <NavLink
+              to="/app/guided-workflows"
+              className={({ isActive }) =>
+                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
+                  isActive
+                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
+                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
+                  <span>Guided Workflows</span>
+                </>
+              )}
+            </NavLink>
+          </nav>
+
+          {/* Right: Expert Profile Module with Dropdown */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="relative" ref={profileDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                className="flex items-center gap-2.5 p-1 rounded-xl hover:bg-slate-50 transition-colors focus:outline-none"
+                aria-expanded={isProfileDropdownOpen}
+              >
+                <div className="w-8 h-8 rounded-full bg-[#173B5E] text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
+                  {userInitials}
+                </div>
+                <div className="text-left hidden sm:block">
+                  <span className="text-xs font-bold text-[#173B5E] block leading-tight truncate max-w-[140px]">
+                    {user?.name || 'E. Mitchell'}
+                  </span>
+                  <span className="text-[10px] text-[#536779] font-medium block">
+                    {isExpert ? 'Master Machinist' : 'Technical Specialist'}
+                  </span>
+                </div>
+                <span className="material-symbols-outlined text-[18px] text-slate-400">
+                  expand_more
+                </span>
+              </button>
+
+              {/* Profile Dropdown Menu */}
+              {isProfileDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-[#E2E8F0] py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="px-4 py-2 border-b border-slate-100">
+                    <span className="text-xs font-bold text-[#173B5E] block truncate">
+                      {user?.name}
+                    </span>
+                    <span className="text-[11px] text-[#536779] block truncate">
+                      {user?.email}
+                    </span>
+                    <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-[#EFF4FF] text-[#1976C9] border border-[#1976C9]/20">
+                      {user?.role_id}
+                    </span>
+                  </div>
+
+                  <div className="py-1">
+                    <Link
+                      to="/app/machines"
+                      onClick={() => setIsProfileDropdownOpen(false)}
+                      className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] flex items-center gap-2.5 transition-colors"
+                    >
+                      <Cpu className="w-4 h-4 text-[#1976C9]" />
+                      <span>Machine Assets (M00)</span>
+                    </Link>
+
+                    <Link
+                      to="/app/voice-capture"
+                      onClick={() => setIsProfileDropdownOpen(false)}
+                      className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] flex items-center gap-2.5 transition-colors"
+                    >
+                      <Mic className="w-4 h-4 text-[#19A995]" />
+                      <span>Voice-to-Knowledge (M04)</span>
+                    </Link>
+
+                    <Link
+                      to="/app/sound-analysis"
+                      onClick={() => setIsProfileDropdownOpen(false)}
+                      className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] flex items-center gap-2.5 transition-colors"
+                    >
+                      <Volume2 className="w-4 h-4 text-[#1976C9]" />
+                      <span>Sound Analysis (M07)</span>
+                    </Link>
+                  </div>
+
+                  <div className="pt-1 border-t border-slate-100 px-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsProfileDropdownOpen(false);
+                        logout();
+                      }}
+                      className="w-full px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg flex items-center gap-2 transition-colors"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Mobile menu hamburger button */}
             <button
               type="button"
-              className="md:hidden p-1.5 rounded-lg text-[#5D7188] hover:text-[#17324D] hover:bg-[#F3F8FE]"
+              className="lg:hidden p-2 rounded-xl text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 transition-colors"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label="Toggle navigation menu"
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
-
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-[#7C8DA1] font-medium">Gurukul AI</span>
-              <span className="text-[#DCE6F0]">/</span>
-              <span className="text-[#17324D] font-bold capitalize">
-                {location.pathname.replace('/app/', '').replace('/app', 'Dashboard') || 'Dashboard'}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-[#EAF3FF] border border-[#BCD7F5] text-[11px] font-semibold text-[#1976D2]">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Phase 1 Baseline</span>
-            </div>
-
-            <a
-              href="/docs"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:inline-flex items-center gap-1 text-xs text-[#5D7188] hover:text-[#1976D2] font-medium transition-colors"
-            >
-              <span>API Docs</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-
-            <Badge variant={isExpert ? 'brand' : 'info'} size="sm">
-              {user?.role_id}
-            </Badge>
           </div>
         </header>
 
         {/* Mobile Navigation Drawer */}
         {isMobileMenuOpen && (
-          <div className="md:hidden fixed inset-0 top-14 bg-white/95 backdrop-blur-xl z-30 p-4 overflow-y-auto space-y-4 border-b border-[#DCE6F0] shadow-lg">
-            <div className="space-y-1">
-              <NavLink to="/app" end className={navItemClass} onClick={closeMobileMenu}>
-                <LayoutDashboard className="w-4 h-4 text-[#1976D2]" />
-                <span>Dashboard</span>
-              </NavLink>
-              <NavLink to="/app/machines" className={navItemClass} onClick={closeMobileMenu}>
-                <Cpu className="w-4 h-4 text-[#1976D2]" />
-                <span>Machines (M00)</span>
-              </NavLink>
-              <NavLink to="/app/knowledge" className={navItemClass} onClick={closeMobileMenu}>
-                <FileText className="w-4 h-4 text-[#1976D2]" />
-                <span>Knowledge Capture (M01)</span>
-              </NavLink>
-              <NavLink to="/app/voice-capture" className={navItemClass} onClick={closeMobileMenu}>
-                <Mic className="w-4 h-4 text-[#1976D2]" />
-                <span className="flex-1">Voice-to-Knowledge (M04)</span>
-                <span className="text-[9px] bg-emerald-50 text-[#15966A] px-1.5 py-0.5 rounded font-medium border border-emerald-200">Live</span>
-              </NavLink>
-              <NavLink to="/app/reviews" className={navItemClass} onClick={closeMobileMenu}>
-                <CheckSquare className="w-4 h-4 text-[#1976D2]" />
-                <span>Review Queue (M06)</span>
-              </NavLink>
-              <NavLink to="/app/assistant" className={navItemClass} onClick={closeMobileMenu}>
-                <Bot className="w-4 h-4 text-[#1976D2]" />
-                <span>AI Assistant (M02)</span>
-              </NavLink>
-              <NavLink to="/app/guided-workflows" className={navItemClass} onClick={closeMobileMenu}>
-                <Layers className="w-4 h-4 text-[#1976D2]" />
-                <span>Guided Workflows (M03)</span>
-              </NavLink>
-              <NavLink to="/app/troubleshooting" className={navItemClass} onClick={closeMobileMenu}>
-                <Wrench className="w-4 h-4 text-[#1976D2]" />
-                <span>Troubleshooting (M05)</span>
-              </NavLink>
-              <NavLink to="/app/sound-analysis" className={navItemClass} onClick={closeMobileMenu}>
-                <Volume2 className="w-4 h-4 text-[#1976D2]" />
-                <span>Sound Analysis (M07)</span>
-              </NavLink>
-              <NavLink to="/app/knowledge-graph" className={navItemClass} onClick={closeMobileMenu}>
-                <GitFork className="w-4 h-4 text-[#1976D2]" />
-                <span>Knowledge Graph (M08)</span>
-              </NavLink>
-              <NavLink to="/app/failure-simulator" className={navItemClass} onClick={closeMobileMenu}>
-                <AlertOctagon className="w-4 h-4 text-[#1976D2]" />
-                <span>Failure Simulator (M09)</span>
-              </NavLink>
-              <NavLink to="/app/skill-verification" className={navItemClass} onClick={closeMobileMenu}>
-                <Eye className="w-4 h-4 text-[#1976D2]" />
-                <span>Skill Verification (M10)</span>
-              </NavLink>
-              <NavLink to="/app/synchronized-simulation" className={navItemClass} onClick={closeMobileMenu}>
-                <Film className="w-4 h-4 text-[#1976D2]" />
-                <span>Sync Simulation (M11)</span>
-              </NavLink>
-            </div>
-
-            <div className="pt-4 border-t border-[#DCE6F0]">
-              <Button
-                variant="secondary"
-                size="sm"
-                className="w-full justify-center"
+          <div className="lg:hidden mt-2 bg-white rounded-2xl border border-[#E2E8F0] shadow-xl p-4 space-y-2 z-40">
+            <NavLink
+              to="/app"
+              end
+              onClick={closeMobileMenu}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#173B5E] hover:bg-[#EFF4FF]"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />
+              <span>Home</span>
+            </NavLink>
+            <NavLink
+              to="/app/knowledge/new"
+              onClick={closeMobileMenu}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
+            >
+              <span>Capture Knowledge</span>
+            </NavLink>
+            <NavLink
+              to="/app/knowledge"
+              end
+              onClick={closeMobileMenu}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
+            >
+              <span>My Knowledge</span>
+            </NavLink>
+            <NavLink
+              to="/app/reviews"
+              onClick={closeMobileMenu}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
+            >
+              <span>Review &amp; Verify</span>
+            </NavLink>
+            <NavLink
+              to="/app/assistant"
+              onClick={closeMobileMenu}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
+            >
+              <span>Knowledge Assistant</span>
+            </NavLink>
+            <NavLink
+              to="/app/guided-workflows"
+              onClick={closeMobileMenu}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
+            >
+              <span>Guided Workflows</span>
+            </NavLink>
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                type="button"
                 onClick={() => {
-                  logout();
                   closeMobileMenu();
+                  logout();
                 }}
+                className="w-full px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl flex items-center gap-2"
               >
-                Sign Out
-              </Button>
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
+              </button>
             </div>
           </div>
         )}
-
-        {/* Page Outlet */}
-        <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
-          <Outlet />
-        </main>
       </div>
+
+      {/* ─── 3. FULL-WIDTH MAIN APPLICATION CONTENT ─── */}
+      <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-5">
+        <Outlet />
+      </main>
     </div>
   );
 };

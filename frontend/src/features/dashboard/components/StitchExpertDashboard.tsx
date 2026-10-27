@@ -12,18 +12,16 @@ interface StitchExpertDashboardProps {
 }
 
 export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
-  user,
   stats,
   loading,
   hasPermission,
 }) => {
   const canCreate = hasPermission('knowledge.create');
-  const canApprove = hasPermission('knowledge.approve');
   const pendingReviewsForUser = stats?.pending_reviews_for_user ?? 4;
   const latestDraftId = stats?.latest_draft_id;
   const recentArticles = stats?.recent_articles || [];
 
-  // Knowledge gaps conditional display rule
+  // Actionable knowledge gaps
   const knowledgeGaps = [
     {
       id: 'gap-01',
@@ -48,108 +46,8 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
   const hasKnowledgeGaps = knowledgeGaps.length > 0;
 
   return (
-    <div className="space-y-8 max-w-[1440px] mx-auto pb-12 font-sans text-[#0F172A]">
-      {/* ─── A.1. TOP UTILITY BAR (OPERATIONAL STATUS & REAL-TIME SYNC) ─── */}
-      <div className="rounded-xl bg-[#0B2545] text-white px-5 sm:px-6 h-9 flex items-center justify-between text-xs font-medium tracking-wide shadow-sm select-none">
-        <div className="flex items-center gap-4 sm:gap-5">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
-            <span className="uppercase font-semibold tracking-wider text-[11px]">
-              PLANT FLOOR LINE 04 · ACTIVE SHIFT 01
-            </span>
-          </div>
-          <span className="text-white/20 hidden sm:inline">|</span>
-          <div className="hidden sm:flex items-center gap-1.5 text-white/90 text-[11px]">
-            <span className="material-symbols-outlined text-[15px] text-[#10B981]">verified</span>
-            <span>AS9100 / ISO 9001 Knowledge Integrity Assured</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-4 text-[11px] text-white/90">
-          <div className="flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[15px]">cloud_done</span>
-            <span className="hidden sm:inline">Cloud Sync: Active (Real-Time)</span>
-            <span className="sm:hidden">Sync: Active</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ─── A.2. MAIN HEADER & NAVIGATION BAR (STITCH COMPONENT) ─── */}
-      <header className="bg-white rounded-2xl border border-[#E2E8F0] px-6 py-3.5 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        {/* Left: Brandmark & Tagline */}
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#1976C9] text-white flex items-center justify-center font-bold shadow-sm">
-            <span className="material-symbols-outlined text-[20px]">precision_manufacturing</span>
-          </div>
-          <div>
-            <span className="font-extrabold text-sm tracking-tight text-[#173B5E] block leading-none">
-              Gurukul AI
-            </span>
-            <span className="text-[10px] font-semibold tracking-wider text-[#536779] uppercase">
-              TACIT ENGINEERING CORE
-            </span>
-          </div>
-        </div>
-
-        {/* Center: Navigation Links */}
-        <nav className="flex items-center gap-1 sm:gap-1.5 flex-wrap justify-center text-xs font-semibold">
-          <Link
-            to="/app"
-            className="px-3.5 py-1.5 rounded-full bg-[#EFF4FF] text-[#1976C9] font-bold transition-all shadow-xs"
-          >
-            Home
-          </Link>
-          <Link
-            to="/app/knowledge/new"
-            className="px-3.5 py-1.5 rounded-full text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 transition-colors"
-          >
-            Capture Knowledge
-          </Link>
-          <Link
-            to="/app/knowledge"
-            className="px-3.5 py-1.5 rounded-full text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 transition-colors"
-          >
-            My Knowledge
-          </Link>
-          <Link
-            to="/app/reviews"
-            className="px-3.5 py-1.5 rounded-full text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 transition-colors"
-          >
-            Review &amp; Verify
-          </Link>
-          <Link
-            to="/app/assistant"
-            className="px-3.5 py-1.5 rounded-full text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 transition-colors"
-          >
-            Knowledge Assistant
-          </Link>
-          <Link
-            to="/app/guided-workflows"
-            className="px-3.5 py-1.5 rounded-full text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 transition-colors"
-          >
-            Guided Workflows
-          </Link>
-        </nav>
-
-        {/* Right: Expert Profile Module */}
-        <div className="flex items-center gap-3 pl-2 border-t md:border-t-0 md:border-l border-slate-200">
-          <div className="w-8 h-8 rounded-full bg-[#173B5E] text-white flex items-center justify-center font-bold text-xs shadow-xs">
-            {user?.name ? user.name.charAt(0).toUpperCase() : 'E'}
-          </div>
-          <div className="text-left hidden sm:block">
-            <span className="text-xs font-bold text-[#173B5E] block leading-tight">
-              {user?.name || 'E. Mitchell'}
-            </span>
-            <span className="text-[10px] text-[#536779] font-medium block">
-              Senior Machinist Master
-            </span>
-          </div>
-          <span className="material-symbols-outlined text-[18px] text-slate-400 cursor-pointer">
-            expand_more
-          </span>
-        </div>
-      </header>
-
-      {/* ─── B. SIGNATURE EDITORIAL HERO SECTION ─── */}
+    <div className="space-y-6 w-full font-sans text-[#0F172A]">
+      {/* ─── 1. SIGNATURE EDITORIAL HERO SECTION ─── */}
       <section className="bg-white rounded-3xl border border-[#E2E8F0] p-6 lg:p-10 shadow-sm overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
           {/* Left Column: Typography & Action Triggers (50% / 5-6 cols) */}
@@ -162,53 +60,27 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
               </span>
             </div>
 
-            {/* Role Validation Subtext */}
-            <div className="flex items-center gap-2 flex-wrap mb-3 text-xs">
-              <span className="px-2.5 py-0.5 rounded-full bg-[#EFF4FF] text-[#1976C9] font-semibold text-[11px] border border-[#BCD7F5]">
-                Healthcare &amp; Diagnostics Expert
-              </span>
-              {canApprove && (
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-[#10B981] font-semibold text-[11px] border border-emerald-200">
-                  Authorized Peer Reviewer
-                </span>
-              )}
-            </div>
-
             {/* Editorial Headline */}
             <h1 className="text-3xl sm:text-4xl lg:text-[46px] font-extrabold text-[#173B5E] tracking-tight leading-[1.12] mb-3">
               Your Experience.<br />
               <span className="text-[#1976C9]">Their Future.</span>
             </h1>
 
-            {/* Personalized Greeting */}
-            <div className="text-xs font-semibold text-[#1976C9] tracking-wide uppercase mb-3">
-              Welcome back, {user?.name || 'E. Mitchell'}
-            </div>
-
             {/* Subtitle */}
             <p className="text-sm sm:text-base text-[#536779] leading-relaxed mb-6 max-w-[480px]">
               Preserve the know-how only experience can teach. Empower the next generation of skilled operators.
             </p>
 
-            {/* Button Group: Primary & Secondary CTAs */}
+            {/* Button Group: Exactly Two Primary Actions */}
             <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto mb-6">
               {canCreate && (
                 <Link
                   to="/app/knowledge/new"
                   className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#1976C9] hover:bg-[#125EA3] text-white font-semibold text-sm transition-all shadow-md shadow-[#1976C9]/20 hover:-translate-y-0.5"
                 >
+                  <span className="material-symbols-outlined text-[19px]">videocam</span>
                   <span>Capture Knowledge</span>
                   <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-                </Link>
-              )}
-
-              {latestDraftId && (
-                <Link
-                  to={`/app/knowledge/${latestDraftId}`}
-                  className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#173B5E] border-2 border-[#1976C9]/40 font-semibold text-sm transition-all hover:border-[#1976C9] shadow-sm"
-                >
-                  <span className="material-symbols-outlined text-[18px] text-[#1976C9]">edit_note</span>
-                  <span>Continue Draft</span>
                 </Link>
               )}
 
@@ -216,6 +88,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                 to="/app/knowledge"
                 className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#173B5E] border-2 border-[#173B5E] font-semibold text-sm transition-all hover:bg-slate-50 shadow-sm"
               >
+                <span className="material-symbols-outlined text-[19px] text-[#536779]">folder_open</span>
                 <span>Explore My Knowledge</span>
               </Link>
             </div>
@@ -251,7 +124,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
         </div>
       </section>
 
-      {/* ─── C. PRIMARY ACTIONS: VISIBLY ASYMMETRIC 3-CARD GRID (5:3:2 RATIO) ─── */}
+      {/* ─── 2. PRIMARY ACTIONS: VISIBLY ASYMMETRIC 3-CARD GRID (5:3:2 RATIO) ─── */}
       <section className="w-full">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           
@@ -332,7 +205,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
               <span className="text-[11px] text-[#536779] flex items-center gap-1.5 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                Ready for Shift 1
+                Ready for Shift 1 Recording
               </span>
               <Link
                 to="/app/knowledge/new"
@@ -350,7 +223,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                 <div className="w-11 h-11 rounded-xl bg-white/10 text-white flex items-center justify-center backdrop-blur-sm border border-white/15">
                   <span className="material-symbols-outlined text-[24px]">fact_check</span>
                 </div>
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase bg-[#FEF3C7] text-[#92400E] flex items-center gap-1.5 shadow-xs">
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase bg-[#FEF3C7] text-[#92400E] flex items-center gap-1.5 shadow-xs font-semibold">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#D97706] animate-ping" />
                   ACTION REQUIRED
                 </span>
@@ -379,7 +252,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                 to="/app/reviews"
                 className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-[#173B5E] font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow"
               >
-                <span className="material-symbols-outlined text-[16px] text-[#173B5E]">verified</span>
+                <span className="material-symbols-outlined text-[16px] text-[#1976C9]">verified</span>
                 <span>Review Knowledge</span>
               </Link>
             </div>
@@ -401,14 +274,14 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                 Knowledge Assistant
               </h3>
               <p className="text-[11px] text-[#536779] leading-relaxed mb-4">
-                Find machine-specific procedures and practical solutions.
+                Instant answers from verified plant procedures.
               </p>
 
               <Link to="/app/assistant" className="block">
                 <div className="relative w-full rounded-xl border border-[#E2E8F0] bg-white p-2.5 mb-4 shadow-xs group-hover:border-[#1976C9]/40 transition-colors">
                   <div className="flex items-center gap-1.5 text-xs text-[#536779]">
                     <span className="material-symbols-outlined text-[15px] text-[#1976C9] shrink-0">search</span>
-                    <span className="text-[10px] italic text-slate-500 truncate">Spindle runout zeroin...</span>
+                    <span className="text-[10px] italic text-slate-500 truncate">Spindle runout...</span>
                   </div>
                 </div>
               </Link>
@@ -419,7 +292,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                 to="/app/assistant"
                 className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-[#EFF4FF] border border-[#1976C9] text-[#1976C9] font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs"
               >
-                <span>Ask the Assistant →</span>
+                <span>Ask Assistant →</span>
               </Link>
             </div>
           </div>
@@ -427,7 +300,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
         </div>
       </section>
 
-      {/* ─── D. LOWER SUPPORTING CONTENT: 3-COLUMN BALANCED GRID ─── */}
+      {/* ─── 3. LOWER SUPPORTING CONTENT: 3-COLUMN BALANCED GRID ─── */}
       <section className="w-full">
         <div className={`grid grid-cols-1 ${hasKnowledgeGaps ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-6 items-stretch`}>
           
@@ -505,7 +378,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
             </div>
           </div>
 
-          {/* Column 2: Still to Capture (Priority Gaps) — Rendered conditionally */}
+          {/* Column 2: Still to Capture (Priority Gaps) */}
           {hasKnowledgeGaps && (
             <div className="bg-white rounded-2xl p-6 border border-[#E2E8F0] shadow-xs flex flex-col justify-between space-y-4">
               <div>
@@ -669,7 +542,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   </div>
                 </Link>
 
-                {/* Live Articles Stream if backend has any recorded */}
+                {/* Live Articles Stream if backend has recorded entries */}
                 {recentArticles.length > 0 ? (
                   <div className="pt-2 border-t border-slate-100">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#536779] block mb-1.5">
@@ -726,7 +599,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
         </div>
       </section>
 
-      {/* ─── E. STANDARDIZED INDUSTRIAL COMPLIANCE FOOTER (AS9100 / ISO 9001 / OSHA) ─── */}
+      {/* ─── 4. STANDARDIZED INDUSTRIAL COMPLIANCE FOOTER (AS9100 / ISO 9001 / OSHA) ─── */}
       <footer className="bg-white rounded-2xl border border-[#E2E8F0] p-6 lg:p-8 shadow-xs space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Column 1: Brand & Certification */}
