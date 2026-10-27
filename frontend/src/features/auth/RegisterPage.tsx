@@ -59,32 +59,32 @@ export const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-steel-950 flex flex-col justify-center items-center p-4 industrial-grid relative">
+    <div className="min-h-screen bg-[#F5F8FC] flex flex-col justify-center items-center p-4 relative">
       <div className="absolute top-6 left-6 flex items-center gap-2.5">
-        <div className="w-9 h-9 rounded-lg bg-brand-500/10 border border-brand-500/30 flex items-center justify-center text-brand-400">
+        <div className="w-9 h-9 rounded-lg bg-[#EAF3FF] border border-[#BCD7F5] flex items-center justify-center text-[#1976D2]">
           <Factory className="w-5 h-5" />
         </div>
         <div>
-          <span className="font-bold text-base tracking-wide text-slate-100">GURUKUL AI</span>
-          <span className="text-[10px] block font-mono text-slate-400">Industrial Knowledge Engine</span>
+          <span className="font-bold text-base tracking-wide text-[#17324D]">GURUKUL AI</span>
+          <span className="text-[10px] block font-mono text-[#5D7188]">Industrial Knowledge Engine</span>
         </div>
       </div>
 
       <div className="w-full max-w-md space-y-6">
-        <Card className="border-slate-800 shadow-2xl bg-slate-900/80">
-          <div className="text-center pb-4 border-b border-slate-800">
+        <Card className="border-[#DCE6F0] shadow-sm bg-white">
+          <div className="text-center pb-4 border-b border-[#DCE6F0]">
             <Badge variant="info" size="sm" className="mb-2">
               Trainee Self-Registration
             </Badge>
-            <h2 className="text-xl font-bold text-slate-100">Create Trainee Account</h2>
-            <p className="text-xs text-slate-400 mt-1">
+            <h2 className="text-xl font-bold text-[#17324D]">Create Trainee Account</h2>
+            <p className="text-xs text-[#5D7188] mt-1">
               Join the factory floor training and procedures portal
             </p>
           </div>
 
           <div className="pt-3">
-            <div className="flex items-start gap-2 p-2.5 rounded bg-slate-800/40 border border-slate-700/60 text-[11px] text-slate-400 mb-4">
-              <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 p-2.5 rounded bg-[#F3F8FE] border border-[#DCE6F0] text-[11px] text-[#17324D] mb-4">
+              <ShieldAlert className="w-4 h-4 text-[#1976D2] shrink-0 mt-0.5" />
               <span>
                 <strong>Role Invariant:</strong> Self-registration strictly creates <code>TRAINEE</code> accounts.
                 Expert and Lead Reviewer roles are provisioned by factory administrators.
@@ -164,9 +164,9 @@ export const RegisterPage: React.FC = () => {
             </form>
           </div>
 
-          <div className="mt-5 pt-3 border-t border-slate-800 text-center text-xs text-slate-400">
+          <div className="mt-5 pt-3 border-t border-[#DCE6F0] text-center text-xs text-[#5D7188]">
             Already have an account?{' '}
-            <Link to="/login" className="text-brand-400 hover:text-brand-300 font-semibold underline underline-offset-4">
+            <Link to="/login" className="text-[#1976D2] hover:text-[#1677F2] font-semibold underline underline-offset-4">
               Sign In
             </Link>
           </div>

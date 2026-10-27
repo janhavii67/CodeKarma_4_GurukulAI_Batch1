@@ -42,23 +42,23 @@ export const JobStatusCard: React.FC<JobStatusCardProps> = ({ job, onRetried }) 
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg space-y-4">
+    <div className="bg-white border border-[#DCE6F0] rounded-2xl p-5 shadow-xs space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400">
+          <div className="w-9 h-9 rounded-xl bg-[#EAF3FF] border border-[#BCD7F5] flex items-center justify-center text-[#1976D2]">
             {job.status === 'processing' ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : job.status === 'failed' ? (
-              <AlertCircle className="w-5 h-5 text-rose-400" />
+              <AlertCircle className="w-5 h-5 text-[#D94848]" />
             ) : (
-              <Sparkles className="w-5 h-5 text-brand-400" />
+              <Sparkles className="w-5 h-5 text-[#1976D2]" />
             )}
           </div>
           <div>
-            <h4 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-              Voice Processing & Vector Indexing Pipeline
+            <h4 className="text-sm font-bold text-[#17324D] flex items-center gap-2">
+              Voice Processing &amp; Vector Indexing Pipeline
             </h4>
-            <p className="text-xs text-slate-400 font-mono">Job ID: {job.id}</p>
+            <p className="text-xs text-[#5D7188] font-mono">Job ID: {job.id}</p>
           </div>
         </div>
         <div>{getStatusBadge()}</div>
@@ -66,18 +66,18 @@ export const JobStatusCard: React.FC<JobStatusCardProps> = ({ job, onRetried }) 
 
       {/* Progress Bar */}
       <div className="space-y-1.5">
-        <div className="flex justify-between text-xs font-mono text-slate-400">
+        <div className="flex justify-between text-xs font-mono text-[#5D7188]">
           <span>Pipeline Progress</span>
-          <span>{job.progress || 0}%</span>
+          <span className="font-bold text-[#17324D]">{job.progress || 0}%</span>
         </div>
-        <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+        <div className="w-full bg-[#F3F8FE] border border-[#DCE6F0] rounded-full h-2.5 overflow-hidden">
           <div
             className={`h-full transition-all duration-500 ${
               job.status === 'failed'
-                ? 'bg-rose-500'
+                ? 'bg-[#D94848]'
                 : job.status === 'needs_review'
-                ? 'bg-brand-500'
-                : 'bg-cyan-500'
+                ? 'bg-[#1976D2]'
+                : 'bg-[#1677F2]'
             }`}
             style={{ width: `${Math.max(5, job.progress || 0)}%` }}
           />
@@ -85,30 +85,30 @@ export const JobStatusCard: React.FC<JobStatusCardProps> = ({ job, onRetried }) 
       </div>
 
       {/* Pipeline Milestones */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-slate-800/80 text-[11px]">
-        <div className="flex items-center gap-1.5 text-slate-300">
-          <CheckCircle2 className={`w-3.5 h-3.5 ${(job.progress || 0) >= 30 ? 'text-emerald-400' : 'text-slate-600'}`} />
-          <span>16kHz WAV Audio</span>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-[#E8EEF5] text-[11px]">
+        <div className="flex items-center gap-1.5 text-[#5D7188]">
+          <CheckCircle2 className={`w-3.5 h-3.5 ${(job.progress || 0) >= 30 ? 'text-[#15966A]' : 'text-slate-300'}`} />
+          <span className="font-medium">16kHz WAV Audio</span>
         </div>
-        <div className="flex items-center gap-1.5 text-slate-300">
-          <CheckCircle2 className={`w-3.5 h-3.5 ${(job.progress || 0) >= 60 ? 'text-emerald-400' : 'text-slate-600'}`} />
-          <span>Whisper Segments</span>
+        <div className="flex items-center gap-1.5 text-[#5D7188]">
+          <CheckCircle2 className={`w-3.5 h-3.5 ${(job.progress || 0) >= 60 ? 'text-[#15966A]' : 'text-slate-300'}`} />
+          <span className="font-medium">Whisper Segments</span>
         </div>
-        <div className="flex items-center gap-1.5 text-slate-300">
-          <Database className={`w-3.5 h-3.5 ${(job.progress || 0) >= 75 ? 'text-brand-400' : 'text-slate-600'}`} />
-          <span>Vector RAG Indexing</span>
+        <div className="flex items-center gap-1.5 text-[#5D7188]">
+          <Database className={`w-3.5 h-3.5 ${(job.progress || 0) >= 75 ? 'text-[#1976D2]' : 'text-slate-300'}`} />
+          <span className="font-medium">Vector RAG Indexing</span>
         </div>
-        <div className="flex items-center gap-1.5 text-slate-300">
-          <CheckCircle2 className={`w-3.5 h-3.5 ${(job.progress || 0) >= 90 ? 'text-emerald-400' : 'text-slate-600'}`} />
-          <span>Safety Structuring</span>
+        <div className="flex items-center gap-1.5 text-[#5D7188]">
+          <CheckCircle2 className={`w-3.5 h-3.5 ${(job.progress || 0) >= 90 ? 'text-[#15966A]' : 'text-slate-300'}`} />
+          <span className="font-medium">Safety Structuring</span>
         </div>
       </div>
 
       {/* Error State */}
       {job.status === 'failed' && (
-        <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-3 text-xs text-rose-300 flex items-center justify-between">
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-[#D94848] flex items-center justify-between font-medium">
           <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <AlertCircle className="w-4 h-4 text-[#D94848] shrink-0" />
             <span>{job.error_safe || 'Transcription failed. Please check audio quality.'}</span>
           </div>
           {job.attempts < 3 && (
@@ -122,10 +122,10 @@ export const JobStatusCard: React.FC<JobStatusCardProps> = ({ job, onRetried }) 
 
       {/* Needs Review Guidance */}
       {job.status === 'needs_review' && (
-        <div className="bg-brand-500/10 border border-brand-500/20 rounded-lg p-3 text-xs text-brand-300 flex items-center gap-2">
-          <Clock className="w-4 h-4 text-brand-400 shrink-0" />
+        <div className="bg-[#EAF3FF] border border-[#BCD7F5] rounded-xl p-3 text-xs text-[#124A78] flex items-center gap-2 font-medium">
+          <Clock className="w-4 h-4 text-[#1976D2] shrink-0" />
           <span>
-            Audio transcribed & vector-indexed. Human expert review is required before publishing or submission.
+            Audio transcribed &amp; vector-indexed. Human expert review is required before publishing or submission.
           </span>
         </div>
       )}

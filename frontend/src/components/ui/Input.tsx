@@ -17,16 +17,16 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5"
+            className="block text-xs font-semibold uppercase tracking-wider text-[#17324D] mb-1.5"
           >
             {label}
-            {props.required && <span className="text-amber-400 ml-1">*</span>}
+            {props.required && <span className="text-[#D98B13] ml-1">*</span>}
           </label>
         )}
 
         <div className="relative rounded-lg shadow-sm">
           {leftIcon && (
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#7C8DA1]">
               {leftIcon}
             </div>
           )}
@@ -35,17 +35,17 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={inputId}
             className={`
-              block w-full rounded-lg bg-slate-900/90 border text-slate-100 placeholder-slate-500
+              block w-full rounded-lg bg-[#F3F8FE] border text-[#17324D] placeholder-[#7C8DA1]
               text-sm transition-colors duration-150 py-2.5
               ${leftIcon ? 'pl-10' : 'pl-3.5'}
               ${rightIcon ? 'pr-10' : 'pr-3.5'}
               ${
                 error
-                  ? 'border-rose-500/80 focus:border-rose-500 focus:ring-1 focus:ring-rose-500'
-                  : 'border-slate-700/80 hover:border-slate-600 focus:border-brand-500 focus:ring-1 focus:ring-brand-500'
+                  ? 'border-rose-400 focus:border-rose-500 focus:ring-1 focus:ring-rose-500'
+                  : 'border-[#DCE6F0] hover:border-[#1976D2]/40 focus:bg-white focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2]'
               }
               focus:outline-none
-              disabled:bg-slate-800/50 disabled:text-slate-500 disabled:cursor-not-allowed
+              disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed
               ${className}
             `}
             {...props}

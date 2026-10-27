@@ -7,8 +7,6 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  CheckCircle2,
-  User,
   Loader2,
   AlertTriangle,
   ShieldCheck,
@@ -25,7 +23,6 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [selectedRole, setSelectedRole] = useState<string | null>(null);
 
   // If already authenticated, redirect to /app
   const from = (location.state as any)?.from?.pathname || '/app';
@@ -49,13 +46,6 @@ export const LoginPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleQuickLogin = (roleKey: string, demoEmail: string, demoPass: string) => {
-    setSelectedRole(roleKey);
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setErrorMessage(null);
   };
 
   return (
@@ -89,7 +79,7 @@ export const LoginPage: React.FC = () => {
       </div>
 
       {/* ─── FOREGROUND CONTENT LAYER ─── */}
-      <div className="relative z-10 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-12 py-4 sm:py-6 min-h-screen min-h-[100dvh] flex flex-col justify-between">
+      <div className="relative z-10 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-12 py-5 sm:py-7 min-h-screen min-h-[100dvh] flex flex-col justify-between">
         
         {/* Top Header Branding */}
         <header className="flex items-center justify-between pb-2 sm:pb-3">
@@ -118,35 +108,42 @@ export const LoginPage: React.FC = () => {
         </header>
 
         {/* ─── TWO-ZONE MAIN COMPOSITION: HERO LEFT (55-60%), LOGIN CARD RIGHT (40-45%) ─── */}
-        <main className="my-auto py-2 sm:py-4 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 xl:gap-16 items-center">
+        <main className="my-auto py-4 sm:py-6 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 xl:gap-16 items-center">
 
           {/* ════════════ LEFT ZONE: BRANDING & EDITORIAL HEADLINE ════════════ */}
-          <section className="lg:col-span-7 xl:col-span-7 space-y-6 sm:space-y-8 pr-0 lg:pr-6 text-white order-2 lg:order-1">
+          <section className="lg:col-span-7 xl:col-span-7 space-y-4 sm:space-y-5 pr-0 lg:pr-6 text-white order-2 lg:order-1">
             
-            {/* Eyebrow Label */}
-            <div
-              className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0B2342]/80 backdrop-blur-md border border-[#4C9AFF]/30 text-xs font-medium tracking-wide text-[#C7D4E4] animate-hero-fade"
-              style={{ animationDelay: '0ms' }}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#4C9AFF]" />
-              <span>The Gurukul for modern labs</span>
+            {/* Eyebrow Label / Tagline */}
+            <div>
+              <div
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#07172B]/75 backdrop-blur-md border border-[#2E90FA]/25 text-[11.5px] sm:text-xs font-medium tracking-[0.035em] text-[#C7D5E5] shadow-xs select-none animate-hero-fade"
+                style={{ animationDelay: '0ms' }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#38BDF8] ring-2 ring-[#38BDF8]/25 shrink-0" />
+                <span>The Gurukul for modern labs</span>
+              </div>
             </div>
 
             {/* Main Headline & Subtitle */}
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-3.5">
               <h1
-                className="text-4xl sm:text-5xl lg:text-[3.25rem] xl:text-[3.75rem] font-extrabold text-white tracking-tight leading-[1.08] animate-hero-fade"
+                className="text-[clamp(2.15rem,3.5vw+0.6rem,3.45rem)] font-[800] tracking-[-0.04em] leading-[1.03] text-white animate-hero-fade"
                 style={{ animationDelay: '100ms' }}
               >
-                <span className="block text-white drop-shadow-md">
+                <span className="block text-white drop-shadow-[0_2px_12px_rgba(7,23,43,0.7)]">
                   Every Expert Retires.
                 </span>
-                <span className="block mt-1 bg-gradient-to-r from-[#4C9AFF] via-[#60A5FA] to-[#93C5FD] bg-clip-text text-transparent drop-shadow-sm">
-                  Their Expertise Shouldn’t.
+                <span className="block mt-1.5 sm:mt-2.5 tracking-[-0.04em]">
+                  <span className="text-[#258CF4] drop-shadow-[0_2px_10px_rgba(37,140,244,0.25)]">
+                    Their Expertise{' '}
+                  </span>
+                  <span className="bg-gradient-to-r from-[#60A5FA] via-[#93C5FD] to-[#BAE6FD] bg-clip-text text-transparent inline-block drop-shadow-[0_2px_12px_rgba(96,165,250,0.3)]">
+                    Shouldn’t.
+                  </span>
                 </span>
               </h1>
               <p
-                className="text-base sm:text-lg text-[#C7D4E4] leading-relaxed max-w-xl font-normal drop-shadow-sm pt-2 animate-hero-fade"
+                className="text-[15px] sm:text-base lg:text-[1.125rem] xl:text-[1.2rem] text-[#C7D5E5] leading-[1.5] max-w-[540px] font-normal drop-shadow-[0_1px_3px_rgba(7,23,43,0.8)] pt-1 sm:pt-1.5 animate-hero-fade"
                 style={{ animationDelay: '200ms' }}
               >
                 Gurukul AI captures what your best people know and turns it into verified, searchable guidance for the next generation.
@@ -155,13 +152,13 @@ export const LoginPage: React.FC = () => {
 
           </section>
 
-          {/* ════════════ RIGHT ZONE: PREMIUM FOREGROUND LOGIN CARD ════════════ */}
+          {/* ════════════ RIGHT ZONE: PREMIUM COMPACT LOGIN CARD ════════════ */}
           <section className="lg:col-span-5 xl:col-span-5 w-full flex justify-center lg:justify-end order-1 lg:order-2">
-            <div className="w-full max-w-[440px] bg-white rounded-3xl border border-[#DCE7F5] shadow-[0_20px_50px_-12px_rgba(7,23,43,0.35),0_0_0_1px_rgba(220,231,245,0.7)] p-6 sm:p-7 space-y-4.5 transition-all">
+            <div className="w-full max-w-[420px] bg-white rounded-3xl border border-[#DCE7F5] shadow-[0_20px_50px_-12px_rgba(7,23,43,0.35),0_0_0_1px_rgba(220,231,245,0.7)] p-6 sm:p-7 space-y-4.5 transition-all">
               
               {/* Card Header with Portal Tag */}
-              <div className="text-left space-y-1 pb-1">
-                <div className="flex items-center gap-2 mb-2">
+              <div className="text-left space-y-1 pb-0.5">
+                <div className="flex items-center gap-2 mb-1.5">
                   <div className="w-6 h-6 rounded-lg bg-[#EDF4FF] border border-[#DCE7F5] flex items-center justify-center text-[#1677F2]">
                     <ShieldCheck className="w-3.5 h-3.5" />
                   </div>
@@ -279,109 +276,8 @@ export const LoginPage: React.FC = () => {
                 </button>
               </form>
 
-              {/* Divider */}
-              <div className="relative flex items-center justify-center pt-1">
-                <div className="w-full border-t border-[#DCE7F5]" />
-                <span className="absolute bg-white px-3 text-[10px] font-bold tracking-wider text-[#526985] uppercase">
-                  OR
-                </span>
-              </div>
-
-              {/* ─── DEMO SEED CREDENTIALS (PRE-CONFIGURED) ─── */}
-              <div className="space-y-2 pt-1">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#526985] block text-left">
-                  Demo Seed Credentials (Pre-configured)
-                </span>
-                
-                <div className="space-y-1.5">
-                  {/* Expert Author: Aarav Sharma */}
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('expert.a', 'expert.a@demo.local', 'ExpertA@Gurukul2026!')}
-                    className={`w-full flex items-center justify-between p-2 rounded-xl border text-left transition-all ${
-                      selectedRole === 'expert.a'
-                        ? 'bg-[#EDF4FF] border-[#1677F2] ring-1 ring-[#1677F2]/30 shadow-xs'
-                        : 'bg-[#F7FAFF] hover:bg-white border-[#DCE7F5] shadow-xs'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-7 h-7 rounded-full bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="truncate">
-                        <span className="font-bold text-xs text-[#07172B] block leading-snug">
-                          Aarav Sharma
-                        </span>
-                        <span className="text-[10px] text-[#526985] block truncate">
-                          expert.a@demo.local
-                        </span>
-                      </div>
-                    </div>
-                    <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-tight">
-                      Expert Author
-                    </span>
-                  </button>
-
-                  {/* Lead Reviewer: Bhavna Patel */}
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('expert.b', 'expert.b@demo.local', 'ExpertB@Gurukul2026!')}
-                    className={`w-full flex items-center justify-between p-2 rounded-xl border text-left transition-all ${
-                      selectedRole === 'expert.b'
-                        ? 'bg-[#EDF4FF] border-[#1677F2] ring-1 ring-[#1677F2]/30 shadow-xs'
-                        : 'bg-[#F7FAFF] hover:bg-white border-[#DCE7F5] shadow-xs'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-7 h-7 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="truncate">
-                        <span className="font-bold text-xs text-[#07172B] block leading-snug">
-                          Bhavna Patel
-                        </span>
-                        <span className="text-[10px] text-[#526985] block truncate">
-                          expert.b@demo.local
-                        </span>
-                      </div>
-                    </div>
-                    <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-tight">
-                      Lead Reviewer
-                    </span>
-                  </button>
-
-                  {/* Trainee: Devendra Verma */}
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('trainee', 'trainee@demo.local', 'Trainee@Gurukul2026!')}
-                    className={`w-full flex items-center justify-between p-2 rounded-xl border text-left transition-all ${
-                      selectedRole === 'trainee'
-                        ? 'bg-[#EDF4FF] border-[#1677F2] ring-1 ring-[#1677F2]/30 shadow-xs'
-                        : 'bg-[#F7FAFF] hover:bg-white border-[#DCE7F5] shadow-xs'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-7 h-7 rounded-full bg-blue-500/10 text-[#1677F2] flex items-center justify-center shrink-0">
-                        <User className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="truncate">
-                        <span className="font-bold text-xs text-[#07172B] block leading-snug">
-                          Devendra Verma
-                        </span>
-                        <span className="text-[10px] text-[#526985] block truncate">
-                          trainee@demo.local
-                        </span>
-                      </div>
-                    </div>
-                    <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-tight">
-                      Trainee
-                    </span>
-                  </button>
-                </div>
-              </div>
-
               {/* Registration Link */}
-              <div className="pt-1.5 text-center text-xs text-[#526985]">
+              <div className="pt-2 border-t border-[#DCE7F5] text-center text-xs text-[#526985]">
                 Don't have an account?{' '}
                 <Link
                   to="/register"
@@ -397,7 +293,7 @@ export const LoginPage: React.FC = () => {
         </main>
 
         {/* Footer info (Desktop & Mobile) */}
-        <footer className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#C7D4E4]/80 pt-6 pb-2 border-t border-white/10">
+        <footer className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#C7D4E4]/80 pt-4 pb-1 border-t border-white/10">
           <span>&copy; {new Date().getFullYear()} Gurukul AI. Enterprise Medical Knowledge Platform.</span>
           <span className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400" />

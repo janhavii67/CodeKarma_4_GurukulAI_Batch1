@@ -21,21 +21,21 @@ export const Badge: React.FC<BadgeProps> = ({
   }[size];
 
   const variantStyles = {
-    brand: 'bg-brand-500/10 text-brand-400 border border-brand-500/30',
-    success: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30',
-    warning: 'bg-amber-500/10 text-amber-300 border border-amber-500/30',
-    danger: 'bg-rose-500/10 text-rose-400 border border-rose-500/30',
-    info: 'bg-sky-500/10 text-sky-400 border border-sky-500/30',
-    neutral: 'bg-slate-800 text-slate-300 border border-slate-700',
+    brand: 'bg-[#EAF3FF] text-[#1976D2] border border-[#BCD7F5]',
+    success: 'bg-emerald-50 text-[#15966A] border border-emerald-200',
+    warning: 'bg-amber-50 text-[#D98B13] border border-amber-200',
+    danger: 'bg-rose-50 text-[#D94848] border border-rose-200',
+    info: 'bg-[#EAF3FF] text-[#1976D2] border border-[#BCD7F5]',
+    neutral: 'bg-[#F3F8FE] text-[#5D7188] border border-[#DCE6F0]',
   }[variant];
 
   const dotColors = {
-    brand: 'bg-brand-400',
-    success: 'bg-emerald-400',
-    warning: 'bg-amber-400',
-    danger: 'bg-rose-400',
-    info: 'bg-sky-400',
-    neutral: 'bg-slate-400',
+    brand: 'bg-[#1976D2]',
+    success: 'bg-[#15966A]',
+    warning: 'bg-[#D98B13]',
+    danger: 'bg-[#D94848]',
+    info: 'bg-[#1976D2]',
+    neutral: 'bg-[#7C8DA1]',
   }[variant];
 
   return (

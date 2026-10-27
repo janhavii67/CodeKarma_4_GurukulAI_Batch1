@@ -140,20 +140,20 @@ export const VoiceToKnowledgePage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Top Banner & Module Specs */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="bg-white border border-[#DCE6F0] rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-brand-500/15 border border-brand-500/30 flex items-center justify-center text-brand-400">
+            <div className="w-10 h-10 rounded-xl bg-[#EAF3FF] border border-[#BCD7F5] flex items-center justify-center text-[#1976D2]">
               <Mic className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+              <h1 className="text-lg font-bold text-[#17324D] flex items-center gap-2">
                 Voice-to-Knowledge Engine (Module 04)
               </h1>
-              <p className="text-xs text-slate-400">
-                Transform expert shop-floor voice narrations into structured SOP drafts with RAG vector indexing
+              <p className="text-xs text-[#5D7188]">
+                Transform expert laboratory audio narrations into structured SOP drafts with RAG vector indexing
               </p>
             </div>
           </div>
@@ -175,8 +175,31 @@ export const VoiceToKnowledgePage: React.FC = () => {
         </div>
       </div>
 
+      {/* Industrial Safety Invariant Banner */}
+      <div className="bg-[#F3F8FE] border border-[#DCE6F0] rounded-2xl p-4 flex items-start gap-3 text-xs text-[#17324D]">
+        <ShieldAlert className="w-5 h-5 text-[#D98B13] shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <span className="font-bold text-[#17324D]">
+            System Invariants &amp; Governance Rules Active
+          </span>
+          <p className="text-[#5D7188] leading-relaxed">
+            1. Every audio narration is strictly transcribed with timestamped segments.
+            2. Unknown equipment parameters and tolerances are explicitly flagged (<code className="text-[#D98B13] font-semibold">needs_review: true</code>) with zero tolerance for hallucinations.
+            3. All spoken knowledge is vector-embedded into the knowledge database for grounded RAG query retrieval.
+          </p>
+        </div>
+      </div>
+
+      {/* Active Processing Card if Job is Running */}
+      {polledJob && polledJob.status !== 'completed' && polledJob.status !== 'failed' && (
+        <JobStatusCard
+          job={polledJob}
+          onRetried={(newJob) => setActiveJobId(newJob.id)}
+        />
+      )}
+
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+      <div className="flex items-center gap-2 border-b border-[#E8EEF5] pb-2">
         <Button
           size="sm"
           variant={activeTab === 'record' ? 'primary' : 'ghost'}
@@ -193,7 +216,7 @@ export const VoiceToKnowledgePage: React.FC = () => {
           <FileText className="w-4 h-4 mr-1.5" />
           Review Transcript & Steps
           {currentSteps.length > 0 && (
-            <span className="ml-1.5 px-1.5 py-0.2 bg-brand-500/20 text-brand-300 rounded text-[10px]">
+            <span className="ml-1.5 px-1.5 py-0.2 bg-[#1976D2]/20 text-[#1976D2] font-semibold rounded text-[10px]">
               {currentSteps.length}
             </span>
           )}
@@ -222,19 +245,19 @@ export const VoiceToKnowledgePage: React.FC = () => {
           />
 
           {/* Library of existing voice captures */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg space-y-4">
+          <div className="bg-white border border-[#DCE6F0] rounded-2xl p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-                <ListMusic className="w-4 h-4 text-brand-400" />
+              <h4 className="text-sm font-bold text-[#17324D] flex items-center gap-2">
+                <ListMusic className="w-4 h-4 text-[#1976D2]" />
                 Expert Voice Knowledge Recordings ({(Array.isArray(voiceAssets) ? voiceAssets.length : 0)})
               </h4>
-              <span className="text-xs text-slate-400 font-mono">
+              <span className="text-xs text-[#5D7188] font-mono">
                 Indexed in Vector Store for RAG
               </span>
             </div>
 
             {(!Array.isArray(voiceAssets) || voiceAssets.length === 0) ? (
-              <div className="p-8 text-center text-xs text-slate-400 bg-slate-950 rounded-xl border border-slate-800">
+              <div className="p-8 text-center text-xs text-[#5D7188] bg-[#F3F8FE] rounded-xl border border-[#DCE6F0]">
                 No voice narrations recorded yet. Use the microphone above to capture your first expert voice asset.
               </div>
             ) : (
@@ -242,14 +265,14 @@ export const VoiceToKnowledgePage: React.FC = () => {
                 {(Array.isArray(voiceAssets) ? voiceAssets : []).map((asset) => (
                   <div
                     key={asset.id}
-                    className="bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl p-4 space-y-3 transition-all"
+                    className="bg-[#F3F8FE] border border-[#DCE6F0] hover:bg-white hover:border-[#1976D2]/50 rounded-xl p-4 space-y-3 transition-all shadow-xs"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400">
+                        <div className="w-7 h-7 rounded-lg bg-[#EAF3FF] border border-[#BCD7F5] flex items-center justify-center text-[#1976D2]">
                           <Volume2 className="w-3.5 h-3.5" />
                         </div>
-                        <h5 className="font-semibold text-xs text-slate-200 truncate max-w-[160px]">
+                        <h5 className="font-bold text-xs text-[#17324D] truncate max-w-[160px]">
                           {asset.title}
                         </h5>
                       </div>
@@ -265,9 +288,9 @@ export const VoiceToKnowledgePage: React.FC = () => {
                       className="w-full h-8 pt-1"
                     />
 
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono pt-1">
+                    <div className="flex items-center justify-between text-[10px] text-[#5D7188] font-mono pt-1">
                       <span>{new Date(asset.created_at).toLocaleDateString()}</span>
-                      <span className="text-brand-400 font-semibold">Indexed in RAG</span>
+                      <span className="text-[#1976D2] font-semibold">Indexed in RAG</span>
                     </div>
 
                     <div className="pt-2 border-t border-slate-800/80">
@@ -318,13 +341,13 @@ export const VoiceToKnowledgePage: React.FC = () => {
               />
             </>
           ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center space-y-4">
-              <FileText className="w-12 h-12 text-slate-600 mx-auto" />
+            <div className="bg-white border border-[#DCE6F0] rounded-2xl p-12 text-center space-y-4 shadow-xs">
+              <FileText className="w-12 h-12 text-[#7C8DA1] mx-auto" />
               <div>
-                <h4 className="text-sm font-semibold text-slate-200">
+                <h4 className="text-sm font-bold text-[#17324D]">
                   No active transcript selected
                 </h4>
-                <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
+                <p className="text-xs text-[#5D7188] max-w-md mx-auto mt-1">
                   Record an expert narration or pick a voice recording from the library to inspect timestamped segments and verify candidate procedural steps.
                 </p>
               </div>

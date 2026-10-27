@@ -19,7 +19,7 @@ vi.mock('../lib/api/client', () => ({
 }));
 
 describe('Authentication & Security UI Tests', () => {
-  it('renders login page with email, password, and demo credentials', () => {
+  it('renders login page with email, password, and sign-in button', () => {
     render(
       <AuthProvider>
         <BrowserRouter>
@@ -31,9 +31,10 @@ describe('Authentication & Security UI Tests', () => {
     expect(screen.getByText(/Sign in to Gurukul AI/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Email Address/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
-    expect(screen.getByText(/Aarav Sharma/i)).toBeInTheDocument();
-    expect(screen.getByText(/Bhavna Patel/i)).toBeInTheDocument();
-    expect(screen.getByText(/Devendra Verma/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Sign In/i })).toBeInTheDocument();
+    expect(screen.getByText(/Register as Trainee/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Demo Seed Credentials/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Aarav Sharma/i)).not.toBeInTheDocument();
   });
 
   it('renders register page with Trainee role disclaimer', () => {
