@@ -12,6 +12,7 @@ from app.integrations.speech.factory import get_speech_provider
 from app.services.vector_service import index_voice_transcript
 from app.services.structuring_service import structure_transcript_with_ai
 from app.core.logging import logger
+from app.core.config import settings
 
 
 async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None) -> None:
@@ -44,14 +45,18 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
         db.commit()
 
         media = db.get(MediaAsset, job.media_id)
-        if not media or not Path(media.file_path).exists():
+        audio_file_path = None
+        if media:
+            stored = Path(media.file_path)
+            audio_file_path = stored if stored.is_absolute() and stored.exists() else (Path(settings.MEDIA_ROOT) / media.storage_key)
+        if not media or not audio_file_path.exists():
             job.status = "failed"
             job.error_safe = "Media audio file not found on disk."
             db.commit()
             return
 
         # 1. Normalize Audio
-        input_path = Path(media.file_path)
+        input_path = audio_file_path
         wav_path = input_path.with_suffix(".16k.wav")
         extract_audio_wav(input_path, wav_path)
 

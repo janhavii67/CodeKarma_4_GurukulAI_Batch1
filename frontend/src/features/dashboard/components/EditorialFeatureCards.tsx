@@ -18,11 +18,8 @@ interface EditorialFeatureCardsProps {
 }
 
 export const EditorialFeatureCards: React.FC<EditorialFeatureCardsProps> = ({
-  hasPermission,
   pendingReviewsCount,
 }) => {
-  const canCreate = hasPermission('knowledge.create');
-
   return (
     <section aria-labelledby="editorial-features-title" className="space-y-3">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 lg:gap-6">
@@ -58,7 +55,7 @@ export const EditorialFeatureCards: React.FC<EditorialFeatureCardsProps> = ({
           </div>
 
           <div className="pt-6">
-            <Link to={canCreate ? '/app/knowledge/new' : '/app/knowledge'} className="block">
+            <Link to="/app/knowledge-assets?kind=video" className="block">
               <Button
                 variant="primary"
                 size="md"

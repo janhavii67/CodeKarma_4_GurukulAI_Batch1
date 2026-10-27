@@ -4,6 +4,11 @@ import { MediaAsset, UploadProgress } from './types';
 export interface UploadOptions {
   onProgress?: (progress: UploadProgress) => void;
   signal?: AbortSignal;
+  endpoint?: string;
+  kind?: string;
+  title?: string;
+  description?: string;
+  tags?: string;
 }
 
 /**
@@ -25,7 +30,7 @@ export function uploadWithProgress(
     }
 
     const xhr = new XMLHttpRequest();
-    const url = getApiUrl(`/knowledge-versions/${versionId}/media`);
+    const url = getApiUrl(options.endpoint || `/knowledge-versions/${versionId}/media`);
 
     xhr.open('POST', url, true);
     xhr.withCredentials = true;
@@ -105,6 +110,10 @@ export function uploadWithProgress(
     // Construct form data with 'file' field only (server derives kind)
     const formData = new FormData();
     formData.append('file', file, file.name);
+    if (options.kind) formData.append('kind', options.kind);
+    if (options.title) formData.append('title', options.title);
+    if (options.description) formData.append('description', options.description);
+    if (options.tags) formData.append('tags', options.tags);
 
     xhr.send(formData);
   });

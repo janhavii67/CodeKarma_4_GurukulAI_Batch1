@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.base import utc_now
@@ -8,9 +9,11 @@ from app.core.permissions import (
     require_permission,
     AuthenticatedContext,
     PERM_PROCEDURE_EXECUTE,
+    PERM_PROCEDURE_CREATE,
+    csrf_protect,
 )
 from app.core.exceptions import NotFoundError, ForbiddenError
-from app.models import Procedure, ProcedureStep, ProcedureRun, ProcedureRunStep, Machine
+from app.models import Procedure, ProcedureStep, ProcedureRun, ProcedureRunStep, Machine, MediaAsset
 from app.schemas.procedure import (
     ProcedureResponse,
     ProcedureStepResponse,
@@ -20,6 +23,76 @@ from app.schemas.procedure import (
 )
 
 router = APIRouter(prefix="/procedures", tags=["Procedures"])
+
+
+class ProcedureAssetsUpdate(BaseModel):
+    asset_ids: List[str]
+
+
+class ProcedureStepInput(BaseModel):
+    title: str = Field(min_length=1, max_length=256)
+    instruction: str = Field(min_length=1)
+    expected_observation: Optional[str] = None
+    safety_warning: Optional[str] = None
+    is_critical: bool = False
+
+
+class ProcedureCreatePayload(BaseModel):
+    title: str = Field(min_length=1, max_length=256)
+    description: str = Field(min_length=1)
+    machine_id: str
+    prerequisites: Optional[str] = None
+    required_tools: Optional[str] = None
+    safety_warnings: Optional[str] = None
+    steps: List[ProcedureStepInput] = Field(min_length=1)
+    asset_ids: List[str] = []
+
+
+@router.post("", response_model=ProcedureResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(csrf_protect)])
+def create_procedure(payload: ProcedureCreatePayload,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_CREATE)), db: Session = Depends(get_db)):
+    if not db.get(Machine, payload.machine_id):
+        raise NotFoundError(code="machine_not_found", message="The selected machine was not found.")
+    ids = set(payload.asset_ids)
+    assets = db.query(MediaAsset).filter(MediaAsset.id.in_(ids)).all() if ids else []
+    if len(assets) != len(ids):
+        raise NotFoundError(code="asset_not_found", message="One or more selected knowledge assets were not found.")
+    if any(asset.machine_id != payload.machine_id for asset in assets):
+        raise ForbiddenError(code="machine_mismatch", message="A procedure can only reference assets from its selected machine.")
+    procedure = Procedure(title=payload.title, description=payload.description, machine_id=payload.machine_id,
+        author_id=auth_ctx.user.id, status="DRAFT", prerequisites=payload.prerequisites,
+        required_tools=payload.required_tools, safety_warnings=payload.safety_warnings)
+    procedure.media_assets = assets
+    procedure.steps = [ProcedureStep(step_order=i, title=s.title, instruction=s.instruction,
+        expected_observation=s.expected_observation, safety_warning=s.safety_warning, is_critical=s.is_critical)
+        for i, s in enumerate(payload.steps, 1)]
+    db.add(procedure); db.commit(); db.refresh(procedure)
+    return get_procedure(procedure.id, auth_ctx, db)
+
+
+@router.get("/{procedure_id}/assets")
+def list_procedure_assets(procedure_id: str, auth_ctx: AuthenticatedContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    procedure = db.get(Procedure, procedure_id)
+    if not procedure:
+        raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
+    return [{"id": a.id, "title": a.title, "kind": a.kind, "machine_id": a.machine_id,
+        "url": f"/api/v1/media/{a.id}"} for a in procedure.media_assets]
+
+
+@router.put("/{procedure_id}/assets", dependencies=[Depends(csrf_protect)])
+def set_procedure_assets(procedure_id: str, payload: ProcedureAssetsUpdate,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_CREATE)), db: Session = Depends(get_db)):
+    procedure = db.get(Procedure, procedure_id)
+    if not procedure:
+        raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
+    assets = db.query(MediaAsset).filter(MediaAsset.id.in_(set(payload.asset_ids))).all() if payload.asset_ids else []
+    if len(assets) != len(set(payload.asset_ids)):
+        raise NotFoundError(code="asset_not_found", message="One or more selected knowledge assets were not found.")
+    if any(a.machine_id != procedure.machine_id for a in assets):
+        raise ForbiddenError(code="machine_mismatch", message="A procedure can only reference assets from its own machine.")
+    procedure.media_assets = assets
+    db.commit()
+    return {"procedure_id": procedure.id, "asset_ids": [a.id for a in assets]}
 
 
 @router.get("", response_model=List[ProcedureResponse])

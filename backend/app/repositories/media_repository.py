@@ -15,6 +15,10 @@ class MediaRepository:
         mime: str,
         size_bytes: int,
         uploaded_by: str,
+        machine_id: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        tags: Optional[str] = None,
         commit: bool = True,
     ) -> MediaAsset:
         asset = MediaAsset(
@@ -25,6 +29,10 @@ class MediaRepository:
             mime=mime,
             size_bytes=size_bytes,
             uploaded_by=uploaded_by,
+            machine_id=machine_id,
+            title=title or original_name,
+            description=description,
+            tags=tags,
         )
         db.add(asset)
         if commit:
@@ -45,6 +53,14 @@ class MediaRepository:
             .where(MediaAsset.version_id == version_id)
             .order_by(MediaAsset.created_at.asc())
         )
+        return list(db.execute(stmt).scalars().all())
+
+    @staticmethod
+    def list_by_machine_id(db: Session, machine_id: str, kind: Optional[str] = None) -> List[MediaAsset]:
+        stmt = select(MediaAsset).where(MediaAsset.machine_id == machine_id)
+        if kind:
+            stmt = stmt.where(MediaAsset.kind == kind)
+        stmt = stmt.order_by(MediaAsset.created_at.desc())
         return list(db.execute(stmt).scalars().all())
 
     @staticmethod

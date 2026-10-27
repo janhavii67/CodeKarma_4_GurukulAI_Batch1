@@ -5,7 +5,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class MediaAssetResponse(BaseModel):
     id: str
-    version_id: str
+    version_id: Optional[str] = None
+    machine_id: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[str] = None
+    content: Optional[str] = None
+    transcript_status: Optional[str] = None
+    transcript_id: Optional[str] = None
+    verification_status: Optional[str] = None
+    author_name: Optional[str] = None
     kind: str
     original_name: str
     mime: str

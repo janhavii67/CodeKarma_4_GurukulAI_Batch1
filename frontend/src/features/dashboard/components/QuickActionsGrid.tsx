@@ -147,6 +147,7 @@ export const QuickActionsGrid: React.FC<QuickActionsGridProps> = ({
           icon={<FileText className="w-4 h-4" />}
           badge="Verified"
         />
+        <ActionCard title="Machine Knowledge" desc="Capture and browse media by registered machine." route="/app/knowledge-assets" icon={<FileText className="w-4 h-4" />} badge="Machine-wise" />
 
         {/* Peer Review Queue (if not already primary) */}
         {canApprove && !(!canCreate && pendingReviewsCount > 0) && (

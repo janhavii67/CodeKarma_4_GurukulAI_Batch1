@@ -29,6 +29,7 @@ from app.services.voice_service import (
 )
 from app.services.job_runner import execute_voice_processing_job
 from app.core.exceptions import ValidationError
+from app.core.config import settings
 
 
 def get_expert_credentials(client):
@@ -148,8 +149,12 @@ def test_voice_upload_and_job_endpoint(client, db_session: Session, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_job_runner_vector_indexing_and_rag(db_session: Session, tmp_path):
+async def test_job_runner_vector_indexing_and_rag(db_session: Session, tmp_path, monkeypatch):
     """Test background runner executes transcription, vector indexing, and RAG search."""
+    # The sample provider is an explicit test double; real requests must never
+    # silently receive its canned transcript when STT is unconfigured.
+    monkeypatch.setattr(settings, "STT_PROVIDER", "mock")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "test")
     # Create sample media file
     dummy_wav = tmp_path / "test_narration.wav"
     dummy_wav.write_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00")

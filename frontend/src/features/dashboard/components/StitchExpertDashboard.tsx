@@ -81,7 +81,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
             <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto mb-6">
               {canCreate && (
                 <Link
-                  to="/app/knowledge/new?capture=notes"
+                  to="/app/knowledge-assets?kind=notes"
                   className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#1976C9] hover:bg-[#125EA3] text-white font-semibold text-sm transition-all shadow-md shadow-[#1976C9]/20 hover:-translate-y-0.5"
                 >
                   <span className="material-symbols-outlined text-[19px]">videocam</span>
@@ -174,7 +174,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
 
                 <div className="sm:col-span-7 grid grid-cols-2 gap-2">
                   <Link
-                    to="/app/knowledge/new?capture=video"
+                    to="/app/knowledge-assets?kind=video"
                     className="px-2.5 py-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-2 text-xs font-semibold text-[#173B5E] hover:border-[#1976C9] hover:text-[#1976C9] hover:bg-white transition-all cursor-pointer shadow-xs"
                   >
                     <span className="material-symbols-outlined text-[16px] text-[#1976C9]">videocam</span>
@@ -182,7 +182,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   </Link>
 
                   <Link
-                    to="/app/knowledge/new?capture=audio"
+                    to="/app/knowledge-assets?kind=audio"
                     className="px-2.5 py-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-2 text-xs font-semibold text-[#173B5E] hover:border-[#19A995] hover:text-[#19A995] hover:bg-white transition-all cursor-pointer shadow-xs"
                   >
                     <span className="material-symbols-outlined text-[16px] text-[#19A995]">mic</span>
@@ -190,7 +190,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   </Link>
 
                   <Link
-                    to="/app/knowledge/new?capture=notes"
+                    to="/app/knowledge-assets?kind=notes"
                     className="px-2.5 py-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-2 text-xs font-semibold text-[#173B5E] hover:border-[#1976C9] hover:text-[#1976C9] hover:bg-white transition-all cursor-pointer shadow-xs"
                   >
                     <span className="material-symbols-outlined text-[16px] text-slate-500">edit_note</span>
@@ -198,7 +198,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                   </Link>
 
                   <Link
-                    to="/app/knowledge/new?capture=photo"
+                    to="/app/knowledge-assets?kind=image"
                     className="px-2.5 py-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-2 text-xs font-semibold text-[#173B5E] hover:border-[#1976C9] hover:text-[#1976C9] hover:bg-white transition-all cursor-pointer shadow-xs"
                   >
                     <span className="material-symbols-outlined text-[16px] text-slate-500">photo_camera</span>
@@ -214,7 +214,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                 Record practical knowledge for the next operator
               </span>
               <Link
-                to="/app/knowledge/new"
+                to="/app/knowledge-assets"
                 className="py-2.5 px-5 rounded-xl bg-[#1976C9] hover:bg-[#125EA3] text-white font-semibold text-xs transition-all flex items-center gap-2 shadow-md shadow-[#1976C9]/20 hover:-translate-y-0.5"
               >
                 <span>Start Capturing →</span>

@@ -31,11 +31,14 @@ from app.models.knowledge import (
 from app.models.media import (
     KIND_AUDIO,
     KIND_DOCUMENT,
+    KIND_NOTES,
     KIND_IMAGE,
     KIND_VIDEO,
     MediaAsset,
 )
 from app.models.user import User
+from app.models.machine import Machine
+from app.models.procedure import procedure_media_assets
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.repositories.media_repository import MediaRepository
 from app.services.audit_service import AuditService
@@ -59,9 +62,12 @@ MIME_TO_KIND = {
     "audio/ogg": KIND_AUDIO,
     "video/mp4": KIND_VIDEO,
     "video/webm": KIND_VIDEO,
+    "video/quicktime": KIND_VIDEO,
     "image/png": KIND_IMAGE,
     "image/jpeg": KIND_IMAGE,
+    "image/webp": KIND_IMAGE,
     "application/pdf": KIND_DOCUMENT,
+    "text/plain": KIND_NOTES,
 }
 
 MIME_TO_EXT = {
@@ -72,9 +78,20 @@ MIME_TO_EXT = {
     "audio/ogg": ".ogg",
     "video/mp4": ".mp4",
     "video/webm": ".webm",
+    "video/quicktime": ".mov",
     "image/png": ".png",
     "image/jpeg": ".jpg",
+    "image/webp": ".webp",
     "application/pdf": ".pdf",
+    "text/plain": ".txt",
+}
+
+MIME_EXTENSIONS = {
+    "video/mp4": {".mp4"}, "video/webm": {".webm"}, "video/quicktime": {".mov"},
+    "image/jpeg": {".jpg", ".jpeg"}, "image/png": {".png"}, "image/webp": {".webp"},
+    "audio/webm": {".webm"}, "audio/mpeg": {".mp3"}, "audio/wav": {".wav"},
+    "audio/mp4": {".m4a", ".mp4"}, "audio/ogg": {".ogg"}, "application/pdf": {".pdf"},
+    "text/plain": {".txt"},
 }
 
 ALLOWED_MIME_TYPES: Dict[str, List[str]] = {
@@ -88,14 +105,17 @@ ALLOWED_MIME_TYPES: Dict[str, List[str]] = {
     KIND_VIDEO: [
         "video/mp4",
         "video/webm",
+        "video/quicktime",
     ],
     KIND_IMAGE: [
         "image/png",
         "image/jpeg",
+        "image/webp",
     ],
     KIND_DOCUMENT: [
         "application/pdf",
     ],
+    KIND_NOTES: ["text/plain"],
 }
 
 
@@ -145,7 +165,7 @@ def verify_file_signature(header: bytes, canonical_mime: str) -> bool:
         return header.startswith(b"\x1a\x45\xdf\xa3")
 
     # MP4 / M4A (ftyp box at offset 4)
-    if canonical_mime in ("video/mp4", "audio/mp4"):
+    if canonical_mime in ("video/mp4", "video/quicktime", "audio/mp4"):
         if len(header) >= 8 and header[4:8] == b"ftyp":
             return True
         return False
@@ -178,9 +198,19 @@ def verify_file_signature(header: bytes, canonical_mime: str) -> bool:
     if canonical_mime == "image/jpeg":
         return header.startswith(b"\xff\xd8\xff")
 
+    if canonical_mime == "image/webp":
+        return len(header) >= 12 and header.startswith(b"RIFF") and header[8:12] == b"WEBP"
+
     # PDF
     if canonical_mime == "application/pdf":
         return header.startswith(b"%PDF-")
+
+    if canonical_mime == "text/plain":
+        try:
+            header.decode("utf-8")
+            return True
+        except UnicodeDecodeError:
+            return False
 
     return False
 
@@ -208,24 +238,31 @@ class MediaService:
         original_name: Optional[str] = None,
         ip_address: Optional[str] = None,
         storage: Optional[StorageService] = None,
+        machine_id: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        tags: Optional[str] = None,
     ) -> MediaAsset:
         """Processes upload, validates type and content signatures, saves to storage, and records in DB."""
         if storage is None:
             storage = get_storage_service()
 
         # 1. Authorize: Check knowledge.create, draft ownership, and editable status
-        version = KnowledgeRepository.get_version_by_id(db, version_id)
-        if not version:
+        version = KnowledgeRepository.get_version_by_id(db, version_id) if version_id else None
+        if version_id and not version:
             raise NotFoundError(
                 code="not_found",
                 message="The requested knowledge version was not found.",
             )
 
-        KnowledgeService.ensure_can_edit_version(user, permissions, version)
+        if version:
+            KnowledgeService.ensure_can_edit_version(user, permissions, version)
+        elif not machine_id or not db.get(Machine, machine_id):
+            raise ValidationError(code="machine_required", message="Select a registered machine for this knowledge asset.")
 
         # 2. Check per-version asset quota
-        current_count = MediaRepository.count_by_version_id(db, version.id)
-        if current_count >= settings.MAX_MEDIA_PER_VERSION:
+        current_count = MediaRepository.count_by_version_id(db, version.id) if version else 0
+        if version and current_count >= settings.MAX_MEDIA_PER_VERSION:
             raise ConflictError(
                 code="media_cap_reached",
                 message=f"Per-version media limit of {settings.MAX_MEDIA_PER_VERSION} assets reached.",
@@ -244,6 +281,8 @@ class MediaService:
                 code="unsupported_media_type",
                 message=f"MIME type '{raw_mime}' is not supported.",
             )
+        if canonical_mime == "text/plain" and (declared_kind or "").strip().lower() != KIND_NOTES:
+            raise UnsupportedMediaTypeError(code="unsupported_media_type", message="Plain text is accepted only through the machine notes workflow.")
 
         derived_kind = MIME_TO_KIND[canonical_mime]
 
@@ -258,6 +297,9 @@ class MediaService:
 
         # 5. Read initial chunk (up to 512 bytes) to check magic bytes and zero-length
         raw_filename = original_name or getattr(upload_file, "filename", None) or "media"
+        supplied_ext = Path(raw_filename).suffix.lower()
+        if supplied_ext and supplied_ext not in MIME_EXTENSIONS.get(canonical_mime, set()):
+            raise UnsupportedMediaTypeError(code="extension_mismatch", message="File extension does not match its declared media type.")
         file_obj = getattr(upload_file, "file", upload_file)
 
         header_chunk = file_obj.read(512)
@@ -306,13 +348,17 @@ class MediaService:
         try:
             asset = MediaRepository.create(
                 db=db,
-                version_id=version.id,
+                version_id=version.id if version else None,
                 kind=derived_kind,
                 storage_key=storage_key,
                 original_name=sanitized_name,
                 mime=canonical_mime,
                 size_bytes=total_bytes,
                 uploaded_by=user.id,
+                machine_id=machine_id or (version.machine_id if version else None),
+                title=(title or sanitized_name)[:256],
+                description=description,
+                tags=tags,
                 commit=False,
             )
 
@@ -323,7 +369,7 @@ class MediaService:
                 entity_id=asset.id,
                 actor_id=user.id,
                 detail={
-                    "version_id": version.id,
+                    "version_id": version.id if version else None,
                     "kind": derived_kind,
                     "mime": canonical_mime,
                     "size_bytes": total_bytes,
@@ -392,22 +438,18 @@ class MediaService:
                 message="The requested media asset was not found.",
             )
 
-        version = KnowledgeRepository.get_version_by_id(db, asset.version_id)
-        if not version:
+        version = KnowledgeRepository.get_version_by_id(db, asset.version_id) if asset.version_id else None
+        if asset.version_id and not version:
             raise NotFoundError(
                 code="not_found",
                 message="The requested media asset was not found.",
             )
 
-        item = KnowledgeRepository.get_item_by_id(db, version.item_id)
-        if not item:
-            raise NotFoundError(
-                code="not_found",
-                message="The requested media asset was not found.",
-            )
-
-        # Enforce visibility rules (identical 404 for nonexistent and unauthorized)
-        KnowledgeService.ensure_can_view_version(user, permissions, version, item)
+        if version:
+            item = KnowledgeRepository.get_item_by_id(db, version.item_id)
+            if not item:
+                raise NotFoundError(code="not_found", message="The requested media asset was not found.")
+            KnowledgeService.ensure_can_view_version(user, permissions, version, item)
 
         if not storage.exists(asset.storage_key):
             logger.error(f"Missing media file in storage for asset_id={asset.id}")
@@ -548,18 +590,30 @@ class MediaService:
                 message="The requested media asset was not found.",
             )
 
-        version = KnowledgeRepository.get_version_by_id(db, asset.version_id)
-        if not version:
+        referenced = db.execute(
+            procedure_media_assets.select().where(procedure_media_assets.c.media_id == asset.id)
+        ).first()
+        if referenced:
+            raise ConflictError(
+                code="asset_referenced",
+                message="This asset is attached to a procedure. Remove the procedure reference before deleting the asset.",
+            )
+
+        version = KnowledgeRepository.get_version_by_id(db, asset.version_id) if asset.version_id else None
+        if asset.version_id and not version:
             raise NotFoundError(
                 code="not_found",
                 message="The requested media asset was not found.",
             )
 
-        KnowledgeService.ensure_can_edit_version(user, permissions, version)
+        if version:
+            KnowledgeService.ensure_can_edit_version(user, permissions, version)
+        elif asset.uploaded_by != user.id and PERM_KNOWLEDGE_APPROVE not in permissions:
+            raise ForbiddenError(code="forbidden", message="You may only delete your own machine knowledge assets.")
 
         storage_key = asset.storage_key
         asset_id = asset.id
-        version_id = version.id
+        version_id = version.id if version else None
         kind = asset.kind
         mime = asset.mime
         size_bytes = asset.size_bytes

@@ -16,12 +16,14 @@ KIND_AUDIO = "audio"
 KIND_VIDEO = "video"
 KIND_IMAGE = "image"
 KIND_DOCUMENT = "document"
+KIND_NOTES = "notes"
 
 ALL_KINDS = {
     KIND_AUDIO,
     KIND_VIDEO,
     KIND_IMAGE,
     KIND_DOCUMENT,
+    KIND_NOTES,
 }
 
 
@@ -35,6 +37,7 @@ class MediaAsset(Base, TimestampMixin):
     )
     title: Mapped[str] = mapped_column(String(256), nullable=False, default="Untitled Media")
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     machine_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("machines.id", ondelete="SET NULL"), nullable=True
     )
@@ -99,7 +102,7 @@ class MediaAsset(Base, TimestampMixin):
 
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('audio', 'video', 'image', 'document')",
+            "kind IN ('audio', 'video', 'image', 'document', 'notes')",
             name="check_media_asset_kind",
         ),
         CheckConstraint(

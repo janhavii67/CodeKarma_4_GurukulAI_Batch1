@@ -133,6 +133,26 @@ describe('Redesigned Operational Dashboard Tests', () => {
     // Primary action buttons for expert
     expect(screen.getAllByText(/Capture Knowledge/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Explore My Knowledge/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Capture Knowledge/i })).toHaveAttribute(
+      'href',
+      '/app/knowledge-assets?kind=notes'
+    );
+    expect(screen.getByRole('link', { name: /Video$/ })).toHaveAttribute(
+      'href',
+      '/app/knowledge-assets?kind=video'
+    );
+    expect(screen.getByRole('link', { name: /Audio$/ })).toHaveAttribute(
+      'href',
+      '/app/knowledge-assets?kind=audio'
+    );
+    expect(screen.getByRole('link', { name: /Notes$/ })).toHaveAttribute(
+      'href',
+      '/app/knowledge-assets?kind=notes'
+    );
+    expect(screen.getByRole('link', { name: /Photos$/ })).toHaveAttribute(
+      'href',
+      '/app/knowledge-assets?kind=image'
+    );
 
     await waitFor(() => {
       expect(screen.getByText(/Resume Draft/i)).toBeInTheDocument();
@@ -145,6 +165,10 @@ describe('Redesigned Operational Dashboard Tests', () => {
     expect(screen.getByText(/Continue a Draft/i)).toBeInTheDocument();
     expect(screen.getByText(/Recently Shared/i)).toBeInTheDocument();
     expect(screen.getByText(/Start Capturing →/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Start Capturing/i })).toHaveAttribute(
+      'href',
+      '/app/knowledge-assets'
+    );
     expect(screen.getByText(/Review Knowledge/i)).toBeInTheDocument();
     expect(screen.getByText(/Ask Assistant →/i)).toBeInTheDocument();
 

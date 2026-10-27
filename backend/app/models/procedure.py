@@ -1,8 +1,15 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Text, Integer, Boolean, ForeignKey, DateTime
+from sqlalchemy import String, Text, Integer, Boolean, ForeignKey, DateTime, Table, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
+from typing import TYPE_CHECKING
+
+procedure_media_assets = Table(
+    "procedure_media_assets", Base.metadata,
+    Column("procedure_id", String(36), ForeignKey("procedures.id", ondelete="CASCADE"), primary_key=True),
+    Column("media_id", String(36), ForeignKey("media_assets.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class Procedure(Base, TimestampMixin):
@@ -18,6 +25,7 @@ class Procedure(Base, TimestampMixin):
     prerequisites: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     required_tools: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     safety_warnings: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    media_assets = relationship("MediaAsset", secondary=procedure_media_assets, lazy="selectin")
 
     steps: Mapped[List["ProcedureStep"]] = relationship("ProcedureStep", back_populates="procedure", cascade="all, delete-orphan", order_by="ProcedureStep.step_order")
     runs: Mapped[List["ProcedureRun"]] = relationship("ProcedureRun", back_populates="procedure")

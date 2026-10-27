@@ -1,5 +1,6 @@
 import os
 import shutil
+import json
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, Depends, UploadFile, File, Form, BackgroundTasks, status
@@ -35,6 +36,8 @@ from app.services.voice_service import (
 )
 from app.services.job_runner import execute_voice_processing_job
 from app.services.vector_service import search_vector_knowledge
+from app.services.vector_service import compute_dense_embedding
+from app.models.embedding import KnowledgeEmbedding
 
 router = APIRouter(prefix="/voice", tags=["Voice to Knowledge & RAG"])
 
@@ -163,6 +166,35 @@ def get_version_transcript(
     if not transcript:
         raise NotFoundError(code="transcript_not_found", message=f"No transcript found for version '{version_id}'.")
 
+    return transcript
+
+
+@router.get("/transcripts/{transcript_id}", response_model=TranscriptResponse)
+def get_transcript(transcript_id: str, auth_ctx: AuthenticatedContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    transcript = db.get(Transcript, transcript_id)
+    if not transcript:
+        raise NotFoundError(code="transcript_not_found", message="Transcript not found.")
+    return transcript
+
+
+@router.patch("/transcripts/{transcript_id}", response_model=TranscriptResponse)
+def edit_transcript(transcript_id: str, payload: dict,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_KNOWLEDGE_CREATE)), db: Session = Depends(get_db)):
+    transcript = db.get(Transcript, transcript_id)
+    if not transcript:
+        raise NotFoundError(code="transcript_not_found", message="Transcript not found.")
+    if not isinstance(payload.get("full_text"), str) or not payload["full_text"].strip():
+        raise ValidationError(code="invalid_transcript", message="Transcript text cannot be empty.")
+    if transcript.media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+        raise ForbiddenError(code="forbidden", message="You may only edit transcripts for your own recordings.")
+    transcript.full_text = payload["full_text"].strip()
+    db.commit(); db.refresh(transcript)
+    emb = db.query(KnowledgeEmbedding).filter(KnowledgeEmbedding.source_type == "voice_transcript",
+        KnowledgeEmbedding.source_id == transcript.id).first()
+    if emb:
+        emb.chunk_text = transcript.full_text
+        emb.embedding_json = json.dumps(compute_dense_embedding(transcript.full_text))
+        db.commit()
     return transcript
 
 
