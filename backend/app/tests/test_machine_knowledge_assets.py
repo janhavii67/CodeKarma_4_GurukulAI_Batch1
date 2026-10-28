@@ -30,6 +30,31 @@ def test_machine_assets_are_isolated_and_persisted(db_session, tmp_path):
     assert db_session.get(MediaAsset, first.id).tags == "panel, inspection"
 
 
+def test_machine_asset_lookup_resolves_legacy_version_machine_without_cross_leakage(db_session, tmp_path):
+    from app.repositories.knowledge_repository import KnowledgeRepository
+
+    user = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).one()
+    machines = db_session.query(Machine).order_by(Machine.id).limit(2).all()
+    _, version = KnowledgeRepository.create_item_and_version_1(
+        db_session,
+        title="Legacy machine procedure",
+        author_id=user.id,
+        machine_id=machines[1].id,
+        commit=False,
+    )
+    asset = MediaService.upload(
+        db_session, user, [PERM_KNOWLEDGE_CREATE], version.id,
+        io.BytesIO(PNG), "image", "image/png", "legacy-panel.png",
+        storage=LocalStorageService(tmp_path / "legacy-media"),
+    )
+    # Recreate the pre-backfill shape: version_id is populated, machine_id is not.
+    asset.machine_id = None
+    db_session.commit()
+
+    assert asset.id not in {row.id for row in MediaRepository.list_by_machine_id(db_session, machines[0].id)}
+    assert asset.id in {row.id for row in MediaRepository.list_by_machine_id(db_session, machines[1].id)}
+
+
 def test_server_rejects_non_video_signature_even_when_declared_video(db_session, tmp_path):
     user = db_session.query(User).filter(User.role_id == "EXPERT").first()
     machine = db_session.query(Machine).first()
@@ -155,6 +180,35 @@ def test_machine_upload_auth_validation_and_isolation(client, db_session, tmp_pa
     finally:
         settings.MEDIA_ROOT = old_root
         set_storage_service(None)
+
+
+def test_machine_library_summary_uses_real_counts_and_hides_private_assets(client, db_session, tmp_path):
+    user_a = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).one()
+    user_b = db_session.query(User).filter(User.email == settings.EXPERT_B_EMAIL).one()
+    machine_a, machine_b = db_session.query(Machine).order_by(Machine.id).limit(2).all()
+    storage = LocalStorageService(tmp_path / "library-summary")
+    owned = MediaService.upload(db_session, user_a, [PERM_KNOWLEDGE_CREATE], None,
+        io.BytesIO(PNG), "image", "image/png", "owned.png", machine_id=machine_a.id, storage=storage)
+    private = MediaService.upload(db_session, user_b, [PERM_KNOWLEDGE_CREATE], None,
+        io.BytesIO(PNG), "image", "image/png", "private.png", machine_id=machine_b.id, storage=storage)
+    unauthenticated = client.get(f"/api/v1/machine-knowledge/library?machine_id={machine_b.id}")
+    assert unauthenticated.status_code == 401
+    login = client.post("/api/v1/auth/login", json={"email": settings.TRAINEE_EMAIL, "password": settings.TRAINEE_PASSWORD})
+    assert login.status_code == 200
+
+    library = client.get(f"/api/v1/machine-knowledge/library?machine_id={machine_a.id}")
+    assert library.status_code == 200, library.text
+    assert len(library.json()) == 1
+    assert library.json()[0]["id"] == machine_a.id
+    assert library.json()[0]["counts"]["image"] == 0
+    assert library.json()[0]["counts"]["total"] == 0
+
+    hidden_library = client.get(f"/api/v1/machine-knowledge/library?machine_id={machine_b.id}")
+    assert hidden_library.status_code == 200, hidden_library.text
+    assert hidden_library.json()[0]["counts"]["image"] == 0
+    assert client.get(f"/api/v1/machine-knowledge/{machine_a.id}/media?kind=image").json() == []
+    assert client.get(f"/api/v1/machine-knowledge/{machine_b.id}/media?kind=image").json() == []
+    assert db_session.get(MediaAsset, private.id) is not None
 
 
 def test_authenticated_audio_recording_upload_persists_to_selected_machine(client, db_session, tmp_path, monkeypatch):
@@ -435,6 +489,9 @@ def test_expert_creates_procedure_with_existing_same_machine_asset(client, db_se
         attached = client.get(f"/api/v1/procedures/{procedure_id}/assets")
         assert attached.status_code == 200
         assert attached.json()[0]["id"] == asset.id
+        assert attached.json()[0]["machine_id"] == machine.id
+        assert attached.json()[0]["verification_status"] == "pending_review"
+        assert attached.json()[0]["mime"] == "image/png"
         assert storage.exists(asset.storage_key)
     finally:
         settings.MEDIA_ROOT = old_root

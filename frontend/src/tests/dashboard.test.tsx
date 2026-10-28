@@ -160,7 +160,7 @@ describe('Redesigned Operational Dashboard Tests', () => {
 
     // Stitch Asymmetric Feature Cards & Lower Supporting Grid
     expect(screen.getByText(/Review & Verify Knowledge/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/Knowledge Assistant/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Knowledge Assistant/i)).not.toBeInTheDocument();
     expect(screen.getByText(/My Knowledge Overview/i)).toBeInTheDocument();
     expect(screen.getByText(/Continue a Draft/i)).toBeInTheDocument();
     expect(screen.getByText(/Recently Shared/i)).toBeInTheDocument();
@@ -170,7 +170,7 @@ describe('Redesigned Operational Dashboard Tests', () => {
       '/app/knowledge-assets'
     );
     expect(screen.getByText(/Review Knowledge/i)).toBeInTheDocument();
-    expect(screen.getByText(/Ask Assistant →/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Ask Assistant/i)).not.toBeInTheDocument();
 
     // MANDATORY REMOVALS: Verify the 6 legacy metrics are completely ABSENT from DOM
     expect(screen.queryByText('SOPs Created')).not.toBeInTheDocument();

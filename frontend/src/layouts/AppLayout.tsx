@@ -131,7 +131,6 @@ export const AppLayout: React.FC = () => {
 
             <NavLink
               to="/app/knowledge"
-              end
               className={({ isActive }) =>
                 `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
                   isActive
@@ -144,42 +143,6 @@ export const AppLayout: React.FC = () => {
                 <>
                   {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
                   <span>My Knowledge</span>
-                </>
-              )}
-            </NavLink>
-
-            <NavLink
-              to="/app/reviews"
-              className={({ isActive }) =>
-                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
-                  isActive
-                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
-                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
-                  <span>Review &amp; Verify</span>
-                </>
-              )}
-            </NavLink>
-
-            <NavLink
-              to="/app/assistant"
-              className={({ isActive }) =>
-                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
-                  isActive
-                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
-                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
-                  <span>Knowledge Assistant</span>
                 </>
               )}
             </NavLink>
@@ -327,20 +290,6 @@ export const AppLayout: React.FC = () => {
               className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
             >
               <span>My Knowledge</span>
-            </NavLink>
-            <NavLink
-              to="/app/reviews"
-              onClick={closeMobileMenu}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
-            >
-              <span>Review &amp; Verify</span>
-            </NavLink>
-            <NavLink
-              to="/app/assistant"
-              onClick={closeMobileMenu}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
-            >
-              <span>Knowledge Assistant</span>
             </NavLink>
             <NavLink
               to="/app/guided-workflows"

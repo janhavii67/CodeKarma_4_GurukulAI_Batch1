@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { User } from '../../../types/auth';
 import { DashboardStats } from '../../../types/dashboard';
-import { searchVectorKnowledge, VectorSearchResultItem } from '../../voice/voiceApi';
 
 interface StitchExpertDashboardProps {
   user: User | null;
@@ -21,23 +20,6 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
   const pendingReviewsForUser = stats?.pending_reviews_for_user;
   const latestDraftId = stats?.latest_draft_id;
   const recentArticles = stats?.recent_articles || [];
-  const [assistantQuery, setAssistantQuery] = useState('');
-  const [assistantResults, setAssistantResults] = useState<VectorSearchResultItem[]>([]);
-  const [assistantError, setAssistantError] = useState('');
-  const [assistantLoading, setAssistantLoading] = useState(false);
-
-  const askAssistant = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!assistantQuery.trim()) return;
-    setAssistantLoading(true); setAssistantError('');
-    try {
-      const response = await searchVectorKnowledge(assistantQuery.trim(), 3);
-      setAssistantResults(response.results ?? []);
-    } catch (error) {
-      setAssistantResults([]);
-      setAssistantError(error instanceof Error ? error.message : 'Knowledge search failed. Please try again.');
-    } finally { setAssistantLoading(false); }
-  };
 
   const knowledgeGaps: Array<{ id: string; code: string; title: string; subtitle: string; actionText: string; actionTo: string; isPrimary: boolean }> = latestDraftId ? [{
     id: latestDraftId,
@@ -130,12 +112,12 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
         </div>
       </section>
 
-      {/* ─── 2. PRIMARY ACTIONS: VISIBLY ASYMMETRIC 3-CARD GRID (5:3:2 RATIO) ─── */}
+      {/* ─── 2. PRIMARY ACTIONS: CAPTURE AND REVIEW ─── */}
       <section className="w-full">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           
           {/* Card A: Capture Knowledge (Large Flagship Panel — ~50% width / 6 cols of 12) */}
-          <div className="lg:col-span-5 bg-white rounded-2xl border border-[#C8D6E4] shadow-sm p-6 lg:p-7 flex flex-col justify-between relative overflow-hidden group hover:border-[#1976C9] transition-all">
+          <div className="lg:col-span-7 bg-white rounded-2xl border border-[#C8D6E4] shadow-sm p-6 lg:p-7 flex flex-col justify-between relative overflow-hidden group hover:border-[#1976C9] transition-all">
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
@@ -222,8 +204,8 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
             </div>
           </div>
 
-          {/* Card B: Review & Verify Knowledge (Medium Anchor Panel — ~30% width / 4 cols of 12) */}
-          <div className="lg:col-span-4 bg-[#173B5E] text-white rounded-2xl p-6 lg:p-7 border border-[#173B5E] shadow-lg flex flex-col justify-between relative overflow-hidden group">
+          {/* Card B: Review & Verify Knowledge */}
+          <div className="lg:col-span-5 bg-[#173B5E] text-white rounded-2xl p-6 lg:p-7 border border-[#173B5E] shadow-lg flex flex-col justify-between relative overflow-hidden group">
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div className="w-11 h-11 rounded-xl bg-white/10 text-white flex items-center justify-center backdrop-blur-sm border border-white/15">
@@ -261,48 +243,6 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
                 <span className="material-symbols-outlined text-[16px] text-[#1976C9]">verified</span>
                 <span>Review Knowledge</span>
               </Link>
-            </div>
-          </div>
-
-          {/* Card C: Knowledge Assistant (compact search panel) */}
-          <div className="lg:col-span-3 bg-[#F8F9FF] rounded-2xl p-6 border border-[#C8D6E4] shadow-xs hover:shadow-md transition-all flex flex-col justify-between group">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-10 h-10 rounded-xl bg-white text-[#1976C9] flex items-center justify-center group-hover:scale-105 transition-transform border border-[#1976C9]/20 shadow-xs">
-                  <span className="material-symbols-outlined text-[22px]">smart_toy</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider uppercase bg-[#EFF4FF] text-[#1976C9] border border-[#1976C9]/20 font-semibold">
-                  INDEXED KNOWLEDGE
-                </span>
-              </div>
-
-              <h3 className="text-base font-bold text-[#173B5E] mb-1.5 leading-snug">
-                Knowledge Assistant
-              </h3>
-              <p className="text-xs text-[#536779] leading-relaxed mb-4">
-                Search indexed expert recordings for practical knowledge and machine guidance.
-              </p>
-
-              <form id="knowledge-assistant-query-form" onSubmit={askAssistant} className="space-y-2">
-                <label className="sr-only" htmlFor="knowledge-assistant-query">Search expert knowledge</label>
-                <input id="knowledge-assistant-query" value={assistantQuery} onChange={(event) => setAssistantQuery(event.target.value)}
-                  placeholder="Ask about a setup or fault…" className="w-full min-w-0 rounded-xl border border-[#C8D6E4] bg-white px-3 py-2.5 text-sm text-[#173B5E] placeholder:text-slate-400 shadow-xs focus:border-[#1976C9] focus:outline-none focus:ring-2 focus:ring-[#1976C9]/20" />
-                {assistantError && <p role="alert" className="text-xs text-rose-700">{assistantError}</p>}
-                {assistantResults.length > 0 && <div className="max-h-36 overflow-y-auto space-y-2" aria-live="polite">
-                  {assistantResults.map((result) => <article key={result.id} className="rounded-lg border border-[#DCE6F0] bg-white p-2.5">
-                    <p className="text-xs text-[#173B5E] leading-relaxed">{result.chunk_text}</p>
-                    <p className="mt-1 text-[10px] text-[#536779]">{result.media_title || 'Indexed expert knowledge'}</p>
-                  </article>)}
-                </div>}
-                {assistantResults.length === 0 && !assistantLoading && assistantQuery && !assistantError && <p className="text-xs text-[#536779]" role="status">No matching indexed knowledge found.</p>}
-              </form>
-            </div>
-
-            <div className="pt-2 border-t border-slate-200/80">
-              <button type="submit" form="knowledge-assistant-query-form" disabled={assistantLoading || !assistantQuery.trim()}
-                className="w-full py-2.5 px-3 rounded-xl bg-[#1976C9] hover:bg-[#125EA3] border border-[#1976C9] text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[#1976C9]/40">
-                <span>{assistantLoading ? 'Searching…' : 'Ask Assistant →'}</span>
-              </button>
             </div>
           </div>
 

@@ -37,3 +37,28 @@ class MediaConfigResponse(BaseModel):
     max_media_per_version: int = Field(
         ..., description="Maximum number of media assets attachable to a single version"
     )
+
+
+class MachineKnowledgeCounts(BaseModel):
+    video: int = 0
+    audio: int = 0
+    transcript: int = 0
+    image: int = 0
+    document: int = 0
+    notes: int = 0
+    total: int = 0
+
+
+class MachineKnowledgeLibraryResponse(BaseModel):
+    id: str
+    name: str
+    code: Optional[str] = None
+    model_number: Optional[str] = None
+    serial_number: Optional[str] = None
+    manufacturer: Optional[str] = None
+    category: Optional[str] = None
+    category_name: Optional[str] = None
+    location: Optional[str] = None
+    status: str
+    is_demo: bool
+    counts: MachineKnowledgeCounts

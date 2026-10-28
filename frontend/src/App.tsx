@@ -19,6 +19,7 @@ import { ForbiddenPage } from './features/errors/ForbiddenPage';
 import { NotFoundPage } from './features/errors/NotFoundPage';
 import { MachineKnowledgePage } from './features/knowledge/MachineKnowledgePage';
 import { ProcedureCreatePage } from './features/knowledge/ProcedureCreatePage';
+import { MachineDiaryLibraryPage, MachineDiaryPage } from './features/knowledge/MachineDiaryLibraryPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,7 +55,10 @@ export const App: React.FC = () => {
             >
               <Route index element={<DashboardPage />} />
               <Route path="machines" element={<MachinesPage />} />
-              <Route path="knowledge" element={<LibraryPage />} />
+              <Route path="knowledge" element={<MachineDiaryLibraryPage />} />
+              <Route path="knowledge/machine/:machineId" element={<MachineDiaryPage />} />
+              {/* Keep the existing SOP listing and draft workflow available. */}
+              <Route path="procedures/library" element={<LibraryPage />} />
               <Route path="knowledge-assets" element={<MachineKnowledgePage />} />
               <Route path="procedures/new" element={<ProcedureCreatePage />} />
               <Route path="knowledge/new" element={<KnowledgeEditorPage />} />
