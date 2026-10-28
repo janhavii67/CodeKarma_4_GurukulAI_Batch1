@@ -95,10 +95,10 @@ interface ProcedureRun {
 }
 
 export const GuidedWorkflowsPage: React.FC = () => {
-  const { user, hasRole } = useAuth();
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const isExpert = hasRole('EXPERT') || user?.role_id === 'ADMIN';
+  const canCreateProcedure = hasPermission('procedure.create');
 
   // Active view tab: 'execute' | 'history'
   const [activeTab, setActiveTab] = useState<'execute' | 'history'>('execute');
@@ -389,7 +389,7 @@ export const GuidedWorkflowsPage: React.FC = () => {
             </button>
           </div>
 
-          {isExpert && (
+          {canCreateProcedure && (
             <Button
               variant="secondary"
               size="sm"

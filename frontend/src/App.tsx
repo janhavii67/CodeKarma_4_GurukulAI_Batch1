@@ -57,43 +57,43 @@ export const App: React.FC = () => {
               }
             >
               <Route index element={<DashboardPage />} />
-              <Route path="machines" element={<MachinesPage />} />
-              <Route path="knowledge" element={<LibraryPage />} />
-              <Route path="knowledge-assets" element={<MachineKnowledgePage />} />
-              <Route path="procedures/new" element={<ProcedureCreatePage />} />
-              <Route path="knowledge/new" element={<KnowledgeEditorPage />} />
-              <Route path="knowledge/:id" element={<KnowledgeEditorPage />} />
-              <Route path="reviews" element={<ReviewsPage />} />
-              <Route path="guided-workflows" element={<GuidedWorkflowsPage />} />
-              <Route path="sound-analysis" element={<SoundAnalysisPage />} />
-              <Route path="voice-capture" element={<VoiceToKnowledgePage />} />
-              <Route path="voice" element={<VoiceToKnowledgePage />} />
-              <Route path="voice-to-knowledge" element={<VoiceToKnowledgePage />} />
-              <Route path="learning" element={<LearningPortalPage />} />
+              <Route path="machines" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'machine.manage']}><MachinesPage /></ProtectedRoute>} />
+              <Route path="knowledge" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><LibraryPage /></ProtectedRoute>} />
+              <Route path="knowledge-assets" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><MachineKnowledgePage /></ProtectedRoute>} />
+              <Route path="procedures/new" element={<ProtectedRoute requiredPermission="procedure.create"><ProcedureCreatePage /></ProtectedRoute>} />
+              <Route path="knowledge/new" element={<ProtectedRoute requiredPermission="knowledge.create"><KnowledgeEditorPage /></ProtectedRoute>} />
+              <Route path="knowledge/:id" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><KnowledgeEditorPage /></ProtectedRoute>} />
+              <Route path="reviews" element={<ProtectedRoute requiredPermission="knowledge.approve"><ReviewsPage /></ProtectedRoute>} />
+              <Route path="guided-workflows" element={<ProtectedRoute requiredPermission="procedure.execute"><GuidedWorkflowsPage /></ProtectedRoute>} />
+              <Route path="sound-analysis" element={<ProtectedRoute requiredPermission="audio.analyze"><SoundAnalysisPage /></ProtectedRoute>} />
+              <Route path="voice-capture" element={<ProtectedRoute requiredPermission="knowledge.create"><VoiceToKnowledgePage /></ProtectedRoute>} />
+              <Route path="voice" element={<ProtectedRoute requiredPermission="knowledge.create"><VoiceToKnowledgePage /></ProtectedRoute>} />
+              <Route path="voice-to-knowledge" element={<ProtectedRoute requiredPermission="knowledge.create"><VoiceToKnowledgePage /></ProtectedRoute>} />
+              <Route path="learning" element={<ProtectedRoute requiredAnyPermission={['procedure.execute', 'learning.manage']}><LearningPortalPage /></ProtectedRoute>} />
 
               {/* AI Knowledge Assistant (Module 02) */}
-              <Route path="assistant" element={<AssistantPage />} />
+              <Route path="assistant" element={<ProtectedRoute requiredPermission="assistant.use"><AssistantPage /></ProtectedRoute>} />
 
               {/* Graceful Specifications & Placeholders for Future Expansion Modules */}
               <Route
                 path="troubleshooting"
-                element={<TroubleshootingPage />}
+                element={<ProtectedRoute requiredPermission="troubleshoot.use"><TroubleshootingPage /></ProtectedRoute>}
               />
               <Route
                 path="knowledge-graph"
-                element={<ModulePlaceholderPage moduleKeyOverride="knowledge-graph" />}
+                element={<ProtectedRoute requiredPermission="knowledge.view_published"><ModulePlaceholderPage moduleKeyOverride="knowledge-graph" /></ProtectedRoute>}
               />
               <Route
                 path="failure-simulator"
-                element={<FailureSimulatorPage />}
+                element={<ProtectedRoute requiredPermission="simulation.attempt"><FailureSimulatorPage /></ProtectedRoute>}
               />
               <Route
                 path="skill-verification"
-                element={<ModulePlaceholderPage moduleKeyOverride="skill-verification" />}
+                element={<ProtectedRoute requiredPermission="procedure.execute"><ModulePlaceholderPage moduleKeyOverride="skill-verification" /></ProtectedRoute>}
               />
               <Route
                 path="synchronized-simulation"
-                element={<ModulePlaceholderPage moduleKeyOverride="synchronized-simulation" />}
+                element={<ProtectedRoute requiredPermission="simulation.attempt"><ModulePlaceholderPage moduleKeyOverride="synchronized-simulation" /></ProtectedRoute>}
               />
             </Route>
 

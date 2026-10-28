@@ -5,33 +5,31 @@ from array import array
 
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app
 from app.core.config import settings
 
-client = TestClient(app)
 
 
-def login(email: str, password: str):
+def login(client: TestClient, email: str, password: str):
     return client.post("/api/v1/auth/login", json={"email": email, "password": password})
 
 
-def get_csrf():
+def get_csrf(client: TestClient):
     return client.get("/api/v1/auth/csrf").json()["csrf_token"]
 
 
-def test_trainee_cannot_access_review_queue():
+def test_trainee_cannot_access_review_queue(client: TestClient):
     """Trainee must be forbidden from accessing the peer review queue."""
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     resp = client.get("/api/v1/reviews/queue")
     assert resp.status_code == 403
     data = resp.json()
     assert data["error"]["code"] == "forbidden"
 
 
-def test_trainee_cannot_create_knowledge():
+def test_trainee_cannot_create_knowledge(client: TestClient):
     """Trainee must be forbidden from authoring/publishing knowledge."""
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
-    csrf = get_csrf()
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+    csrf = get_csrf(client)
     resp = client.post(
         "/api/v1/knowledge",
         json={"title": "Unauthorized SOP", "category": "cnc-milling", "content": "Test content"},
@@ -41,10 +39,10 @@ def test_trainee_cannot_create_knowledge():
     assert resp.json()["error"]["code"] == "forbidden"
 
 
-def test_trainee_cannot_register_machines():
+def test_trainee_cannot_register_machines(client: TestClient):
     """Trainee must be forbidden from registering machines in the catalog."""
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
-    csrf = get_csrf()
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+    csrf = get_csrf(client)
     resp = client.post(
         "/api/v1/machines",
         json={
@@ -59,9 +57,9 @@ def test_trainee_cannot_register_machines():
     assert resp.json()["error"]["code"] == "forbidden"
 
 
-def test_trainee_dashboard_and_curriculum_access():
+def test_trainee_dashboard_and_curriculum_access(client: TestClient):
     """Trainee receives personalized, real database-backed learning metrics."""
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     resp = client.get("/api/v1/learning/dashboard")
     assert resp.status_code == 200
     data = resp.json()
@@ -85,11 +83,11 @@ def test_trainee_dashboard_and_curriculum_access():
     assert len(data["notifications"]) >= 1
 
 
-def test_trainee_cannot_view_another_operators_procedure_run():
+def test_trainee_cannot_view_another_operators_procedure_run(client: TestClient):
     """Trainee cannot access another operator's procedure run."""
     # 1. Expert A starts a run
-    login(settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
-    csrf = get_csrf()
+    login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    csrf = get_csrf(client)
     proc_list = client.get("/api/v1/procedures").json()
     proc_id = proc_list[0]["id"]
     expert_run = client.post(
@@ -99,7 +97,7 @@ def test_trainee_cannot_view_another_operators_procedure_run():
     expert_run_id = expert_run["id"]
 
     # 2. Trainee logs in and tries to peek at Expert A's run
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     peek_resp = client.get(f"/api/v1/procedures/runs/{expert_run_id}")
     assert peek_resp.status_code == 403
     assert peek_resp.json()["error"]["code"] == "unauthorized_run"
@@ -128,10 +126,10 @@ def test_trainee_sound_analysis_execution(client: TestClient):
     assert data["candidate_matches"] == []
 
 
-def test_trainee_notification_read_lifecycle():
+def test_trainee_notification_read_lifecycle(client: TestClient):
     """Trainee can mark own notification as read."""
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
-    csrf = get_csrf()
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+    csrf = get_csrf(client)
     notifs = client.get("/api/v1/learning/notifications").json()
     assert len(notifs) >= 1
     target_notif = notifs[0]

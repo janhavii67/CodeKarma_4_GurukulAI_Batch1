@@ -28,7 +28,7 @@ interface ReviewQueueItem {
 }
 
 export const ReviewsPage: React.FC = () => {
-  const { user, login } = useAuth();
+  const { user } = useAuth();
   const [queue, setQueue] = useState<ReviewQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<ReviewQueueItem | null>(null);
@@ -61,7 +61,7 @@ export const ReviewsPage: React.FC = () => {
     // Frontend pre-check: allow Admin override
     if (selectedItem.author_id === user?.id && user?.role_id !== 'ADMIN') {
       setErrorMsg(
-        'System Governance Rule: Authors cannot review their own drafts (Invariant 3). Switch to Expert B or Admin below to approve.'
+        'System Governance Rule: Authors cannot review their own drafts. An authorized peer reviewer must approve this submission.'
       );
       return;
     }
@@ -117,60 +117,7 @@ export const ReviewsPage: React.FC = () => {
         </Button>
       </div>
 
-      {/* Reviewer Persona Switcher Toolbar */}
-      <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400 font-medium">Active Reviewer Persona:</span>
-          <span className="px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-200 font-semibold">
-            {user?.name} · <strong className="text-brand-400">{user?.role_id}</strong>
-          </span>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] text-slate-500 font-mono">Switch reviewer:</span>
-          <button
-            type="button"
-            onClick={async () => {
-              await login('expert.b@demo.local', 'ExpertB@Gurukul2026!');
-              fetchQueue();
-            }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              user?.email === 'expert.b@demo.local'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            🔬 Expert B (Peer Reviewer)
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              await login('admin@demo.local', 'Admin@Gurukul2026!');
-              fetchQueue();
-            }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              user?.email === 'admin@demo.local'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            🛡️ Admin (Governance)
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              await login('expert.a@demo.local', 'ExpertA@Gurukul2026!');
-              fetchQueue();
-            }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              user?.email === 'expert.a@demo.local'
-                ? 'bg-brand-500 text-white shadow-sm'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            👨‍🔬 Expert A (Author)
-          </button>
-        </div>
-      </div>
+      <div className="text-xs text-[#536779]">Signed in as {user?.name} · {user?.role_id}</div>
 
       {/* Governance Banner */}
       <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 flex items-start gap-3">
@@ -297,21 +244,10 @@ export const ReviewsPage: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>
-                    <strong>Strict Two-Person Rule:</strong> You authored this SOP. Under manufacturing quality standards, another peer expert (or Admin) must approve it.
+                    <strong>Strict Two-Person Rule:</strong> You authored this SOP. An authorized peer reviewer must approve it.
                   </span>
                 </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={async () => {
-                    await login('expert.b@demo.local', 'ExpertB@Gurukul2026!');
-                    setSelectedItem(null);
-                    fetchQueue();
-                  }}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white shrink-0 text-xs"
-                >
-                  Switch to Expert B
-                </Button>
+                <span className="text-amber-100">Sign in with a separate reviewer account to continue.</span>
               </div>
             )}
 

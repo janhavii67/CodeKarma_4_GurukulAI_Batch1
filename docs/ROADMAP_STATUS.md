@@ -1,29 +1,31 @@
-# Roadmap implementation audit — 2026-10-28
+# Gurukul AI roadmap status
 
-This audit compares the module specifications with current backend routes, frontend routes, models, and test coverage. “Partial” means real code exists but the complete documented workflow is not yet available; it must not be presented as complete.
+Updated 2026-10-28 against the current repository implementation and [`roadmap.md`](roadmap.md). This supersedes the earlier audit in this file, which described several implemented modules as placeholders.
 
-| Module | Current status | Evidence and remaining work | Dependency order |
-|---|---|---|---|
-| 00 Foundation | Tested | Auth, roles, app shell, machine routes, and automated auth coverage are present. | Complete |
-| 01 Expert Knowledge Capture | Implemented and tested | Knowledge editor/reviewable drafts and machine knowledge assets exist; current backend and frontend suites exercise capture, media, and associations. Virus scanning and resumable uploads remain out of scope in the spec. | Complete |
-| 06 Validation and Versioning | Implemented and tested | Knowledge submission/review, history, version detail, permission-filtered snapshot comparison, field-level change labels, and regression coverage are present. Remaining gap: the compare UI identifies changed fields rather than rendering granular added/removed/changed step diffs. | Complete before dependent modules |
-| 04 Voice-to-Knowledge | Partial | Recording, saved machine audio, transcript jobs, transcript review/editing, and AI structuring pipeline are present. Real speech transcription requires backend `OPENAI_API_KEY`; provider output and structured steps still require expert review. AI provider failure/timeout and the full voice-to-draft UI need continued end-to-end coverage. | After 01/06 |
-| 03 Guided Workflows | Partial | Procedure authoring, existing-asset references, run start/status, and step completion exist. Procedure runs are not yet clearly bound to reviewed immutable workflow versions with mandatory checkpoint enforcement as specified. | After 06 |
-| 02 AI Knowledge Assistant | Partial | Vector search exists in the voice API; `/app/assistant` remains a placeholder, so there is no complete user-facing cited-answer workflow. | After 06 |
-| 05 Troubleshooting | Partial | Troubleshooting case/node/edge read APIs and models exist; `/app/troubleshooting` remains a placeholder and a guided, server-enforced diagnostic flow is incomplete. | After 06 |
-| 07 Machine Sound Analysis | Partial | Audio references, analysis job API, and a frontend analysis page exist. Real signal-analysis provider/pipeline and review evidence need completion. | After 06 |
-| 08 Knowledge Graph | Not implemented | No dedicated graph feature route/page or end-to-end relationship browsing workflow was found; `/app/knowledge-graph` is a placeholder. | After 06 |
-| 09 Failure Simulator | Partial | Simulation models and learning API references exist, but `/app/failure-simulator` is a placeholder and a validated simulation experience is incomplete. | After 03/05 |
-| 10 Practical Skill Verification | Partial | Learning assignments and procedure execution data exist; `/app/skill-verification` remains a placeholder and the documented assessment/evidence workflow is incomplete. | After 03 |
-| 11 Synchronized Training Simulation | Not implemented | `/app/synchronized-simulation` is a placeholder; no synchronized multi-user workflow was found. | After 03/04 |
+| Module | Status | Remaining verification or scope |
+|---|---|---|
+| 00 Foundation | Implemented and tested | Authentication, role and permission checks, sessions, CSRF, audit logging, and app navigation are in place. |
+| 01 Expert Knowledge Capture | Implemented and tested | Structured knowledge authoring, review submission, machine-linked media, and expert capture flows are available. |
+| 06 Validation and Versioning | Implemented (core) | Approval lifecycle and version history are present. The compare view still needs a granular added/removed/changed step diff. |
+| 02 AI Knowledge Assistant | Chunk 10 implemented | Published-source RAG, streaming chat, citations, feedback, and contextual workflow/troubleshooting handoffs are implemented. Full live Gemini RAG and streaming verification remains environment-dependent. |
+| 04 Voice-to-Knowledge | Chunk 4 implemented | Audio capture, timestamped transcription, AI-draft structuring, expert review, and draft-only indexing are present. A configured speech provider is required; generated content remains a draft until reviewed and published. |
+| 03 Guided Workflows | Chunk 5 implemented | Published, revision-pinned procedures, stepwise execution, explicit operator completion, and issue reporting are available. |
+| 05 Troubleshooting | Chunk 6 implemented | Published-source investigations, persisted sessions, authored decision steps, and expert escalation are available. |
+| 09 Failure Simulator | Chunk 7 implemented | Revisioned scenarios, deterministic branching, private attempts, and review summaries are available. |
+| 07 Machine Sound Matching | Chunk 8 implemented | Approved reference matching supports WAV/FLAC and FFmpeg-decoded media formats. Similarity is a screening score, not a diagnosis; thresholds still need production calibration. |
+| 08 Knowledge Graph | Planned | Ontology and graph-backed discovery are not implemented. |
+| 10 Practical Skill Verification | Planned | Assessment and certification workflow is not implemented. |
+| 11 Synchronized Simulation | Planned | Multi-operator synchronized training is not implemented. |
 
-## Recommended implementation order
+## Frontend redesign integration
 
-1. Complete Module 04 expert-reviewed transcript-to-draft flow and provider failure handling.
-2. Complete Module 03 version-bound runs and checkpoint enforcement.
-3. Implement Module 02’s assistant UI and citation/no-source behavior, then Module 05’s guided troubleshooting flow.
-4. Complete Module 07 analysis; then implement Modules 08–11 in dependency order.
+The frontend redesign adds a role-aware dashboard, responsive app navigation, machine-specific knowledge and media pages, and a redesigned knowledge-capture experience. The existing assistant, approval, workflow, troubleshooting, voice, audio matching, simulator, and authentication routes remain integrated. Routes for Modules 08, 10, and 11 remain explicitly marked as planned placeholders.
 
-The existing [Module Registry](MODULE_REGISTRY.md) is updated to distinguish tested, partial, and not implemented work. The older `docs/TASKS.md` is the historical hackathon task plan and does not fully represent the current module architecture.
+## Verification boundaries
 
-The 2026-10-28 follow-up added version-number lookup and saved-snapshot comparison for Module 06. No schema migration is required. The next prioritized implementation phase is Module 04's expert-reviewed transcript-to-draft flow; provider-backed transcription still requires `OPENAI_API_KEY` (and any selected LLM provider configuration).
+- Provider-backed transcription and Gemini responses require the corresponding server credentials and network access.
+- Module 07 similarity values are not calibrated probabilities and must not be used as fault diagnoses.
+- Automated tests validate deterministic local behavior; they do not establish safe operation on production equipment.
+- Module 06's comparison view still needs detailed per-step change visualization.
+
+See [`MODULE_REGISTRY.md`](MODULE_REGISTRY.md) and [`roadmap.md`](roadmap.md) for module references and implementation detail. Update this table after running the relevant checks; record actual results rather than assuming a module is tested because its code exists.

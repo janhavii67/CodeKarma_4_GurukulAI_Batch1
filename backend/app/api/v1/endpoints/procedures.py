@@ -9,6 +9,7 @@ from app.core.exceptions import ValidationError
 from app.core.permissions import (
     get_current_user,
     require_permission,
+    require_any_permission,
     AuthenticatedContext,
     PERM_PROCEDURE_EXECUTE,
     PERM_KNOWLEDGE_CREATE,
@@ -168,12 +169,14 @@ def create_procedure(payload: ProcedureCreatePayload,
 
 
 @router.get("/{procedure_id}/assets")
-def list_procedure_assets(procedure_id: str, auth_ctx: AuthenticatedContext = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_procedure_assets(procedure_id: str, auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_PROCEDURE_CREATE, PERM_PROCEDURE_EXECUTE, PERM_KNOWLEDGE_APPROVE)), db: Session = Depends(get_db)):
     procedure = db.get(Procedure, procedure_id)
     if not procedure:
         raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
-    if procedure.author_id != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN" and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
-        raise ForbiddenError(code="forbidden", message="You may only view references on your own procedures or procedures assigned for review.")
+    if procedure.author_id != auth_ctx.user.id and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
+        from app.services.procedure_service import is_workflow_currently_published
+        if PERM_PROCEDURE_EXECUTE not in auth_ctx.permissions or not is_workflow_currently_published(db, procedure):
+            raise ForbiddenError(code="forbidden", message="You may only view references on a published procedure, your own draft, or a procedure assigned for review.")
     for asset in procedure.media_assets:
         MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, asset)
     return [{"id": a.id, "title": a.title, "kind": a.kind, "machine_id": a.machine_id,
@@ -237,7 +240,7 @@ def delete_procedure(
 def list_procedures(
     q: Optional[str] = Query(None, max_length=100),
     machine_id: Optional[str] = None,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_EXECUTE)),
     db: Session = Depends(get_db),
 ):
     """List approved standard operating procedures."""
@@ -258,7 +261,7 @@ def list_procedures(
 @router.get("/{procedure_id}", response_model=ProcedureResponse)
 def get_procedure(
     procedure_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_EXECUTE)),
     db: Session = Depends(get_db),
 ):
     """Retrieve full procedure with ordered checklist steps and safety alerts."""
@@ -293,7 +296,7 @@ def start_procedure_run(
 @router.get("/runs/{run_id}", response_model=ProcedureRunResponse)
 def get_run_status(
     run_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_PROCEDURE_EXECUTE, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     """Fetch status and completion checklist of an active run."""
@@ -301,7 +304,7 @@ def get_run_status(
     if not run:
         raise NotFoundError(code="run_not_found", message=f"Procedure run '{run_id}' not found.")
 
-    if run.operator_id != auth_ctx.user.id and auth_ctx.user.role_id not in ["ADMIN", "EXPERT"]:
+    if run.operator_id != auth_ctx.user.id and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
         raise ForbiddenError(code="unauthorized_run", message="You may only view your own procedure runs.")
 
     step_executions = [
@@ -331,7 +334,7 @@ def get_run_status(
 
 @router.get("/runs/my/all", response_model=List[ProcedureRunResponse])
 def list_my_runs(
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_EXECUTE)),
     db: Session = Depends(get_db),
 ):
     """List all procedure execution runs belonging to the current caller."""

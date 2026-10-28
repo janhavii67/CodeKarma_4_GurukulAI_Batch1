@@ -9,9 +9,12 @@ from app.core.permissions import (
     csrf_protect,
     get_current_user,
     require_permission,
+    require_any_permission,
     PERM_KNOWLEDGE_CREATE,
     PERM_KNOWLEDGE_EDIT_OWN_DRAFT,
     PERM_KNOWLEDGE_SUBMIT_REVIEW,
+    PERM_KNOWLEDGE_VIEW_PUBLISHED,
+    PERM_KNOWLEDGE_APPROVE,
 )
 from app.db.session import get_db
 from app.models.knowledge import (
@@ -94,7 +97,7 @@ def list_knowledge(
     category: Optional[str] = Query(None, description="Filter by category"),
     machine_id: Optional[str] = Query(None, description="Filter by machine ID"),
     status: Optional[str] = Query(None, description="Filter by version status"),
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     items, total = KnowledgeService.list_knowledge(
@@ -123,7 +126,7 @@ def list_knowledge(
 def get_knowledge(
     id: str,
     version_id: Optional[str] = Query(None, description="Specific version ID"),
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     item, version = KnowledgeService.get_knowledge(
@@ -287,7 +290,7 @@ def create_revision(
 )
 def list_versions(
     id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     versions = KnowledgeService.list_versions(
@@ -308,7 +311,7 @@ def compare_versions(
     id: str,
     base_version: int = Query(..., ge=1),
     target_version: int = Query(..., ge=1),
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     base, target, changed_fields = KnowledgeService.compare_versions(
@@ -334,7 +337,7 @@ def compare_versions(
 def get_version_by_number(
     id: str,
     version_no: int,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     version = KnowledgeService.get_version_by_number(

@@ -24,6 +24,8 @@ from app.core.permissions import (
     csrf_protect,
     get_current_user,
     require_permission,
+    require_any_permission,
+    PERM_KNOWLEDGE_VIEW_PUBLISHED,
 )
 from app.core.logging import logger
 from app.db.base import utc_now
@@ -905,7 +907,7 @@ def decide_audio_review_submission(
 def stream_audio_media(
     media_id: str,
     range_header: Optional[str] = Header(None, alias="Range"),
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_AUDIO_ANALYZE, PERM_AUDIO_MANAGE, PERM_KNOWLEDGE_VIEW_PUBLISHED)),
     db: Session = Depends(get_db),
 ):
     asset = db.get(MediaAsset, media_id)

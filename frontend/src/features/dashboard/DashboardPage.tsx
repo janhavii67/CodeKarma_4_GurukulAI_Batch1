@@ -22,7 +22,7 @@ export const DashboardPage: React.FC = () => {
   const [isAdminDiagOpen, setIsAdminDiagOpen] = useState(false);
 
   const isAdmin = hasRole('ADMIN');
-  const isExpert = hasRole('EXPERT') || isAdmin;
+  const isExpert = hasRole('EXPERT');
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);

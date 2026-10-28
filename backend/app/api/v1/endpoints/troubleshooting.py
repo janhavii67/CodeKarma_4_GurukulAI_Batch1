@@ -268,7 +268,7 @@ def dispose_troubleshooting_escalation(
 @router.get("", response_model=List[TroubleshootingCaseListItem])
 def list_troubleshooting_cases(
     machine_id: Optional[str] = None,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_TROUBLESHOOT_USE)),
     db: Session = Depends(get_db),
 ):
     """List available expert diagnostic cases and symptoms."""
@@ -298,7 +298,7 @@ def list_troubleshooting_cases(
 @router.get("/{case_id}", response_model=TroubleshootingCaseDetailResponse)
 def get_troubleshooting_case(
     case_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_TROUBLESHOOT_USE)),
     db: Session = Depends(get_db),
 ):
     """Retrieve complete decision tree with nodes, branches, and safety warnings."""

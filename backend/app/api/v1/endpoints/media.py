@@ -29,7 +29,10 @@ from app.core.permissions import (
     csrf_protect,
     get_current_user,
     require_permission,
+    require_any_permission,
     PERM_KNOWLEDGE_CREATE,
+    PERM_KNOWLEDGE_VIEW_PUBLISHED,
+    PERM_KNOWLEDGE_APPROVE,
 )
 from app.db.session import get_db
 from app.schemas.media import MediaAssetResponse, MediaConfigResponse
@@ -99,7 +102,7 @@ def upload_machine_media(
 
 @router.get("/machine-knowledge/{machine_id}/media", response_model=List[MediaAssetResponse])
 def list_machine_media(machine_id: str, kind: Optional[str] = None, q: Optional[str] = None,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_APPROVE)), db: Session = Depends(get_db)):
     if not db.get(Machine, machine_id):
         raise NotFoundError(code="machine_not_found", message="The selected machine was not found.")
     if kind == "transcript":
@@ -249,7 +252,7 @@ def upload_media(
 )
 def list_version_media(
     vid: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     assets = MediaService.list_for_version(
@@ -280,7 +283,7 @@ def list_version_media(
     summary="Retrieve media upload limits and allowed MIME types",
 )
 def get_media_config(
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_APPROVE)),
 ):
     return MediaService.get_config()
 
@@ -292,7 +295,7 @@ def get_media_config(
 def get_media_stream(
     id: str,
     range: Optional[str] = Header(None, description="HTTP Range header for byte seeking"),
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     try:

@@ -45,7 +45,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
-    refreshUser();
+    void refreshUser();
+
+    // Revalidate the server session whenever the app becomes active again so
+    // revoked sessions or changed roles cannot keep using stale client state.
+    const revalidateSession = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshUser();
+      }
+    };
+    window.addEventListener('focus', revalidateSession);
+    document.addEventListener('visibilitychange', revalidateSession);
+    return () => {
+      window.removeEventListener('focus', revalidateSession);
+      document.removeEventListener('visibilitychange', revalidateSession);
+    };
   }, [refreshUser]);
 
   const login = async (email: string, password: string) => {

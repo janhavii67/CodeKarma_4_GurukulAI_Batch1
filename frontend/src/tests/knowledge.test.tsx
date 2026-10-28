@@ -237,7 +237,7 @@ describe('LibraryPage', () => {
 
   it('renders page heading', async () => {
     withProviders(<LibraryPage />);
-    expect(screen.getByText(/Knowledge Library/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Knowledge Library & Authoring Repository/i)).toBeInTheDocument();
   });
 
   it('shows Create button for users with knowledge.create permission', async () => {

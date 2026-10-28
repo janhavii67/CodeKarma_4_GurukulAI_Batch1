@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Link, useLocation } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { AppLayout } from '../layouts/AppLayout';
 
@@ -24,19 +25,21 @@ const LocationProbe = () => {
 
 const renderAppLayout = () =>
   render(
-    <MemoryRouter initialEntries={['/app']}>
-      <Routes>
-        <Route path="/app" element={<AppLayout />}>
-          <Route
-            index
-            element={<Link to="/app/knowledge-assets?kind=notes">Home Capture Knowledge</Link>}
-          />
-          <Route path="knowledge-assets" element={<div>Audio/video capture workflow</div>} />
-          <Route path="knowledge/new" element={<div>Old procedure details page</div>} />
-        </Route>
-      </Routes>
-      <LocationProbe />
-    </MemoryRouter>
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter initialEntries={['/app']}>
+        <Routes>
+          <Route path="/app" element={<AppLayout />}>
+            <Route
+              index
+              element={<Link to="/app/knowledge-assets?kind=notes">Home Capture Knowledge</Link>}
+            />
+            <Route path="knowledge-assets" element={<div>Audio/video capture workflow</div>} />
+            <Route path="knowledge/new" element={<div>Old procedure details page</div>} />
+          </Route>
+        </Routes>
+        <LocationProbe />
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 
 describe('Capture Knowledge navigation', () => {

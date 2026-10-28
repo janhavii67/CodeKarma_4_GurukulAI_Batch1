@@ -13,9 +13,12 @@ from app.core.logging import logger
 from app.core.permissions import (
     get_current_user,
     require_permission,
+    require_any_permission,
     AuthenticatedContext,
     PERM_KNOWLEDGE_CREATE,
     PERM_KNOWLEDGE_APPROVE,
+    PERM_KNOWLEDGE_VIEW_PUBLISHED,
+    PERM_ASSISTANT_USE,
     csrf_protect,
 )
 from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError, ConflictError
@@ -250,7 +253,7 @@ async def attach_voice_to_version(
 @router.get("/assets", response_model=List[MediaAssetResponse])
 def list_voice_assets(
     machine_id: Optional[str] = None,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     """List expert voice recordings available to the current user."""
@@ -280,7 +283,7 @@ def list_voice_assets(
 @router.get("/assets/{media_id}", response_model=MediaAssetResponse)
 def get_voice_asset(
     media_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     """Retrieve details for a specific expert voice capture with IDOR check."""
@@ -295,7 +298,7 @@ def get_voice_asset(
 @router.get("/media/{media_id}/transcript", response_model=TranscriptResponse)
 def get_media_transcript(
     media_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     """Retrieve timestamped narration transcript and segments for a specific media asset."""
@@ -323,7 +326,7 @@ def get_media_transcript(
 @router.get("/media/{media_id}/steps", response_model=StepsListResponse)
 def get_media_steps(
     media_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     """Retrieve structured candidate SOP steps for an expert voice recording with server-side gate metrics."""
@@ -535,7 +538,7 @@ async def create_draft_from_voice_asset(
 @router.get("/jobs/{job_id}", response_model=ProcessingJobResponse)
 def get_voice_job(
     job_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     """Retrieve processing job status and progress for voice transcription pipeline."""
@@ -551,7 +554,7 @@ def get_voice_job(
 @router.get("/knowledge-versions/{version_id}/transcript", response_model=TranscriptResponse)
 def get_version_transcript(
     version_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     """
@@ -570,7 +573,7 @@ def get_version_transcript(
 
 
 @router.get("/transcripts/{transcript_id}", response_model=TranscriptResponse)
-def get_transcript(transcript_id: str, auth_ctx: AuthenticatedContext = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_transcript(transcript_id: str, auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_APPROVE)), db: Session = Depends(get_db)):
     transcript = db.get(Transcript, transcript_id)
     if not transcript:
         raise NotFoundError(code="transcript_not_found", message="Transcript not found.")
@@ -631,7 +634,7 @@ def patch_transcript_segment(
 @router.post("/search", response_model=VectorSearchResponse)
 def search_voice_knowledge_vector(
     payload: VectorSearchRequest,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_ASSISTANT_USE)),
     db: Session = Depends(get_db),
 ):
     """
@@ -692,7 +695,7 @@ def search_voice_knowledge_vector(
 @router.get("/stream/{media_id}")
 def stream_voice_audio(
     media_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     """

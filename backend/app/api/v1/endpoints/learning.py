@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from app.db.session import get_db
 from app.db.base import utc_now
-from app.core.permissions import get_current_user, AuthenticatedContext
+from app.core.permissions import get_current_user, AuthenticatedContext, require_any_permission, PERM_PROCEDURE_EXECUTE, PERM_LEARNING_MANAGE
 from app.core.exceptions import NotFoundError, ForbiddenError
 from app.models import (
     LearningPath,
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/learning", tags=["Learning & Trainee"])
 
 @router.get("/dashboard", response_model=TraineeDashboardMetrics)
 def get_trainee_dashboard(
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_PROCEDURE_EXECUTE, PERM_LEARNING_MANAGE)),
     db: Session = Depends(get_db),
 ):
     """
@@ -215,7 +215,7 @@ def get_trainee_dashboard(
 
 @router.get("/assignments", response_model=List[LearningAssignmentResponse])
 def list_my_assignments(
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_PROCEDURE_EXECUTE, PERM_LEARNING_MANAGE)),
     db: Session = Depends(get_db),
 ):
     """List all learning curriculum paths assigned to the current operator/trainee."""
@@ -261,7 +261,7 @@ def list_my_assignments(
 
 @router.get("/my-progress")
 def get_my_learning_progress(
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_PROCEDURE_EXECUTE, PERM_LEARNING_MANAGE)),
     db: Session = Depends(get_db),
 ):
     """Retrieve detailed learning progress, completed procedures, and skill milestones."""
@@ -323,7 +323,7 @@ def get_my_learning_progress(
 
 @router.get("/notifications", response_model=List[NotificationResponse])
 def list_notifications(
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_PROCEDURE_EXECUTE, PERM_LEARNING_MANAGE)),
     db: Session = Depends(get_db),
 ):
     """List all notifications addressed to the authenticated user."""
@@ -339,7 +339,7 @@ def list_notifications(
 @router.post("/notifications/{notification_id}/read", status_code=status.HTTP_200_OK)
 def mark_notification_as_read(
     notification_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_PROCEDURE_EXECUTE, PERM_LEARNING_MANAGE)),
     db: Session = Depends(get_db),
 ):
     """Mark a user notification as read."""
@@ -356,7 +356,7 @@ def mark_notification_as_read(
 
 @router.post("/notifications/mark-all-read", status_code=status.HTTP_200_OK)
 def mark_all_notifications_as_read(
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_PROCEDURE_EXECUTE, PERM_LEARNING_MANAGE)),
     db: Session = Depends(get_db),
 ):
     """Mark all pending notifications as read."""

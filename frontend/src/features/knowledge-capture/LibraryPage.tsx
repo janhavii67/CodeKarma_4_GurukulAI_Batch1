@@ -92,7 +92,7 @@ export const LibraryPage: React.FC = () => {
   const isOperator = role === 'OPERATOR';
   const isExpert = role === 'EXPERT';
   const isAdmin = role === 'ADMIN';
-  const canApprove = hasPermission('knowledge.approve') || isAdmin;
+  const canApprove = hasPermission('knowledge.approve');
 
   // Count items awaiting review
   const pendingReviewCount = items.filter((i) => i.version_status === 'in_review').length;

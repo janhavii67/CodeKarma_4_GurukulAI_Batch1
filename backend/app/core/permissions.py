@@ -161,6 +161,25 @@ def require_permission(permission_id: str) -> Callable:
     return _dependency
 
 
+def require_any_permission(*permission_ids: str) -> Callable:
+    """Require at least one existing permission; an empty list fails closed."""
+
+    required = frozenset(permission_ids)
+
+    def _dependency(
+        auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    ) -> AuthenticatedContext:
+        if not required.intersection(auth_ctx.permissions):
+            names = ", ".join(sorted(required)) or "a configured permission"
+            raise ForbiddenError(
+                code="forbidden",
+                message=f"Access denied: requires one of '{names}'.",
+            )
+        return auth_ctx
+
+    return _dependency
+
+
 def require_role(role_id: str) -> Callable:
     """Returns a dependency that asserts the caller possesses the specified role."""
 

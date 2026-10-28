@@ -19,7 +19,6 @@ import {
   CheckCircle2,
   XCircle,
   ShieldAlert,
-  ArrowRightLeft,
   GraduationCap,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -262,7 +261,7 @@ export const KnowledgeEditorPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user, login, hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { data: machinesData } = useMachines();
   const machines = machinesData?.items ?? [];
 
@@ -318,7 +317,7 @@ export const KnowledgeEditorPage: React.FC = () => {
 
     if (data?.author_id === user?.id && user?.role_id !== 'ADMIN') {
       setReviewError(
-        'System Governance Rule: Authors cannot approve their own submissions (Invariant 3). Switch to Expert B or Admin to approve.'
+        'System Governance Rule: Authors cannot approve their own submissions. A separate authorized peer reviewer must approve this submission.'
       );
       return;
     }
@@ -703,7 +702,7 @@ export const KnowledgeEditorPage: React.FC = () => {
           onSubmit={handleSubmitForReview}
           isSubmitting={submitMutation.isPending}
           onAskAssistant={v.status === 'published' ? () => navigate(`/app/assistant?q=${encodeURIComponent(data.title)}`) : undefined}
-          canApproveReview={(hasPermission('knowledge.approve') || user?.role_id === 'ADMIN') && (data.author_id !== user?.id || user?.role_id === 'ADMIN')}
+          canApproveReview={hasPermission('knowledge.approve') && (data.author_id !== user?.id || user?.role_id === 'ADMIN')}
           onApproveReview={() => handleReviewDecision('APPROVED')}
           isApprovingReview={reviewActionLoading}
         />
@@ -818,37 +817,11 @@ export const KnowledgeEditorPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <span className="text-xs font-semibold text-amber-900">
-                    Allow review and publication by switching reviewer persona:
-                  </span>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await login('expert.b@demo.local', 'ExpertB@Gurukul2026!');
-                        await queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
-                      }}
-                      className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
-                    >
-                      <ArrowRightLeft className="w-3.5 h-3.5" />
-                      <span>Switch to Expert B (Lead Reviewer)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await login('admin@demo.local', 'Admin@Gurukul2026!');
-                        await queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
-                      }}
-                      className="px-3.5 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5"
-                    >
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>Allow via Admin Override</span>
-                    </button>
-                  </div>
+                <div className="pt-2 border-t border-amber-200/80 text-xs font-semibold text-amber-900">
+                  Sign in with a separate authorized reviewer account to review and publish this submission.
                 </div>
               </div>
-            ) : hasPermission('knowledge.approve') || user?.role_id === 'ADMIN' ? (
+            ) : hasPermission('knowledge.approve') ? (
               /* Reviewer Decision Controls (Expert B or Admin) */
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-2 text-xs text-[#536780] bg-[#F7FAFE] p-3 rounded-xl border border-[#DCE8F5]">
@@ -1045,29 +1018,8 @@ export const KnowledgeEditorPage: React.FC = () => {
                   Module 06 governs the peer review &amp; verification queue.
                 </div>
 
-                {canSubmit ? (
-                  <button
-                    type="button"
-                    onClick={handleSubmitForReview}
-                    disabled={submitMutation.isPending || saveStatus === 'saving'}
-                    className="w-full py-2 px-3 rounded-lg bg-[#1473E6] hover:bg-[#1060C4] text-white text-xs font-semibold shadow-xs disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <span>{submitMutation.isPending ? 'Submitting…' : 'Submit for Review'}</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled
-                    aria-disabled="true"
-                    title={
-                      !isAuthor
-                        ? 'Only the author can submit this draft for review.'
-                        : 'Submit for review is unavailable in this status.'
-                    }
-                    className="w-full py-1.5 px-3 rounded-lg border border-[#BCD7F5] bg-white text-xs font-semibold text-[#8FA0BF] cursor-not-allowed select-none shadow-xs"
-                  >
-                    Submit for Review
-                  </button>
+                {!canSubmit && isAuthor && (
+                  <p className="text-[10px] text-[#7C8DA1]">Submission is unavailable while this item is in its current status.</p>
                 )}
               </div>
 

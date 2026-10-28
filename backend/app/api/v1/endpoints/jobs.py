@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.core.permissions import get_current_user, AuthenticatedContext
+from app.core.permissions import AuthenticatedContext, require_any_permission
 from app.core.exceptions import NotFoundError, ForbiddenError
-from app.core.permissions import PERM_KNOWLEDGE_APPROVE, PERM_KNOWLEDGE_CREATE, csrf_protect
+from app.core.permissions import PERM_KNOWLEDGE_APPROVE, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_VIEW_PUBLISHED, csrf_protect
 from app.models.processing_job import ProcessingJob
 from app.schemas.voice import ProcessingJobResponse
 from app.services.voice_service import retry_voice_job
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/processing-jobs", tags=["Processing Jobs"])
 @router.get("/{job_id}", response_model=ProcessingJobResponse)
 def get_job_status(
     job_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     """
@@ -38,14 +38,12 @@ def get_job_status(
 def retry_failed_job(
     job_id: str,
     background_tasks: BackgroundTasks,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_APPROVE)),
     db: Session = Depends(get_db),
 ):
     """
     Retry a failed processing job.
     """
-    if PERM_KNOWLEDGE_CREATE not in auth_ctx.permissions and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
-        raise ForbiddenError(code="forbidden", message="You do not have permission to retry transcription jobs.")
     job = db.get(ProcessingJob, job_id)
     if not job:
         raise NotFoundError(code="job_not_found", message=f"Processing job '{job_id}' not found.")

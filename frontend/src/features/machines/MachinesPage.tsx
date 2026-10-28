@@ -84,8 +84,8 @@ const INITIAL_FORM: CreateMachineFormData = {
 };
 
 export const MachinesPage: React.FC = () => {
-  const { hasPermission, hasRole } = useAuth();
-  const canManageMachines = hasPermission('machine.manage') || hasRole('ADMIN') || hasRole('EXPERT');
+  const { hasPermission } = useAuth();
+  const canManageMachines = hasPermission('machine.manage');
 
   // List states
   const [machines, setMachines] = useState<Machine[]>([]);

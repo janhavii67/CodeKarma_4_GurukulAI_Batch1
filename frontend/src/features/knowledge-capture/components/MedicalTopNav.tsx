@@ -1,107 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   Home,
   BookOpen,
   FileEdit,
   GraduationCap,
-  ChevronDown,
   LogOut,
   Shield,
   CheckSquare,
   Mic,
   Bot,
   Cpu,
-  ArrowRightLeft,
-  CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
 
-export const DEMO_PERSONAS = [
-  {
-    id: 'expert.a',
-    name: 'Aarav Sharma',
-    role: 'EXPERT',
-    roleTitle: 'Expert Author',
-    email: 'expert.a@demo.local',
-    password: 'ExpertA@Gurukul2026!',
-    badgeBg: 'bg-blue-50 text-[#1473E6] border-blue-200',
-    avatarBg: 'bg-[#1473E6]',
-    icon: '🔬',
-    description: 'Authors precision machine SOPs, configures tolerance bands',
-  },
-  {
-    id: 'expert.b',
-    name: 'Bhavna Patel',
-    role: 'EXPERT',
-    roleTitle: 'Lead Reviewer',
-    email: 'expert.b@demo.local',
-    password: 'ExpertB@Gurukul2026!',
-    badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    avatarBg: 'bg-indigo-600',
-    icon: '🔍',
-    description: 'Peer-reviews and qualifies procedures for shopfloor release',
-  },
-  {
-    id: 'operator',
-    name: 'Rajesh Kumar',
-    role: 'OPERATOR',
-    roleTitle: 'Machine Operator',
-    email: 'operator@demo.local',
-    password: 'Operator@Gurukul2026!',
-    badgeBg: 'bg-amber-50 text-amber-700 border-amber-200',
-    avatarBg: 'bg-amber-600',
-    icon: '⚙️',
-    description: 'Executes verified protocols on CNC workstations and machines',
-  },
-  {
-    id: 'trainee',
-    name: 'Devendra Verma',
-    role: 'TRAINEE',
-    roleTitle: 'Workshop Apprentice',
-    email: 'trainee@demo.local',
-    password: 'Trainee@Gurukul2026!',
-    badgeBg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    avatarBg: 'bg-emerald-600',
-    icon: '🎓',
-    description: 'Studies standard protocols, tolerance limits, and safety warnings',
-  },
-  {
-    id: 'admin',
-    name: 'Vikram Adityanath',
-    role: 'ADMIN',
-    roleTitle: 'Platform Admin',
-    email: 'admin@demo.local',
-    password: 'Admin@Gurukul2026!',
-    badgeBg: 'bg-purple-50 text-purple-700 border-purple-200',
-    avatarBg: 'bg-purple-700',
-    icon: '🛡️',
-    description: 'Platform quality governance, audit logs, and approval override',
-  },
-];
-
 export const MedicalTopNav: React.FC = () => {
-  const { user, login, logout, hasPermission } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const [profileOpen, setProfileOpen] = useState(false);
-  const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [switching, setSwitching] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const switcherRef = useRef<HTMLDivElement>(null);
 
   // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
-      }
-      if (switcherRef.current && !switcherRef.current.contains(e.target as Node)) {
-        setSwitcherOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -113,39 +39,11 @@ export const MedicalTopNav: React.FC = () => {
     location.pathname === '/app/knowledge/new';
   const isLibraryActive = location.pathname === '/app/knowledge';
 
-  const currentPersona = DEMO_PERSONAS.find((p) => p.email === user?.email) || {
-    id: 'custom',
-    name: user?.name || 'User',
-    role: user?.role_id || 'USER',
-    roleTitle: user?.role_id === 'ADMIN' ? 'Platform Admin' : user?.role_id === 'EXPERT' ? 'Manufacturing Expert' : user?.role_id === 'OPERATOR' ? 'Machine Operator' : user?.role_id === 'TRAINEE' ? 'Workshop Apprentice' : 'User',
-    email: user?.email || '',
-    badgeBg: 'bg-slate-100 text-slate-800 border-slate-200',
-    avatarBg: 'bg-[#12345A]',
-    icon: '👤',
-    description: 'Active Platform Account',
-  };
-
-  const handleSwitchPersona = async (persona: (typeof DEMO_PERSONAS)[0]) => {
-    if (persona.email === user?.email) {
-      setSwitcherOpen(false);
-      return;
-    }
-    setSwitching(true);
-    try {
-      await login(persona.email, persona.password);
-      await queryClient.invalidateQueries();
-      setSwitcherOpen(false);
-    } catch (err) {
-      console.error('Failed to switch persona:', err);
-    } finally {
-      setSwitching(false);
-    }
-  };
+  const roleTitle = user?.role_id === 'ADMIN' ? 'Platform Admin' : user?.role_id === 'EXPERT' ? 'Manufacturing Expert' : user?.role_id === 'OPERATOR' ? 'Machine Operator' : 'Workshop Trainee';
+  const roleBadge = 'bg-slate-100 text-slate-800 border-slate-200';
 
   const canCreate = hasPermission('knowledge.create');
-  const canApprove = hasPermission('knowledge.approve') || user?.role_id === 'ADMIN';
-  const isTrainee = user?.role_id === 'TRAINEE';
-  const isOperator = user?.role_id === 'OPERATOR';
+  const canApprove = hasPermission('knowledge.approve');
 
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-[#DCE8F5] shadow-[0_2px_8px_rgba(20,115,230,0.04)]">
@@ -188,7 +86,7 @@ export const MedicalTopNav: React.FC = () => {
             <span>Dashboard</span>
           </NavLink>
 
-          <NavLink
+          {(hasPermission('knowledge.view_published') || canCreate || canApprove) && <NavLink
             to="/app/knowledge"
             end
             className={() =>
@@ -201,9 +99,9 @@ export const MedicalTopNav: React.FC = () => {
           >
             <BookOpen className="w-4 h-4" />
             <span>
-              {isTrainee ? 'Apprentice Library' : isOperator ? 'Shopfloor SOPs' : 'Knowledge Library'}
+              {user?.role_id === 'TRAINEE' ? 'Apprentice Library' : user?.role_id === 'OPERATOR' ? 'Shopfloor SOPs' : 'Knowledge Library'}
             </span>
-          </NavLink>
+          </NavLink>}
 
           {/* Capture SOP only visible for Authoring Experts and Admins */}
           {canCreate && (
@@ -223,7 +121,7 @@ export const MedicalTopNav: React.FC = () => {
           )}
 
           {/* Voice Capture for Experts and Operators */}
-          {!isTrainee && (
+          {canCreate && (
             <NavLink
               to="/app/voice"
               className={({ isActive }) =>
@@ -235,7 +133,7 @@ export const MedicalTopNav: React.FC = () => {
               }
             >
               <Mic className="w-4 h-4" />
-              <span>{isOperator ? 'Voice Diagnostics' : 'Voice Capture'}</span>
+              <span>{user?.role_id === 'OPERATOR' ? 'Voice Diagnostics' : 'Voice Capture'}</span>
             </NavLink>
           )}
 
@@ -256,7 +154,7 @@ export const MedicalTopNav: React.FC = () => {
             </NavLink>
           )}
 
-          <NavLink
+          {hasPermission('procedure.execute') && <NavLink
             to="/app/guided-workflows"
             className={({ isActive }) =>
               `flex items-center gap-1.5 px-2.5 h-16 text-sm font-medium transition-colors border-b-2 ${
@@ -267,10 +165,10 @@ export const MedicalTopNav: React.FC = () => {
             }
           >
             <GraduationCap className="w-4 h-4" />
-            <span>{isTrainee ? 'Interactive Learning' : 'Workflows'}</span>
-          </NavLink>
+            <span>{user?.role_id === 'TRAINEE' ? 'Interactive Learning' : 'Workflows'}</span>
+          </NavLink>}
 
-          <NavLink
+          {hasPermission('assistant.use') && <NavLink
             to="/app/assistant"
             className={({ isActive }) =>
               `flex items-center gap-1.5 px-2.5 h-16 text-sm font-medium transition-colors border-b-2 ${
@@ -281,90 +179,13 @@ export const MedicalTopNav: React.FC = () => {
             }
           >
             <Bot className="w-4 h-4" />
-            <span>{isTrainee ? 'AI Tutor' : 'AI Assistant'}</span>
-          </NavLink>
+            <span>{user?.role_id === 'TRAINEE' ? 'AI Tutor' : 'AI Assistant'}</span>
+          </NavLink>}
         </nav>
 
-        {/* Right: Persona Switcher Toolbar & Profile */}
+        {/* Current account and profile controls */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Quick Persona Switcher Dropdown */}
-          <div className="relative" ref={switcherRef}>
-            <button
-              type="button"
-              onClick={() => setSwitcherOpen(!switcherOpen)}
-              disabled={switching}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-xs transition-all ${
-                currentPersona.badgeBg
-              } hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#1473E6]/30`}
-              title="Click to quickly switch user persona and experience role-based frontend"
-              aria-label="Switch User Persona"
-              aria-expanded={switcherOpen}
-            >
-              <span className="text-sm leading-none">{currentPersona.icon}</span>
-              <div className="flex flex-col text-left">
-                <span className="font-bold leading-none">{currentPersona.roleTitle}</span>
-                <span className="text-[10px] opacity-75 font-normal truncate max-w-[110px] sm:max-w-none">
-                  {currentPersona.name.split(' ')[0]} ({currentPersona.role})
-                </span>
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 opacity-70 shrink-0 ml-0.5" />
-            </button>
-
-            {switcherOpen && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-[#DCE8F5] py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
-                <div className="px-4 py-2.5 border-b border-[#DCE8F5] bg-[#F7FAFE] rounded-t-2xl">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#12345A] flex items-center gap-1.5">
-                      <ArrowRightLeft className="w-3.5 h-3.5 text-[#1473E6]" />
-                      <span>1-Click Persona Switcher</span>
-                    </span>
-                    <span className="text-[10px] text-[#536780]">Instant Role Testing</span>
-                  </div>
-                  <p className="text-[11px] text-[#536780] mt-0.5">
-                    Select any role to test its personalized permissions, banners, and viewports:
-                  </p>
-                </div>
-
-                <div className="p-1.5 space-y-1">
-                  {DEMO_PERSONAS.map((p) => {
-                    const isCurrent = p.email === user?.email;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => handleSwitchPersona(p)}
-                        className={`w-full text-left p-2.5 rounded-xl transition-all flex items-start gap-2.5 ${
-                          isCurrent
-                            ? 'bg-[#EFF7FF] border border-[#BCD7F5] shadow-xs'
-                            : 'hover:bg-[#F7FAFE] border border-transparent'
-                        }`}
-                      >
-                        <div className="w-7 h-7 rounded-lg bg-white border border-[#DCE8F5] flex items-center justify-center text-sm shrink-0 shadow-xs">
-                          {p.icon}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="text-xs font-bold text-[#12345A] truncate">
-                              {p.name}
-                            </span>
-                            <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-full border ${p.badgeBg}`}>
-                              {p.role}
-                            </span>
-                          </div>
-                          <p className="text-[11px] font-medium text-[#1473E6] mt-0.2">{p.roleTitle}</p>
-                          <p className="text-[10px] text-[#536780] leading-tight mt-0.5">{p.description}</p>
-                        </div>
-                        {isCurrent && (
-                          <CheckCircle2 className="w-4 h-4 text-[#1473E6] shrink-0 mt-0.5" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
+          <span className={`hidden sm:inline-flex px-3 py-1.5 rounded-xl border text-xs font-semibold ${roleBadge}`}>{roleTitle}</span>
           {/* User Profile & Sign Out Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <button
@@ -373,7 +194,7 @@ export const MedicalTopNav: React.FC = () => {
               aria-expanded={profileOpen}
               aria-label="User menu"
             >
-              <div className={`w-8 h-8 rounded-full ${currentPersona.avatarBg} text-white flex items-center justify-center font-bold text-xs shadow-sm`}>
+              <div className="w-8 h-8 rounded-full bg-[#12345A] text-white flex items-center justify-center font-bold text-xs shadow-sm">
                 {user?.name?.charAt(0) || 'U'}
               </div>
             </button>
@@ -383,9 +204,9 @@ export const MedicalTopNav: React.FC = () => {
                 <div className="px-4 py-3 border-b border-[#DCE8F5]">
                   <p className="text-sm font-bold text-[#12345A]">{user?.name || 'Logged User'}</p>
                   <p className="text-xs text-[#536780] truncate">{user?.email}</p>
-                  <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-semibold ${currentPersona.badgeBg}`}>
+                  <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-semibold ${roleBadge}`}>
                     <Shield className="w-3 h-3" />
-                    <span>{currentPersona.roleTitle}</span>
+                    <span>{roleTitle}</span>
                   </div>
                 </div>
 
@@ -403,7 +224,7 @@ export const MedicalTopNav: React.FC = () => {
                       <span>New Knowledge Draft</span>
                     </button>
                   )}
-                  {!isTrainee && (
+                  {canCreate && (
                     <button
                       type="button"
                       onClick={() => {

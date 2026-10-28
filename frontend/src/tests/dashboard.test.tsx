@@ -247,6 +247,41 @@ describe('Redesigned Operational Dashboard Tests', () => {
     expect(screen.queryByText(/Grounded Industrial Assets/i)).not.toBeInTheDocument();
   });
 
+  it('renders the administrator dashboard instead of the expert author workspace', async () => {
+    vi.spyOn(useAuthHook, 'useAuth').mockReturnValue({
+      user: {
+        id: 'u-admin',
+        name: 'Platform Admin',
+        email: 'admin@demo.local',
+        role_id: 'ADMIN',
+        is_active: true,
+        created_at: '2026-01-01',
+      },
+      permissions: ['knowledge.view_published', 'assistant.use', 'procedure.execute', 'admin.manage'],
+      isAuthenticated: true,
+      isLoading: false,
+      error: null,
+      login: vi.fn(),
+      register: vi.fn(),
+      logout: vi.fn(),
+      refreshUser: vi.fn(),
+      hasPermission: (perm: string) => ['knowledge.view_published', 'assistant.use', 'procedure.execute', 'admin.manage'].includes(perm),
+      hasRole: (role: string) => role === 'ADMIN',
+    });
+
+    (api.get as any).mockResolvedValueOnce(mockExpertStats).mockResolvedValueOnce(null);
+
+    render(
+      <BrowserRouter>
+        <DashboardPage />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText(/Welcome back, Platform Admin/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Your Experience\./i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Open System Health & Diagnostic Telemetry/i)).toBeInTheDocument();
+  });
+
   it('renders friendly empty state when no recent articles are returned', async () => {
     vi.spyOn(useAuthHook, 'useAuth').mockReturnValue({
       user: {

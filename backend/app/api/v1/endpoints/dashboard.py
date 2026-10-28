@@ -1,8 +1,15 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, or_
 from app.db.session import get_db
-from app.core.permissions import get_current_user, AuthenticatedContext, PERM_KNOWLEDGE_APPROVE
+from app.core.permissions import (
+    get_current_user,
+    require_permission,
+    AuthenticatedContext,
+    PERM_KNOWLEDGE_APPROVE,
+    PERM_KNOWLEDGE_VIEW_PUBLISHED,
+    PERM_KNOWLEDGE_CREATE,
+)
 from app.models import (
     Machine,
     KnowledgeArticle,
@@ -22,7 +29,7 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 @router.get("/stats", response_model=DashboardStatsResponse)
 def get_dashboard_stats(
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED)),
     db: Session = Depends(get_db),
 ):
     """Retrieve real database-backed metrics for the industrial operations dashboard."""
@@ -149,7 +156,7 @@ def get_dashboard_stats(
     )
 
     # Recent articles stream with machine association
-    recent_articles_query = (
+    recent_query = (
         db.query(
             KnowledgeArticle,
             User.name.label("author_name"),
@@ -157,10 +164,26 @@ def get_dashboard_stats(
         )
         .join(User, KnowledgeArticle.author_id == User.id)
         .outerjoin(Machine, KnowledgeArticle.machine_id == Machine.id)
-        .order_by(desc(KnowledgeArticle.updated_at))
-        .limit(7)
-        .all()
     )
+    if auth_ctx.user.role_id == "ADMIN":
+        visibility_filters = [KnowledgeArticle.id.isnot(None)]
+    else:
+        visibility_filters = []
+        if PERM_KNOWLEDGE_VIEW_PUBLISHED in user_permissions:
+            visibility_filters.append(func.lower(KnowledgeArticle.status).in_(["approved", "published"]))
+        if PERM_KNOWLEDGE_CREATE in user_permissions:
+            visibility_filters.append(KnowledgeArticle.author_id == user_id)
+        if PERM_KNOWLEDGE_APPROVE in user_permissions:
+            visibility_filters.append(
+                (func.lower(KnowledgeArticle.status).in_(["pending_review", "in_review"]))
+                & (KnowledgeArticle.author_id != user_id)
+            )
+    if visibility_filters:
+        recent_query = recent_query.filter(or_(*visibility_filters))
+    else:
+        # Fail closed if a future role has no knowledge visibility grant.
+        recent_query = recent_query.filter(KnowledgeArticle.id == "")
+    recent_articles_query = recent_query.order_by(desc(KnowledgeArticle.updated_at)).limit(7).all()
 
     recent_items = [
         RecentActivityItem(

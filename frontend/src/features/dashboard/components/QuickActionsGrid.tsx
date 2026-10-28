@@ -97,6 +97,11 @@ export const QuickActionsGrid: React.FC<QuickActionsGridProps> = ({
   const canAnalyzeAudio = hasPermission('audio.analyze');
   const canExecute = hasPermission('procedure.execute');
   const canTroubleshoot = hasPermission('troubleshoot.use');
+  const canUseAssistant = hasPermission('assistant.use');
+  const canReadKnowledge = hasPermission('knowledge.view_published') || canCreate || canApprove;
+  const canReadMachines = hasPermission('knowledge.view_published') || hasPermission('machine.manage');
+  const canSimulate = hasPermission('simulation.attempt');
+  const canLearn = canExecute || hasPermission('learning.manage');
 
   return (
     <section aria-labelledby="quick-actions-heading">
@@ -134,7 +139,7 @@ export const QuickActionsGrid: React.FC<QuickActionsGridProps> = ({
             badge={`${pendingReviewsCount} Pending`}
             isPrimary
           />
-        ) : (
+        ) : canExecute ? (
           <ActionCard
             title="Guided Workflows"
             desc="Execute interactive procedures with mandatory checkpoint safety verifications."
@@ -143,18 +148,20 @@ export const QuickActionsGrid: React.FC<QuickActionsGridProps> = ({
             badge="Checklists"
             isPrimary
           />
-        )}
+        ) : canReadKnowledge ? (
+          <ActionCard title="Knowledge Library" desc="Search approved manufacturing knowledge and published procedures." route="/app/knowledge" icon={<FileText className="w-4 h-4" />} badge="Verified" isPrimary />
+        ) : null}
 
         {/* Knowledge Library */}
-        <ActionCard
+        {canReadKnowledge && <ActionCard
           title="Knowledge Library"
           desc="Search authoritative clinical and equipment procedures with version history."
           route="/app/knowledge"
           icon={<FileText className="w-4 h-4" />}
           badge="Verified"
-        />
-        <ActionCard title="AI Assistant" desc="Ask questions answered from published, approved knowledge with source references." route="/app/assistant" icon={<Bot className="w-4 h-4" />} badge="Grounded" />
-        <ActionCard title="Machine Knowledge" desc="Capture and browse media by registered machine." route="/app/knowledge-assets" icon={<FileText className="w-4 h-4" />} badge="Machine-wise" />
+        />}
+        {canUseAssistant && <ActionCard title="AI Assistant" desc="Ask questions answered from published, approved knowledge with source references." route="/app/assistant" icon={<Bot className="w-4 h-4" />} badge="Grounded" />}
+        {canReadKnowledge && <ActionCard title="Machine Knowledge" desc="Browse approved knowledge and machine references." route="/app/knowledge-assets" icon={<FileText className="w-4 h-4" />} badge="Machine-wise" />}
 
         {/* Peer Review Queue (if not already primary) */}
         {canApprove && !(!canCreate && pendingReviewsCount > 0) && (
@@ -179,22 +186,22 @@ export const QuickActionsGrid: React.FC<QuickActionsGridProps> = ({
         )}
 
         {/* Machine Assets */}
-        <ActionCard
+        {canReadMachines && <ActionCard
           title="Equipment & Machines"
           desc="Live equipment catalog with tooling associations, runout tolerances, and SOP links."
           route="/app/machines"
           icon={<Cpu className="w-4 h-4" />}
           badge="Live DB"
-        />
+        />}
 
         {/* Voice Capture */}
-        <ActionCard
+        {canCreate && <ActionCard
           title="Voice-to-Knowledge"
           desc="Hands-free laboratory audio transcription with automatic technical term extraction."
           route="/app/voice-capture"
           icon={<Mic className="w-4 h-4" />}
           badge="AI Audio"
-        />
+        />}
 
         {/* Sound Analysis (if permitted) */}
         {canAnalyzeAudio && (
@@ -218,11 +225,11 @@ export const QuickActionsGrid: React.FC<QuickActionsGridProps> = ({
           />
         )}
 
-        <ActionCard title="Failure Simulator" desc="Practice revision-pinned failure scenarios without affecting live machines." route="/app/failure-simulator" icon={<AlertOctagon className="w-4 h-4" />} badge="Practice" />
-        <ActionCard title="Learning Portal" desc="Browse learning tracks and recorded workflow progress." route="/app/learning" icon={<GraduationCap className="w-4 h-4" />} badge="Learning" />
-        <ActionCard title="Knowledge Graph" desc="Explore machine and knowledge relationships." route="/app/knowledge-graph" icon={<GitFork className="w-4 h-4" />} badge="Planned" />
-        <ActionCard title="Skill Verification" desc="Open practical skill verification tools." route="/app/skill-verification" icon={<Eye className="w-4 h-4" />} badge="Planned" />
-        <ActionCard title="Synchronized Simulation" desc="Open synchronized training simulation." route="/app/synchronized-simulation" icon={<Film className="w-4 h-4" />} badge="Planned" />
+        {canSimulate && <ActionCard title="Failure Simulator" desc="Practice revision-pinned failure scenarios without affecting live machines." route="/app/failure-simulator" icon={<AlertOctagon className="w-4 h-4" />} badge="Practice" />}
+        {canLearn && <ActionCard title="Learning Portal" desc="Browse learning tracks and recorded workflow progress." route="/app/learning" icon={<GraduationCap className="w-4 h-4" />} badge="Learning" />}
+        {hasPermission('knowledge.view_published') && <ActionCard title="Knowledge Graph" desc="Explore machine and knowledge relationships." route="/app/knowledge-graph" icon={<GitFork className="w-4 h-4" />} badge="Planned" />}
+        {canExecute && <ActionCard title="Skill Verification" desc="Open practical skill verification tools." route="/app/skill-verification" icon={<Eye className="w-4 h-4" />} badge="Planned" />}
+        {canSimulate && <ActionCard title="Synchronized Simulation" desc="Open synchronized training simulation." route="/app/synchronized-simulation" icon={<Film className="w-4 h-4" />} badge="Planned" />}
       </div>
     </section>
   );

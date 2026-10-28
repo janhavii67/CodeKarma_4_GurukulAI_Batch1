@@ -7,6 +7,7 @@ from app.core.permissions import (
     csrf_protect,
     get_current_user,
     require_permission,
+    require_any_permission,
     PERM_MACHINE_MANAGE,
     PERM_KNOWLEDGE_VIEW_PUBLISHED,
 )
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/machines", tags=["Machines"])
 
 @router.get("/categories", response_model=List[MachineCategoryResponse])
 def list_categories(
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_MACHINE_MANAGE)),
     db: Session = Depends(get_db),
 ):
     """List all machine categories."""
@@ -44,7 +45,7 @@ def list_machines(
     q: Optional[str] = Query(None, description="Search term for name or code"),
     category: Optional[str] = Query(None, description="Filter by category"),
     category_id: Optional[str] = Query(None, description="Filter by category id"),
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_MACHINE_MANAGE)),
     db: Session = Depends(get_db),
 ):
     cat_filter = category or category_id
@@ -116,7 +117,7 @@ def create_machine(
 )
 def get_machine(
     machine_id: str,
-    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    auth_ctx: AuthenticatedContext = Depends(require_any_permission(PERM_KNOWLEDGE_VIEW_PUBLISHED, PERM_MACHINE_MANAGE)),
     db: Session = Depends(get_db),
 ):
     machine = MachineRepository.get_by_id(db, machine_id)
