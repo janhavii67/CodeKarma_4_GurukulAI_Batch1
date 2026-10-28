@@ -120,7 +120,7 @@ describe('Redesigned Operational Dashboard Tests', () => {
 
     (api.get as any).mockResolvedValueOnce(mockExpertStats);
 
-    render(
+    const { container } = render(
       <BrowserRouter>
         <DashboardPage />
       </BrowserRouter>
@@ -154,22 +154,29 @@ describe('Redesigned Operational Dashboard Tests', () => {
       '/app/knowledge-assets?kind=image'
     );
 
-    await waitFor(() => {
-      expect(screen.getByText(/Resume Draft/i)).toBeInTheDocument();
-    });
-
-    // Stitch Asymmetric Feature Cards & Lower Supporting Grid
-    expect(screen.getByText(/Review & Verify Knowledge/i)).toBeInTheDocument();
+    // The expert Home keeps its capture, overview, and hero sections only.
+    expect(screen.queryByText(/Review & Verify Knowledge/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Knowledge Assistant/i)).not.toBeInTheDocument();
     expect(screen.getByText(/My Knowledge Overview/i)).toBeInTheDocument();
-    expect(screen.getByText(/Continue a Draft/i)).toBeInTheDocument();
-    expect(screen.getByText(/Recently Shared/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Continue a Draft/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Recently Shared/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Resume Draft/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pending peer evaluations/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/View History/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No Knowledge Entries Recorded/i)).not.toBeInTheDocument();
+    expect(container.querySelectorAll('section')).toHaveLength(3);
+    expect(Array.from(container.querySelectorAll('div')).some((element) =>
+      element.className.includes('max-w-6xl'),
+    )).toBe(true);
+    expect(Array.from(container.querySelectorAll('div')).some((element) =>
+      element.className.includes('sm:grid-cols-2') && element.className.includes('lg:grid-cols-3'),
+    )).toBe(true);
     expect(screen.getByText(/Start Capturing →/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Start Capturing/i })).toHaveAttribute(
       'href',
       '/app/knowledge-assets'
     );
-    expect(screen.getByText(/Review Knowledge/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Explore My Knowledge/i })).toHaveAttribute('href', '/app/knowledge');
     expect(screen.queryByText(/Ask Assistant/i)).not.toBeInTheDocument();
 
     // MANDATORY REMOVALS: Verify the 6 legacy metrics are completely ABSENT from DOM
@@ -189,9 +196,8 @@ describe('Redesigned Operational Dashboard Tests', () => {
     expect(screen.queryByText(/Role-Based Access \(RBAC\)/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Grounded Industrial Assets/i)).not.toBeInTheDocument();
 
-    // Live recorded procedures stream
-    expect(screen.getByText(/Centrifuge High-Speed Calibration SOP/i)).toBeInTheDocument();
-    expect(screen.getByText(/Spectrophotometer Alignment Protocol/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Centrifuge High-Speed Calibration SOP/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Spectrophotometer Alignment Protocol/i)).not.toBeInTheDocument();
   });
 
   it('renders Trainee dashboard with trainee-scoped metrics and safe guided actions', async () => {
@@ -247,7 +253,7 @@ describe('Redesigned Operational Dashboard Tests', () => {
     expect(screen.queryByText(/Grounded Industrial Assets/i)).not.toBeInTheDocument();
   });
 
-  it('renders friendly empty state when no recent articles are returned', async () => {
+  it('keeps removed home sections absent when there are no drafts or shared entries', async () => {
     vi.spyOn(useAuthHook, 'useAuth').mockReturnValue({
       user: {
         id: 'u-expert',
@@ -281,8 +287,11 @@ describe('Redesigned Operational Dashboard Tests', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/No Knowledge Entries Recorded/i)).toBeInTheDocument();
-      expect(screen.getByText(/Capture First SOP/i)).toBeInTheDocument();
+      expect(screen.getByText('My Knowledge Overview')).toBeInTheDocument();
     });
+    expect(screen.queryByText(/Review & Verify Knowledge/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Continue a Draft/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Recently Shared/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No Knowledge Entries Recorded/i)).not.toBeInTheDocument();
   });
 });
