@@ -1,6 +1,6 @@
 # Module 06 — Knowledge Validation and Versioning
 
-**Status:** Planned · **Phase:** 2 · **Hackathon:** Build (Day 3)
+**Status:** Implemented and tested · **Phase:** 2 · **Hackathon:** Build (Day 3)
 
 ## 1. Full workflow diagram
 
@@ -69,7 +69,7 @@ sequenceDiagram
 ## 5. Steps
 1. State machine with a table of allowed transitions and unit tests (T3.1).
 2. Submit, approve, reject, request-changes, withdraw endpoints (T3.1).
-3. Version list, version detail, compare endpoint (T3.1).
+3. Version list, version detail, compare endpoint (T3.1). Version detail and snapshot comparison are implemented; comparison returns changed field names and the saved snapshots.
 4. Concurrency and self-approval tests (T3.2).
 5. Review queue, review page, comments, history, badges (T3.3).
 
@@ -81,7 +81,7 @@ sequenceDiagram
 
 **Permissions:** submit = `knowledge.submit_review` (author only); approve/reject/changes/withdraw = `knowledge.approve` and not author.
 
-**Compare view:** step-by-step diff from saved snapshots (added, removed, changed). No AI summary in the hackathon.
+**Compare view:** the editor allows selecting two visible saved versions and shows both snapshots with changed fields labeled. Granular added/removed/changed step diff remains incomplete. No AI summary in the hackathon.
 
 **Errors:** 409 on wrong state or concurrent decision; 403 on self-approval; 404 on invisible item.
 

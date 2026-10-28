@@ -1,11 +1,15 @@
 import io
 import json
+import asyncio
 import pytest
 from pathlib import Path
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from app.models.media import MediaAsset
 from app.models.processing_job import ProcessingJob
 from app.models.transcript import Transcript, TranscriptSegment
+from app.models.machine import Machine
+from app.models.user import User
 from app.models.knowledge import KnowledgeVersion, KnowledgeItem
 from app.models.embedding import KnowledgeEmbedding
 from app.integrations.speech.base import Segment
@@ -27,8 +31,8 @@ from app.services.voice_service import (
     update_transcript_segment,
     validate_version_for_submission,
 )
-from app.services.job_runner import execute_voice_processing_job
-from app.core.exceptions import ValidationError
+from app.services.job_runner import execute_voice_processing_job, fail_stale_voice_jobs, _transcribe_with_heartbeat
+from app.core.exceptions import ValidationError, ConflictError, ForbiddenError
 from app.core.config import settings
 
 
@@ -135,6 +139,10 @@ def test_voice_upload_and_job_endpoint(client, db_session: Session, tmp_path):
     assert data["media"]["title"] == "Lathe Setup Audio Note"
     assert data["job"]["status"] == "queued"
     job_id = data["job"]["id"]
+    stored_job = db_session.get(ProcessingJob, job_id)
+    assert stored_job is not None
+    assert stored_job.user_id == data["media"]["uploaded_by"]
+    assert stored_job.created_by == data["media"]["uploaded_by"]
 
     # Poll job status
     poll_res = client.get(f"/api/v1/processing-jobs/{job_id}")
@@ -146,6 +154,224 @@ def test_voice_upload_and_job_endpoint(client, db_session: Session, tmp_path):
     uploaded_path = Path(data["media"]["file_path"])
     if uploaded_path.exists():
         uploaded_path.unlink()
+
+
+def _make_failed_audio_job(db_session: Session, status="failed", attempts=1):
+    owner = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).one()
+    machine = db_session.query(Machine).first()
+    media = MediaAsset(
+        title="Retry test recording", machine_id=machine.id, kind="audio",
+        storage_key=f"retry-tests/{status}-{attempts}.webm", original_name="recording.webm",
+        mime="audio/webm", size_bytes=10, uploaded_by=owner.id,
+    )
+    db_session.add(media)
+    db_session.flush()
+    job = ProcessingJob(
+        type="voice_to_knowledge", media_id=media.id, version_id=None, status=status,
+        progress=35, attempts=attempts, error_safe="old error",
+        idempotency_key=f"voice:{media.id}", user_id=owner.id, created_by=owner.id,
+    )
+    db_session.add(job)
+    db_session.commit()
+    return owner, media, job
+
+
+def test_transcription_retry_is_owner_only_and_does_not_duplicate_jobs_or_transcripts(db_session: Session):
+    owner, media, job = _make_failed_audio_job(db_session)
+    other = db_session.query(User).filter(User.email == settings.EXPERT_B_EMAIL).one()
+
+    with pytest.raises(ForbiddenError):
+        retry_voice_job(db_session, job.id, other.id)
+    assert db_session.query(ProcessingJob).filter(ProcessingJob.media_id == media.id).count() == 1
+
+    retried = retry_voice_job(db_session, job.id, owner.id)
+    assert retried.id == job.id
+    assert retried.status == "queued"
+    assert retried.error_safe is None
+    assert db_session.query(ProcessingJob).filter(ProcessingJob.media_id == media.id).count() == 1
+    with pytest.raises(ValidationError):
+        retry_voice_job(db_session, job.id, owner.id)
+    assert db_session.query(Transcript).filter(Transcript.media_id == media.id).count() == 0
+
+    transcript = Transcript(media_id=media.id, full_text="Keep reviewed text", status="completed", provider="test")
+    db_session.add(transcript)
+    db_session.commit()
+    job.status = "failed"
+    db_session.commit()
+    with pytest.raises(ConflictError):
+        retry_voice_job(db_session, job.id, owner.id)
+    db_session.expire_all()
+    assert db_session.query(ProcessingJob).filter(ProcessingJob.media_id == media.id).count() == 1
+    assert db_session.query(Transcript).filter(Transcript.media_id == media.id).one().full_text == "Keep reviewed text"
+
+
+def test_processing_runner_skips_duplicate_nonqueued_execution(db_session: Session, monkeypatch):
+    _, _, job = _make_failed_audio_job(db_session, status="processing", attempts=2)
+    monkeypatch.setattr("app.services.job_runner.get_speech_provider", lambda: pytest.fail("duplicate runner must not call provider"))
+
+    asyncio.run(asyncio.wait_for(execute_voice_processing_job(job.id, db=db_session), timeout=3))
+
+    db_session.refresh(job)
+    assert job.status == "processing"
+    assert job.attempts == 2
+
+
+def test_stale_voice_job_recovery_marks_interrupted_jobs_failed_without_touching_recording(db_session: Session):
+    from datetime import timedelta
+    from app.db.base import utc_now
+
+    _, media, stale = _make_failed_audio_job(db_session, status="processing", attempts=1)
+    _, _, recent = _make_failed_audio_job(db_session, status="processing", attempts=2)
+    stale.updated_at = utc_now() - timedelta(hours=1)
+    db_session.commit()
+    cutoff = utc_now() - timedelta(minutes=10)
+
+    assert fail_stale_voice_jobs(db_session, stale_before=cutoff) == 1
+
+    db_session.refresh(stale)
+    db_session.refresh(recent)
+    assert stale.status == "failed"
+    assert "interrupted" in stale.error_safe.lower()
+    assert stale.attempts == 1
+    assert recent.status == "processing"
+    assert db_session.get(MediaAsset, media.id) is not None
+    assert db_session.query(Transcript).filter(Transcript.media_id == media.id).count() == 0
+
+
+def test_long_transcription_refreshes_job_heartbeat(db_session: Session, monkeypatch):
+    _, _, job = _make_failed_audio_job(db_session, status="processing", attempts=1)
+    before = job.updated_at
+
+    class SlowProvider:
+        async def transcribe(self, _path):
+            await asyncio.sleep(0.025)
+            return []
+
+    result = asyncio.run(asyncio.wait_for(
+        _transcribe_with_heartbeat(SlowProvider(), Path("unused.wav"), db_session, job.id, interval_seconds=0.005),
+        timeout=1,
+    ))
+
+    db_session.refresh(job)
+    assert result == []
+    assert job.updated_at >= before
+
+
+@pytest.mark.asyncio
+async def test_stale_job_recovery_runs_periodically_after_startup(monkeypatch):
+    import app.main as main
+
+    calls = []
+    monkeypatch.setattr(main, "_recover_interrupted_voice_jobs", lambda: calls.append(True))
+    task = asyncio.create_task(main._stale_voice_job_recovery_loop(interval_seconds=0.005))
+    try:
+        await asyncio.wait_for(asyncio.sleep(0.025), timeout=1)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert calls
+
+
+def test_transcription_provider_failure_is_persisted_without_transcript(db_session: Session, tmp_path, monkeypatch):
+    import app.services.job_runner as job_runner
+
+    _, media, job = _make_failed_audio_job(db_session, status="queued", attempts=0)
+    storage_root = tmp_path / "media"
+    storage_root.mkdir()
+    (storage_root / media.storage_key).parent.mkdir(parents=True, exist_ok=True)
+    (storage_root / media.storage_key).write_bytes(b"audio")
+    monkeypatch.setattr(settings, "MEDIA_ROOT", str(storage_root))
+    monkeypatch.setattr(job_runner, "extract_audio_wav", lambda source, target: Path(target).write_bytes(b"wav"))
+    monkeypatch.setattr(job_runner, "probe_duration", lambda path: 1.0)
+
+    class LimitedProvider:
+        async def transcribe(self, path):
+            raise ValidationError(
+                code="transcription_quota_exceeded",
+                message="Transcription is unavailable because the speech provider account has reached its usage limit.",
+            )
+
+    monkeypatch.setattr(job_runner, "get_speech_provider", LimitedProvider)
+    asyncio.run(asyncio.wait_for(execute_voice_processing_job(job.id, db=db_session), timeout=3))
+
+    db_session.refresh(job)
+    assert job.status == "failed"
+    assert job.attempts == 1
+    assert "usage limit" in job.error_safe
+    assert db_session.query(Transcript).filter(Transcript.media_id == media.id).count() == 0
+
+
+def test_transcript_database_failure_persists_failed_job_after_rollback(threadsafe_env, tmp_path, monkeypatch):
+    import app.services.job_runner as job_runner
+    _, db_session = threadsafe_env
+
+    _, media, job = _make_failed_audio_job(db_session, status="queued", attempts=0)
+    storage_root = tmp_path / "media-db-error"
+    storage_root.mkdir()
+    (storage_root / media.storage_key).parent.mkdir(parents=True, exist_ok=True)
+    (storage_root / media.storage_key).write_bytes(b"audio")
+    monkeypatch.setattr(settings, "MEDIA_ROOT", str(storage_root))
+    monkeypatch.setattr(job_runner, "extract_audio_wav", lambda source, target: Path(target).write_bytes(b"wav"))
+    monkeypatch.setattr(job_runner, "probe_duration", lambda path: 1.0)
+
+    class SuccessfulProvider:
+        async def transcribe(self, _path):
+            return [Segment(idx=1, start_s=0.0, end_s=1.0, text="Check the chuck pressure.")]
+
+    monkeypatch.setattr(job_runner, "get_speech_provider", SuccessfulProvider)
+    original_flush = db_session.flush
+    fail_once = {"enabled": True}
+
+    def flush_with_constraint_failure(*args, **kwargs):
+        if fail_once["enabled"]:
+            fail_once["enabled"] = False
+            raise IntegrityError("insert transcript", {}, Exception("simulated constraint failure"))
+        return original_flush(*args, **kwargs)
+
+    monkeypatch.setattr(db_session, "flush", flush_with_constraint_failure)
+    asyncio.run(asyncio.wait_for(execute_voice_processing_job(job.id, db=db_session), timeout=3))
+
+    db_session.refresh(job)
+    assert job.status == "failed"
+    assert job.attempts == 1
+    assert job.error_safe
+    assert db_session.query(Transcript).filter(Transcript.media_id == media.id).count() == 0
+
+
+def test_processing_job_status_and_retry_enforce_asset_access_and_csrf(client, db_session: Session, monkeypatch):
+    owner, media, job = _make_failed_audio_job(db_session)
+    import app.api.v1.endpoints.jobs as jobs_endpoint
+
+    async def no_op_job(_job_id):
+        return None
+
+    monkeypatch.setattr(jobs_endpoint, "execute_voice_processing_job", no_op_job)
+    owner_csrf = get_expert_credentials(client)
+    assert client.get(f"/api/v1/processing-jobs/{job.id}").status_code == 200
+    assert client.post(f"/api/v1/processing-jobs/{job.id}/retry").status_code == 403
+
+    retried = client.post(
+        f"/api/v1/processing-jobs/{job.id}/retry",
+        headers={"X-CSRF-Token": owner_csrf},
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["status"] == "queued"
+    assert db_session.query(ProcessingJob).filter(ProcessingJob.media_id == media.id).count() == 1
+
+    unassigned_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": settings.TRAINEE_EMAIL, "password": settings.TRAINEE_PASSWORD},
+    )
+    assert unassigned_login.status_code == 200
+    other_csrf = unassigned_login.cookies.get(settings.CSRF_COOKIE_NAME)
+    assert client.get(f"/api/v1/processing-jobs/{job.id}").status_code == 403
+    forbidden_retry = client.post(
+        f"/api/v1/processing-jobs/{job.id}/retry",
+        headers={settings.CSRF_HEADER_NAME: other_csrf},
+    )
+    assert forbidden_retry.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -179,7 +405,13 @@ async def test_job_runner_vector_indexing_and_rag(db_session: Session, tmp_path,
     # Check transcript and segments were created
     transcript = db_session.query(Transcript).filter(Transcript.media_id == media.id).first()
     assert transcript is not None
+    assert transcript.raw_text == transcript.full_text
+    assert transcript.updated_at is not None
     assert len(transcript.segments) >= 3
+    assert all(segment.segment_order == segment.idx for segment in transcript.segments)
+    assert all(segment.start_time_seconds == segment.start_s for segment in transcript.segments)
+    assert all(segment.end_time_seconds == segment.end_s for segment in transcript.segments)
+    assert all(segment.text == segment.original_text for segment in transcript.segments)
 
     # Check vector embeddings were stored
     embeddings = db_session.query(KnowledgeEmbedding).filter(KnowledgeEmbedding.media_id == media.id).all()

@@ -43,9 +43,37 @@ class OpenAIWhisperProvider(SpeechProvider):
                     response.raise_for_status()
                     payload = response.json()
                 except httpx.HTTPStatusError as e:
-                    # Do not log provider response bodies or request details; keep credentials and user audio private.
+                    # Parse only the provider's documented error code/type. Never log or
+                    # return the body, which can contain provider diagnostics or user data.
+                    provider_code = None
+                    provider_type = None
+                    try:
+                        body = e.response.json()
+                        error = body.get("error", {}) if isinstance(body, dict) else {}
+                        if isinstance(error, dict):
+                            provider_code = str(error.get("code") or "").lower()
+                            provider_type = str(error.get("type") or "").lower()
+                    except (ValueError, AttributeError, TypeError):
+                        pass
+
+                    if e.response.status_code == 429:
+                        if provider_code in {"insufficient_quota", "billing_hard_limit_reached", "quota_exceeded"}:
+                            code = "transcription_quota_exceeded"
+                            message = "Transcription is unavailable because the speech provider account has reached its usage limit. Ask an administrator to check provider quota or billing before retrying."
+                            category = "quota"
+                        elif provider_code in {"rate_limit_exceeded", "requests", "tokens"} or provider_type in {"rate_limit_error", "requests", "tokens"}:
+                            code = "transcription_rate_limited"
+                            message = "The speech provider is temporarily rate limiting transcription. Wait briefly, then retry."
+                            category = "rate_limit"
+                        else:
+                            code = "transcription_provider_limited"
+                            message = "The speech provider rejected this transcription due to a usage limit. Check provider quota and rate limits before retrying."
+                            category = "unknown_429"
+                        logger.error("Speech provider returned HTTP 429 (category=%s)", category)
+                        raise ValidationError(code=code, message=message)
+
                     logger.error("Speech provider returned HTTP status %s", e.response.status_code)
-                    raise ValidationError(code="transcription_failed", message="OpenAI transcription service failed.")
+                    raise ValidationError(code="transcription_failed", message="The speech provider could not process this recording. The recording is saved; check provider status and retry.")
                 except httpx.TimeoutException:
                     raise ValidationError(code="transcription_timeout", message="Speech provider timed out. The recording is saved and can be retried.")
                 except Exception as e:

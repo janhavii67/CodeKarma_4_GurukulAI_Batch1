@@ -29,6 +29,7 @@ from app.schemas.knowledge import (
     KnowledgeListItemResponse,
     KnowledgeUpdateRequest,
     KnowledgeVersionResponse,
+    KnowledgeVersionComparisonResponse,
     KnowledgeVersionSummaryResponse,
     RevisionCreateRequest,
     ReviewRecordResponse,
@@ -280,6 +281,33 @@ def list_versions(
         item_id=id,
     )
     return [KnowledgeVersionSummaryResponse.model_validate(v) for v in versions]
+
+
+@router.get(
+    "/{id}/compare",
+    response_model=KnowledgeVersionComparisonResponse,
+    summary="Compare two visible knowledge version snapshots",
+)
+def compare_versions(
+    id: str,
+    base_version: int = Query(..., ge=1),
+    target_version: int = Query(..., ge=1),
+    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    base, target, changed_fields = KnowledgeService.compare_versions(
+        db=db,
+        user=auth_ctx.user,
+        permissions=auth_ctx.permissions,
+        item_id=id,
+        base_version_no=base_version,
+        target_version_no=target_version,
+    )
+    return KnowledgeVersionComparisonResponse(
+        base=KnowledgeVersionResponse.model_validate(base),
+        target=KnowledgeVersionResponse.model_validate(target),
+        changed_fields=changed_fields,
+    )
 
 
 @router.get(

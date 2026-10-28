@@ -23,7 +23,7 @@ from app.integrations.storage import get_storage_service
 from app.core.permissions import PERM_KNOWLEDGE_APPROVE
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from app.core.exceptions import ForbiddenError, RangeNotSatisfiableError
+from app.core.exceptions import ForbiddenError, RangeNotSatisfiableError, ValidationError
 from app.core.permissions import (
     AuthenticatedContext,
     csrf_protect,
@@ -37,8 +37,16 @@ from app.services.media_service import MediaService
 from app.models.machine import Machine
 from app.repositories.media_repository import MediaRepository
 from app.core.exceptions import NotFoundError, PayloadTooLargeError
+from app.integrations.speech.factory import get_speech_provider
+from app.integrations.speech.mock_provider import MockSpeechProvider
 
 router = APIRouter(tags=["Media Assets"])
+
+
+def _asset_response(asset: MediaAsset, **overrides) -> MediaAssetResponse:
+    """Serialize ORM attributes safely after commits may have expired instance state."""
+    response = MediaAssetResponse.model_validate(asset)
+    return response.model_copy(update=overrides)
 
 
 class MediaMetadataUpdate(BaseModel):
@@ -68,13 +76,25 @@ def upload_machine_media(
         machine_id=machine_id, title=title, description=description, tags=tags)
     transcript_status = "not_configured"
     job = None
-    if asset.kind == "audio" and settings.OPENAI_API_KEY and settings.STT_PROVIDER.lower() not in ("mock", "test"):
-        job = ProcessingJob(type="voice_to_knowledge", media_id=asset.id, version_id=None,
-            status="queued", progress=0, idempotency_key=f"voice:{asset.id}", created_by=auth_ctx.user.id)
-        db.add(job); db.commit(); db.refresh(job)
-        background_tasks.add_task(execute_voice_processing_job, job.id)
-        transcript_status = "processing"
-    return MediaAssetResponse.model_validate({**asset.__dict__, "url": f"/api/v1/media/{asset.id}", "transcript_status": transcript_status, "transcript_job_id": job.id if job else None})
+    if asset.kind == "audio":
+        try:
+            speech_provider = get_speech_provider()
+        except ValidationError:
+            # Preserve the standalone audio upload when speech service config is
+            # unavailable; the recording itself remains independently accessible.
+            speech_provider = None
+        if speech_provider is not None and not isinstance(speech_provider, MockSpeechProvider):
+            job = ProcessingJob(type="voice_to_knowledge", media_id=asset.id, version_id=None,
+                status="queued", progress=0, idempotency_key=f"voice:{asset.id}",
+                user_id=auth_ctx.user.id, created_by=auth_ctx.user.id)
+            db.add(job); db.commit(); db.refresh(job)
+            background_tasks.add_task(execute_voice_processing_job, job.id)
+            transcript_status = "processing"
+    return _asset_response(asset,
+        url=f"/api/v1/media/{asset.id}",
+        transcript_status=transcript_status,
+        transcript_job_id=job.id if job else None,
+    )
 
 
 @router.get("/machine-knowledge/{machine_id}/media", response_model=List[MediaAssetResponse])
@@ -150,7 +170,7 @@ def create_machine_note(machine_id: str, title: str = Form(...), content: str = 
     asset = MediaService.upload(db, auth_ctx.user, auth_ctx.permissions, None, note_file,
         "notes", "text/plain", filename, machine_id=machine_id, title=title,
         description=description, tags=tags)
-    return MediaAssetResponse.model_validate({**asset.__dict__, "content": content, "url": f"/api/v1/media/{asset.id}"})
+    return _asset_response(asset, content=content, url=f"/api/v1/media/{asset.id}")
 
 
 @router.patch("/media/{id}", response_model=MediaAssetResponse, dependencies=[Depends(csrf_protect)])
@@ -179,7 +199,7 @@ def update_media_metadata(id: str, payload: MediaMetadataUpdate,
     for key, value in fields.items():
         setattr(asset, key, value)
     db.commit(); db.refresh(asset)
-    return MediaAssetResponse.model_validate({**asset.__dict__, "url": f"/api/v1/media/{asset.id}", "verification_status": "pending_review"})
+    return _asset_response(asset, url=f"/api/v1/media/{asset.id}", verification_status="pending_review")
 
 
 @router.post(

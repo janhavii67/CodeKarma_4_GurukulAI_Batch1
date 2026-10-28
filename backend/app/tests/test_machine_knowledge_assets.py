@@ -157,13 +157,17 @@ def test_machine_upload_auth_validation_and_isolation(client, db_session, tmp_pa
         set_storage_service(None)
 
 
-def test_authenticated_audio_recording_upload_persists_to_selected_machine(client, db_session, tmp_path):
+def test_authenticated_audio_recording_upload_persists_to_selected_machine(client, db_session, tmp_path, monkeypatch):
     storage = LocalStorageService(tmp_path / "recorded-audio")
     set_storage_service(storage)
     old_root = settings.MEDIA_ROOT
     old_key = settings.OPENAI_API_KEY
     settings.MEDIA_ROOT = str(tmp_path / "recorded-audio")
-    settings.OPENAI_API_KEY = ""
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    # Keep this persistence-only test independent of the machine's configured
+    # local Whisper provider; provider-enabled queueing has its own test below.
+    monkeypatch.setattr(settings, "STT_PROVIDER", "whisper_api")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
     try:
         machine = db_session.query(Machine).first()
         login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
@@ -189,6 +193,46 @@ def test_authenticated_audio_recording_upload_persists_to_selected_machine(clien
     finally:
         settings.MEDIA_ROOT = old_root
         settings.OPENAI_API_KEY = old_key
+        set_storage_service(None)
+
+
+def test_local_whisper_audio_upload_queues_existing_transcription_job_without_api_key(client, db_session, tmp_path, monkeypatch):
+    storage = LocalStorageService(tmp_path / "local-whisper-upload")
+    set_storage_service(storage)
+    old_root = settings.MEDIA_ROOT
+    settings.MEDIA_ROOT = str(tmp_path / "local-whisper-upload")
+    monkeypatch.setattr(settings, "STT_PROVIDER", "local_whisper")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    import app.api.v1.endpoints.media as media_endpoint
+
+    async def no_op_processing_job(_job_id):
+        return None
+
+    monkeypatch.setattr(media_endpoint, "execute_voice_processing_job", no_op_processing_job)
+    try:
+        machine = db_session.query(Machine).first()
+        login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
+        assert login.status_code == 200
+        csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
+        recording = b"\x1a\x45\xdf\xa3" + b"fixture audio payload"
+        response = client.post(
+            f"/api/v1/machine-knowledge/{machine.id}/media",
+            headers={settings.CSRF_HEADER_NAME: csrf},
+            data={"kind": "audio", "title": "Local Whisper recording"},
+            files={"file": ("local-recording.webm", recording, "audio/webm")},
+        )
+
+        assert response.status_code == 201, response.text
+        payload = response.json()
+        assert payload["transcript_status"] == "processing"
+        assert payload["machine_id"] == machine.id
+        job = db_session.query(ProcessingJob).filter(ProcessingJob.media_id == payload["id"]).one()
+        assert job.status == "queued"
+        assert job.user_id == payload["uploaded_by"]
+        assert db_session.query(Transcript).filter(Transcript.media_id == payload["id"]).count() == 0
+        assert storage.exists(db_session.get(MediaAsset, payload["id"]).storage_key)
+    finally:
+        settings.MEDIA_ROOT = old_root
         set_storage_service(None)
 
 

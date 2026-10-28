@@ -6,7 +6,7 @@ This audit compares the module specifications with current backend routes, front
 |---|---|---|---|
 | 00 Foundation | Tested | Auth, roles, app shell, machine routes, and automated auth coverage are present. | Complete |
 | 01 Expert Knowledge Capture | Implemented and tested | Knowledge editor/reviewable drafts and machine knowledge assets exist; current backend and frontend suites exercise capture, media, and associations. Virus scanning and resumable uploads remain out of scope in the spec. | Complete |
-| 06 Validation and Versioning | Implemented and tested | Knowledge submission and review routes, review queue UI, status transitions, and approval history are present. Continue auditing concurrency and version comparison against the full spec. | Complete before dependent modules |
+| 06 Validation and Versioning | Implemented and tested | Knowledge submission/review, history, version detail, permission-filtered snapshot comparison, field-level change labels, and regression coverage are present. Remaining gap: the compare UI identifies changed fields rather than rendering granular added/removed/changed step diffs. | Complete before dependent modules |
 | 04 Voice-to-Knowledge | Partial | Recording, saved machine audio, transcript jobs, transcript review/editing, and AI structuring pipeline are present. Real speech transcription requires backend `OPENAI_API_KEY`; provider output and structured steps still require expert review. AI provider failure/timeout and the full voice-to-draft UI need continued end-to-end coverage. | After 01/06 |
 | 03 Guided Workflows | Partial | Procedure authoring, existing-asset references, run start/status, and step completion exist. Procedure runs are not yet clearly bound to reviewed immutable workflow versions with mandatory checkpoint enforcement as specified. | After 06 |
 | 02 AI Knowledge Assistant | Partial | Vector search exists in the voice API; `/app/assistant` remains a placeholder, so there is no complete user-facing cited-answer workflow. | After 06 |
@@ -19,11 +19,11 @@ This audit compares the module specifications with current backend routes, front
 
 ## Recommended implementation order
 
-1. Finish and verify this phase’s machine audio/transcript and procedure lifecycle work, including production provider setup and full regression tests.
-2. Close remaining Module 06 review/version gaps before treating it as a stable dependency.
-3. Complete Module 04 expert-reviewed transcript-to-draft flow and provider failure handling.
-4. Complete Module 03 version-bound runs and checkpoint enforcement.
-5. Implement Module 02’s assistant UI and citation/no-source behavior, then Module 05’s guided troubleshooting flow.
-6. Complete Module 07 analysis; then implement Modules 08–11 in dependency order.
+1. Complete Module 04 expert-reviewed transcript-to-draft flow and provider failure handling.
+2. Complete Module 03 version-bound runs and checkpoint enforcement.
+3. Implement Module 02’s assistant UI and citation/no-source behavior, then Module 05’s guided troubleshooting flow.
+4. Complete Module 07 analysis; then implement Modules 08–11 in dependency order.
 
 The existing [Module Registry](MODULE_REGISTRY.md) is updated to distinguish tested, partial, and not implemented work. The older `docs/TASKS.md` is the historical hackathon task plan and does not fully represent the current module architecture.
+
+The 2026-10-28 follow-up added version-number lookup and saved-snapshot comparison for Module 06. No schema migration is required. The next prioritized implementation phase is Module 04's expert-reviewed transcript-to-draft flow; provider-backed transcription still requires `OPENAI_API_KEY` (and any selected LLM provider configuration).

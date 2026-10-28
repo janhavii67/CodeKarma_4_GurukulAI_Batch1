@@ -1,6 +1,9 @@
+import asyncio
 import json
+from datetime import timedelta
 from pathlib import Path
 from typing import Optional
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.processing_job import ProcessingJob
@@ -13,6 +16,56 @@ from app.services.vector_service import index_voice_transcript
 from app.services.structuring_service import structure_transcript_with_ai
 from app.core.logging import logger
 from app.core.config import settings
+from app.core.exceptions import ValidationError
+from app.db.base import utc_now
+
+
+# Active inference refreshes updated_at every 20 seconds, so a two-minute
+# cutoff recovers lost background tasks quickly without timing out slow CPU work.
+STALE_JOB_AFTER = timedelta(minutes=2)
+STALE_JOB_MESSAGE = (
+    "Transcription was interrupted before completion. The recording is still saved; retry when the backend is available."
+)
+
+
+def fail_stale_voice_jobs(db: Session, stale_before=None) -> int:
+    """Make jobs abandoned by a stopped server retryable without touching media/transcripts."""
+    cutoff = stale_before or (utc_now() - STALE_JOB_AFTER)
+    stale = (
+        db.query(ProcessingJob)
+        .filter(
+            ProcessingJob.type == "voice_to_knowledge",
+            ProcessingJob.status.in_(("queued", "processing")),
+            ProcessingJob.updated_at < cutoff,
+        )
+        .all()
+    )
+    for job in stale:
+        job.status = "failed"
+        job.error_safe = STALE_JOB_MESSAGE
+        job.updated_at = utc_now()
+    if stale:
+        db.commit()
+    return len(stale)
+
+
+async def _transcribe_with_heartbeat(
+    provider, audio_path: Path, db: Session, job_id: str, interval_seconds: float = 20,
+) -> list:
+    """Keep long model downloads/loads/inference visibly alive in persisted job state."""
+    task = asyncio.create_task(provider.transcribe(audio_path))
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=interval_seconds)
+            if done:
+                return await task
+            job = db.get(ProcessingJob, job_id)
+            if job and job.status == "processing":
+                job.updated_at = utc_now()
+                db.commit()
+    except asyncio.CancelledError:
+        task.cancel()
+        raise
 
 
 async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None) -> None:
@@ -34,15 +87,23 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
             logger.error(f"ProcessingJob {job_id} not found in background runner.")
             return
 
-        if job.status in ("completed", "needs_review", "cancelled"):
-            logger.info(f"ProcessingJob {job_id} is already in terminal state {job.status}. Skipping.")
+        # Claim atomically so duplicate background task dispatches cannot run
+        # transcription concurrently or create a second transcript.
+        claim = db.execute(
+            update(ProcessingJob)
+            .where(ProcessingJob.id == job_id, ProcessingJob.status == "queued")
+            .values(
+                status="processing",
+                progress=15,
+                attempts=ProcessingJob.attempts + 1,
+            )
+        )
+        if claim.rowcount != 1:
+            logger.info("ProcessingJob %s was not queued. Skipping duplicate execution.", job_id)
             return
 
-        # Mark job as processing
-        job.status = "processing"
-        job.progress = 15
-        job.attempts += 1
         db.commit()
+        db.refresh(job)
 
         media = db.get(MediaAsset, job.media_id)
         audio_file_path = None
@@ -70,7 +131,7 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
 
         # 2. Speech-to-Text Transcription
         speech_provider = get_speech_provider()
-        segments_data = await speech_provider.transcribe(wav_path)
+        segments_data = await _transcribe_with_heartbeat(speech_provider, wav_path, db, job_id)
 
         if not segments_data:
             job.status = "failed"
@@ -80,16 +141,24 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
 
         full_text = " ".join([s.text for s in segments_data])
 
-        # Delete any previous transcript for this media asset to maintain idempotency
+        # Do not replace a transcript: a retry after downstream failure must not
+        # erase expert edits or create a second transcript for the same recording.
         existing_transcript = db.query(Transcript).filter(Transcript.media_id == media.id).first()
         if existing_transcript:
-            db.delete(existing_transcript)
-            db.commit()
+            raise ValidationError(
+                code="transcript_exists",
+                message="A transcript already exists for this recording. Review or edit the existing transcript.",
+            )
 
         transcript = Transcript(
             media_id=media.id,
             version_id=job.version_id,
-            language="en",
+            raw_text=full_text,
+            language=(
+                getattr(speech_provider, "detected_language", None)
+                or getattr(speech_provider, "language", None)
+                or "en"
+            ),
             provider=getattr(speech_provider, "model", "default_stt"),
             full_text=full_text,
             status="completed",
@@ -100,6 +169,10 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
         for seg in segments_data:
             t_seg = TranscriptSegment(
                 transcript_id=transcript.id,
+                segment_order=seg.idx,
+                start_time_seconds=seg.start_s,
+                end_time_seconds=seg.end_s,
+                text=seg.text,
                 idx=seg.idx,
                 start_s=seg.start_s,
                 end_s=seg.end_s,
@@ -156,16 +229,57 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
         db.commit()
         logger.info(f"ProcessingJob {job_id} successfully completed pipeline. Status: needs_review.")
 
-    except Exception as e:
-        logger.error(f"Error processing voice job {job_id}: {e}", exc_info=True)
+    except asyncio.CancelledError:
         try:
+            db.rollback()
+            job = db.get(ProcessingJob, job_id)
+            if job and job.status == "processing":
+                job.status = "failed"
+                job.error_safe = STALE_JOB_MESSAGE
+                job.updated_at = utc_now()
+                db.commit()
+        except Exception:
+            db.rollback()
+        raise
+    except ValidationError as e:
+        logger.error("Voice processing job %s failed (%s).", job_id, e.code)
+        try:
+            db.rollback()
             job = db.get(ProcessingJob, job_id)
             if job:
                 job.status = "failed"
-                job.error_safe = "Narration processing failed. You can retry with clearer audio."
+                safe_provider_errors = {
+                    "transcription_not_configured",
+                    "transcription_quota_exceeded",
+                    "transcription_rate_limited",
+                    "transcription_provider_limited",
+                    "transcription_failed",
+                    "transcription_timeout",
+                    "transcription_network_error",
+                    "local_whisper_dependency_missing",
+                    "local_whisper_dependency_incompatible",
+                    "local_whisper_model_unavailable",
+                    "local_transcription_failed",
+                }
+                job.error_safe = e.message if e.code in safe_provider_errors else (
+                    "Narration processing failed. The recording is saved; check processing service status before retrying."
+                )
                 db.commit()
         except Exception:
-            pass
+            db.rollback()
+    except Exception as e:
+        logger.error("Error processing voice job %s (%s).", job_id, type(e).__name__, exc_info=True)
+        try:
+            # SQLAlchemy requires rollback after a flush/commit failure before
+            # the job failure state itself can be persisted.
+            db.rollback()
+            job = db.get(ProcessingJob, job_id)
+            if job:
+                job.status = "failed"
+                job.error_safe = "Narration processing failed. The recording is saved; check processing service status before retrying."
+                db.commit()
+        except Exception:
+            db.rollback()
     finally:
         if own_session:
             db.close()

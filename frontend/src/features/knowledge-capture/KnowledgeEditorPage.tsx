@@ -30,6 +30,8 @@ import { MediaPanel } from './media/MediaPanel';
 import { Button } from '../../components/ui/Button';
 import { ApiClientError } from '../../lib/api/client';
 import type { Step, KnowledgeVersion } from './types';
+import type { KnowledgeVersionComparison } from './types';
+import { fetchVersionComparison } from './knowledgeApi';
 import { isEditableStatus } from './types';
 import { MedicalHeroBanner } from './components/MedicalHeroBanner';
 import { DraftStatusBar } from './components/DraftStatusBar';
@@ -51,6 +53,12 @@ const VersionSwitcher: React.FC<VersionSwitcherProps> = ({
 }) => {
   const { data: versions, isLoading } = useVersionList(itemId);
   const [open, setOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [baseVersionNo, setBaseVersionNo] = useState('');
+  const [targetVersionNo, setTargetVersionNo] = useState('');
+  const [comparison, setComparison] = useState<KnowledgeVersionComparison | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,6 +74,20 @@ const VersionSwitcher: React.FC<VersionSwitcherProps> = ({
   if (isLoading || !versions || versions.length <= 1) return null;
 
   const current = versions.find((v) => v.id === currentVersionId);
+  const runCompare = async () => {
+    if (!baseVersionNo || !targetVersionNo || baseVersionNo === targetVersionNo) return;
+    setCompareLoading(true); setCompareError(''); setComparison(null);
+    try {
+      setComparison(await fetchVersionComparison(itemId, Number(baseVersionNo), Number(targetVersionNo)));
+    } catch (cause) {
+      setCompareError(cause instanceof Error ? cause.message : 'Could not compare these saved versions.');
+    } finally { setCompareLoading(false); }
+  };
+  const compareFields = ['title', 'machine_id', 'summary', 'description', 'content', 'operating_conditions', 'prerequisites', 'safety_warnings', 'common_mistakes', 'corrective_actions', 'steps'] as const;
+  const displayField = (value: unknown) => {
+    if (value == null || value === '') return '—';
+    return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  };
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -109,6 +131,39 @@ const VersionSwitcher: React.FC<VersionSwitcherProps> = ({
           ))}
         </div>
       )}
+
+      <div className="mt-2">
+        <Button type="button" variant="secondary" size="sm" onClick={() => { setCompareOpen(value => !value); setCompareError(''); }} aria-expanded={compareOpen}>
+          {compareOpen ? 'Close comparison' : 'Compare versions'}
+        </Button>
+      </div>
+      {compareOpen && <section aria-label="Compare knowledge versions" className="mt-3 w-[min(90vw,56rem)] rounded-xl border border-[#DCE8F5] bg-white p-4 shadow-sm space-y-3">
+        <p className="text-xs text-slate-600">Compare saved snapshots. Unsaved editor changes are not included.</p>
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <label className="text-xs font-semibold">Earlier version
+            <select aria-label="Earlier version" className="mt-1 block w-full rounded-lg border p-2" value={baseVersionNo} onChange={event => { setBaseVersionNo(event.target.value); setComparison(null); }}>
+              <option value="">Choose version…</option>{versions.map(version => <option key={version.id} value={version.version_no}>v{version.version_no} · {version.status}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-semibold">Later version
+            <select aria-label="Later version" className="mt-1 block w-full rounded-lg border p-2" value={targetVersionNo} onChange={event => { setTargetVersionNo(event.target.value); setComparison(null); }}>
+              <option value="">Choose version…</option>{versions.map(version => <option key={version.id} value={version.version_no}>v{version.version_no} · {version.status}</option>)}
+            </select>
+          </label>
+          <Button type="button" disabled={compareLoading || !baseVersionNo || !targetVersionNo || baseVersionNo === targetVersionNo} onClick={() => void runCompare()}>{compareLoading ? 'Comparing…' : 'Compare'}</Button>
+        </div>
+        {compareError && <p role="alert" className="text-sm text-red-700">{compareError}</p>}
+        {comparison && <div role="region" aria-label={`Comparison of v${comparison.base.version_no} and v${comparison.target.version_no}`} className="space-y-3">
+          <p role="status" className="text-xs text-slate-600">{comparison.changed_fields.length ? `Changed: ${comparison.changed_fields.join(', ')}` : 'No compared content fields changed.'}</p>
+          <div className="grid gap-3 md:grid-cols-2">{compareFields.map(field => {
+            const changed = comparison.changed_fields.includes(field);
+            return <article key={field} className={`rounded-lg border p-3 ${changed ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-slate-50/50'}`}>
+              <h3 className="text-xs font-bold capitalize">{field.replace(/_/g, ' ')}{changed && <span className="ml-2 text-amber-800">Changed</span>}</h3>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs"><div><p className="font-semibold text-slate-500">v{comparison.base.version_no}</p><pre className="mt-1 whitespace-pre-wrap break-words font-sans">{displayField(comparison.base[field])}</pre></div><div><p className="font-semibold text-slate-500">v{comparison.target.version_no}</p><pre className="mt-1 whitespace-pre-wrap break-words font-sans">{displayField(comparison.target[field])}</pre></div></div>
+            </article>;
+          })}</div>
+        </div>}
+      </section>}
     </div>
   );
 };

@@ -80,7 +80,12 @@ def transcribe_machine_audio(
     if job and job.status in ("queued", "processing"):
         return job
     if job and job.status == "failed":
-        job = retry_voice_job(db=db, job_id=job.id, user_id=auth_ctx.user.id)
+        job = retry_voice_job(
+            db=db,
+            job_id=job.id,
+            user_id=auth_ctx.user.id,
+            can_review=PERM_KNOWLEDGE_APPROVE in auth_ctx.permissions,
+        )
     elif job:
         if job.status in ("needs_review", "completed"):
             raise ConflictError(code="transcript_unavailable", message="The prior transcription job finished without a transcript. Contact an administrator before retrying.")
@@ -93,6 +98,7 @@ def transcribe_machine_audio(
         job = ProcessingJob(
             type="voice_to_knowledge", media_id=media.id, version_id=media.version_id,
             status="queued", progress=0, idempotency_key=f"voice:{media.id}",
+            user_id=auth_ctx.user.id,
             created_by=auth_ctx.user.id,
         )
         db.add(job)

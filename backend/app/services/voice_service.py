@@ -9,7 +9,7 @@ from app.models.transcript import Transcript, TranscriptSegment
 from app.models.knowledge import KnowledgeVersion
 from app.integrations.media.ffmpeg import probe_duration
 from app.services.vector_service import compute_dense_embedding, KnowledgeEmbedding, EMBEDDING_DIM
-from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError
+from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError, ConflictError
 from app.core.logging import logger
 
 MAX_DURATION_SECONDS = 300.0  # 5 minutes maximum
@@ -75,6 +75,7 @@ def create_voice_capture_job(
         status="queued",
         progress=0,
         idempotency_key=idempotency_key,
+        user_id=user_id,
         created_by=user_id,
     )
     db.add(job)
@@ -86,7 +87,7 @@ def create_voice_capture_job(
     return media, job
 
 
-def retry_voice_job(db: Session, job_id: str, user_id: str) -> ProcessingJob:
+def retry_voice_job(db: Session, job_id: str, user_id: str, can_review: bool = False) -> ProcessingJob:
     """
     Retries a failed processing job if under retry limit (attempts < 3).
     """
@@ -94,11 +95,17 @@ def retry_voice_job(db: Session, job_id: str, user_id: str) -> ProcessingJob:
     if not job:
         raise NotFoundError(code="job_not_found", message=f"Processing job '{job_id}' not found.")
 
+    if job.created_by != user_id and not can_review:
+        raise ForbiddenError(code="forbidden", message="You may only retry your own transcription jobs.")
+
     if job.status != "failed":
         raise ValidationError(code="job_not_failed", message=f"Job status is '{job.status}'. Only failed jobs can be retried.")
 
     if job.attempts >= 3:
         raise ValidationError(code="max_retries_exceeded", message="Maximum retry limit (3 attempts) reached for this job.")
+
+    if db.query(Transcript).filter(Transcript.media_id == job.media_id).first():
+        raise ConflictError(code="transcript_exists", message="A transcript already exists for this recording. Review or edit the existing transcript instead of retrying.")
 
     job.status = "queued"
     job.progress = 0

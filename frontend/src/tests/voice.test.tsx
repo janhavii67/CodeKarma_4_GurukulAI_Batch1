@@ -26,6 +26,26 @@ describe('Voice-to-Knowledge & RAG UI Component Tests', () => {
     expect(screen.getByText(/Vector RAG Indexing/i)).toBeInTheDocument();
   });
 
+  it('shows provider limit guidance instead of blaming audio quality', () => {
+    const failedJob: ProcessingJob = {
+      id: 'job-limited',
+      type: 'voice_to_knowledge',
+      media_id: 'media-limited',
+      status: 'failed',
+      progress: 35,
+      attempts: 1,
+      error_safe: 'The speech provider returned a usage-limit response. Check provider quota and rate limits before retrying.',
+      created_by: 'user-expert-a',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    render(<JobStatusCard job={failedJob} />);
+
+    expect(screen.getByText(/usage-limit response/i)).toBeInTheDocument();
+    expect(screen.queryByText(/clearer audio|check audio quality/i)).not.toBeInTheDocument();
+  });
+
   it('renders StepDraftReview with safety warnings, segment citations, and allows clearing review flag', () => {
     const mockSteps: StepDraft[] = [
       {

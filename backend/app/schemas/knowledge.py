@@ -93,9 +93,17 @@ class KnowledgeVersionResponse(BaseModel):
     id: str
     item_id: str
     version_no: int
+    title: Optional[str] = None
+    machine_id: Optional[str] = None
     status: str
     summary: Optional[str] = None
     description: Optional[str] = None
+    content: Optional[str] = None
+    operating_conditions: Optional[str] = None
+    prerequisites: Optional[str] = None
+    safety_warnings: Optional[str] = None
+    common_mistakes: Optional[str] = None
+    corrective_actions: Optional[str] = None
     steps: List[Step] = Field(default_factory=list)
     origin: str
     revision_reason: Optional[str] = None
@@ -129,6 +137,12 @@ class KnowledgeVersionResponse(BaseModel):
                 except Exception:
                     pass
         return data
+
+
+class KnowledgeVersionComparisonResponse(BaseModel):
+    base: KnowledgeVersionResponse
+    target: KnowledgeVersionResponse
+    changed_fields: List[str]
 
 
 class KnowledgeVersionSummaryResponse(BaseModel):

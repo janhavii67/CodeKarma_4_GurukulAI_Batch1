@@ -47,16 +47,23 @@ Open your browser to:
 - **Backend Swagger Docs**: `http://127.0.0.1:8000/docs`
 - **Backend Health Check**: `http://127.0.0.1:8000/api/v1/health`
 
-### Optional real audio transcription
-Audio recording and upload work without a transcription provider. To enable speech-to-text, place your provider settings in `backend/.env` (the API loads `.env` relative to the `backend` working directory), then restart the backend:
+### Local audio transcription (Windows CPU)
+Install the backend requirements, then set these values in `backend/.env` (the API loads `.env` relative to the `backend` working directory) and restart the backend:
 
 ```dotenv
-STT_PROVIDER=whisper_api
-OPENAI_API_KEY=<your OpenAI API key>
-OPENAI_TRANSCRIPTION_MODEL=whisper-1
+STT_PROVIDER=local_whisper
+LOCAL_WHISPER_MODEL=base
+LOCAL_WHISPER_DEVICE=cpu
+LOCAL_WHISPER_COMPUTE_TYPE=int8
+LOCAL_WHISPER_CPU_THREADS=4
+LOCAL_WHISPER_LANGUAGE=en
 ```
 
-Keep the key only in the backend environment. Do not add it to frontend variables or commit `backend/.env`. Without a valid key, transcription requests return `transcription_not_configured`; no transcript is generated. Transcription uses the configured OpenAI API and incurs provider usage.
+`faster-whisper` runs inference locally with a single cached model and one inference worker to limit resource use on 8 GB machines. The default `en` language avoids false language detection on short English clips; set `LOCAL_WHISPER_LANGUAGE=auto` when recordings may contain different languages. The first transcription downloads the selected model into the local Hugging Face cache; after that, inference is local and does not call OpenAI or another speech API. Use short recordings and close other memory-heavy applications while the model is loading.
+
+The backend requirements pin PyAV below version 19 because `faster-whisper` 1.2.1 passes an audio-decoder option removed in PyAV 19. After updating backend dependencies, run `python -m pip install -r requirements.txt` from `backend`, then restart FastAPI.
+
+The optional paid OpenAI provider remains available only when explicitly selected with `STT_PROVIDER=whisper_api` (or `openai`) and `OPENAI_API_KEY` is set. The provider factory never falls back to OpenAI when another or unknown provider is selected. Keep any API key only in `backend/.env`; do not add it to frontend variables or commit the file.
 
 ---
 

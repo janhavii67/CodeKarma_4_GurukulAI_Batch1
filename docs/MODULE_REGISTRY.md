@@ -39,7 +39,7 @@ Modules talk through services and database foreign keys, never by importing anot
 |---|---|---|---|---|---|
 | 00 | Foundation | modules/00-foundation.md | 1 | Build | Tested |
 | 01 | Expert Knowledge Capture | modules/01-expert-knowledge-capture.md | 2 | Build | Implemented and tested |
-| 06 | Knowledge Validation and Versioning | modules/06-knowledge-validation.md | 2 | Build | Implemented and tested; continue gap audit |
+| 06 | Knowledge Validation and Versioning | modules/06-knowledge-validation.md | 2 | Build | Implemented and tested; field-level comparison is available, granular step diff remains |
 | 04 | Voice-to-Knowledge | modules/04-voice-to-knowledge.md | 3 | Build ("wow") | Partial; real transcription needs provider credentials |
 | 02 | AI Knowledge Assistant | modules/02-ai-knowledge-assistant.md | 3 | Build | Partial; UI is a placeholder |
 | 03 | Guided Workflows | modules/03-guided-workflows.md | 3 | Placeholder | Partial; immutable workflow version/checkpoints incomplete |

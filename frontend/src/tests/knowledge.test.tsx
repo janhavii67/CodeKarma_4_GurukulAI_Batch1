@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -305,17 +306,19 @@ describe('LibraryPage', () => {
 // ─── KnowledgeEditorPage Tests ────────────────────────────────────────────────
 
 describe('KnowledgeEditorPage', () => {
-  function renderEditor(versionStatus = 'draft', authorId = 'user-1', permissions = ['knowledge.create']) {
+  function renderEditor(versionStatus = 'draft', authorId = 'user-1', permissions = ['knowledge.create'], versionList = [{ ...mockVersion, status: versionStatus as any }], compareResponse?: unknown) {
     const item = {
       ...mockItemDetail,
       author_id: authorId,
-      version: { ...mockVersion, status: versionStatus as any, created_by: authorId },
+      version: { ...versionList[0], status: versionStatus as any, created_by: authorId },
     };
     mockApi.get.mockImplementation((path: string) => {
       if (path === '/auth/me')
         return Promise.resolve({ user: mockUser, permissions });
+      if (path.includes('/compare'))
+        return compareResponse === undefined ? Promise.reject(new Error('No comparison configured')) : Promise.resolve(compareResponse);
       if (path.includes('/versions'))
-        return Promise.resolve([{ ...mockVersion, status: versionStatus }]);
+        return Promise.resolve(versionList);
       if (path.startsWith('/knowledge/item-1'))
         return Promise.resolve(item);
       return Promise.reject(new Error(`Unknown: ${path}`));
@@ -396,6 +399,33 @@ describe('KnowledgeEditorPage', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /New Revision/i })).toBeInTheDocument()
     );
+  });
+
+  it('compares saved version snapshots and labels changed content', async () => {
+    const v1 = { ...mockVersion, id: 'ver-1', version_no: 1, title: 'Setup v1', summary: 'Inspect the chuck.', status: 'published' as const };
+    const v2 = { ...mockVersion, id: 'ver-2', version_no: 2, title: 'Setup v2', summary: 'Inspect the chuck and spindle.', status: 'draft' as const };
+    const compared = { base: v1, target: { ...v2, steps: [{ order: 1, title: 'Inspect', instruction: 'Inspect chuck and spindle.', tools: [], safety_warning: null, expected_result: null, stop_condition: null, needs_review: false, source_segment_ids: [], ai_generated: false, note: null }] }, changed_fields: ['title', 'summary', 'steps'] };
+    renderEditor('draft', 'user-1', ['knowledge.create'], [v2, v1], compared);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Compare versions' }));
+    await user.selectOptions(screen.getByLabelText('Earlier version'), '1');
+    await user.selectOptions(screen.getByLabelText('Later version'), '2');
+    await user.click(screen.getByRole('button', { name: /^Compare$/ }));
+    expect(await screen.findByRole('region', { name: 'Comparison of v1 and v2' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Changed: title, summary, steps');
+    expect(screen.getAllByText('Inspect the chuck and spindle.').length).toBeGreaterThan(0);
+  });
+
+  it('shows an error when a version comparison cannot be loaded', async () => {
+    const v1 = { ...mockVersion, id: 'ver-1', version_no: 1 };
+    const v2 = { ...mockVersion, id: 'ver-2', version_no: 2 };
+    renderEditor('draft', 'user-1', ['knowledge.create'], [v2, v1], undefined);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Compare versions' }));
+    await user.selectOptions(screen.getByLabelText('Earlier version'), '1');
+    await user.selectOptions(screen.getByLabelText('Later version'), '2');
+    await user.click(screen.getByRole('button', { name: /^Compare$/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No comparison configured');
   });
 
   it('offers Submit for Review to an author with the submission permission', async () => {
