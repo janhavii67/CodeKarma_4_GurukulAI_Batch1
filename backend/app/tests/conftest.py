@@ -28,6 +28,8 @@ from infrastructure.scripts.seed import seed_database
 # Enforce mock provider for automated test suite per Part 6 requirements
 os.environ["LLM_PROVIDER"] = "mock"
 settings.LLM_PROVIDER = "mock"
+os.environ["STT_PROVIDER"] = "mock"
+settings.STT_PROVIDER = "mock"
 
 # ---------------------------------------------------------------------------
 # Primary in-memory DB: used by the standard `client` + `db_session` fixtures.

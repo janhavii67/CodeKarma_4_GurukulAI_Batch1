@@ -35,6 +35,8 @@ def get_speech_provider() -> SpeechProvider:
         return OpenAIWhisperProvider(api_key=settings.OPENAI_API_KEY, model=settings.OPENAI_TRANSCRIPTION_MODEL)
 
     if provider_name in ("gemini", "google"):
+        if getattr(settings, "ENVIRONMENT", "").lower() in ("test", "testing") and not getattr(settings, "GEMINI_API_KEY", ""):
+            return MockSpeechProvider()
         if not getattr(settings, "GEMINI_API_KEY", ""):
             raise ValidationError(
                 code="transcription_not_configured",
