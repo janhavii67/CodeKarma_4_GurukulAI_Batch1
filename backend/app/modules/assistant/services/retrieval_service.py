@@ -1,13 +1,15 @@
 import re
+import math
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select, or_, and_, func
 from app.modules.assistant.models import KnowledgeSource, KnowledgeChunk
-from app.models.knowledge import KnowledgeVersion
+from app.models.knowledge import KnowledgeItem, KnowledgeVersion
 from app.modules.assistant.services.eligibility import get_eligibility_service
 from app.core.config import settings
 from app.core.logging import logger
+from app.modules.assistant.providers.embedding_base import get_embedding_provider
 
 
 @dataclass
@@ -79,9 +81,18 @@ class RetrievalService:
             select(KnowledgeChunk, KnowledgeSource)
             .join(KnowledgeSource, KnowledgeChunk.source_id == KnowledgeSource.id)
             .outerjoin(KnowledgeVersion, KnowledgeSource.knowledge_version_id == KnowledgeVersion.id)
+            .outerjoin(KnowledgeItem, KnowledgeItem.id == KnowledgeVersion.item_id)
             .where(*sql_filters)
-            .where(or_(*keyword_clauses))
         )
+        hybrid = getattr(settings, "RETRIEVAL_MODE", "keyword").lower() in {"hybrid", "semantic"}
+        query_vector = None
+        if hybrid:
+            try:
+                query_vector = get_embedding_provider().embed_query(clean_q)
+            except Exception as exc:
+                logger.warning("Semantic retrieval unavailable (%s); using keyword retrieval", type(exc).__name__)
+        if not query_vector:
+            stmt = stmt.where(or_(*keyword_clauses))
 
         # Optional filters
         if query_params.machine_id:
@@ -132,7 +143,16 @@ class RetrievalService:
             if query_params.machine_id and src.machine_id == query_params.machine_id:
                 machine_bonus = 0.2
 
-            total_score = round(token_score * 0.5 + exact_bonus + title_bonus + machine_bonus, 4)
+            keyword_score = min(1.0, token_score * 0.65 + exact_bonus + title_bonus)
+            semantic_score = 0.0
+            stored_vector = (chunk.metadata_json or {}).get("embedding")
+            if query_vector and isinstance(stored_vector, list) and len(stored_vector) == len(query_vector):
+                qnorm = math.sqrt(sum(float(v) ** 2 for v in query_vector)) or 1.0
+                dnorm = math.sqrt(sum(float(v) ** 2 for v in stored_vector)) or 1.0
+                semantic_score = sum(float(a) * float(b) for a, b in zip(query_vector, stored_vector)) / (qnorm * dnorm)
+            total_score = round((0.55 * keyword_score + 0.45 * max(0.0, semantic_score)) if query_vector else keyword_score, 4)
+            if query_params.machine_id and src.machine_id == query_params.machine_id:
+                total_score = min(1.0, total_score + 0.1)
 
             if total_score >= query_params.min_score:
                 scored_results.append(

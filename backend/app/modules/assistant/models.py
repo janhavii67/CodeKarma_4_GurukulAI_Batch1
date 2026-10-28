@@ -93,6 +93,11 @@ class ChatMessage(Base):
     prompt_version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     latency_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     request_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # Links an audio-grounded answer to its non-retained analysis record. The
+    # result payload is reconstructed from current approved data when history loads.
+    audio_analysis_job_id: Mapped[Optional[str]] = mapped_column(
+        String(36), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     # Relationships

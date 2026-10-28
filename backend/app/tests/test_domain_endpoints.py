@@ -1,3 +1,8 @@
+import io
+import math
+import wave
+from array import array
+
 import pytest
 from fastapi.testclient import TestClient
 from app.core.config import settings
@@ -134,47 +139,44 @@ def test_procedures_and_execution_runner(client: TestClient):
     assert step_1_exec["operator_notes"] == "6.2 bar verified."
 
 
-def test_troubleshooting_case_and_tree(client: TestClient):
+def test_unverified_legacy_troubleshooting_tree_is_not_discoverable(client: TestClient):
+    """Legacy demo branches without approved source links must never reach operators."""
     login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
-    resp = client.get("/api/v1/troubleshooting")
-    assert resp.status_code == 200
-    cases = resp.json()
-    assert len(cases) >= 1
-    case_id = cases[0]["id"]
-
-    detail_resp = client.get(f"/api/v1/troubleshooting/{case_id}")
-    assert detail_resp.status_code == 200
-    detail = detail_resp.json()
-    assert len(detail["nodes"]) >= 4
-    assert len(detail["edges"]) >= 3
-    root_node = next(n for n in detail["nodes"] if n["is_root"])
-    assert "Tool Overhang" in root_node["title"]
+    response = client.get("/api/v1/troubleshooting")
+    assert response.status_code == 200
+    assert all(row["id"] != "case-vibration-chatter" for row in response.json())
+    detail = client.get("/api/v1/troubleshooting/case-vibration-chatter")
+    assert detail.status_code == 404
 
 
-def test_audio_analysis_calibrated_matching_and_rejections(client: TestClient):
+def _machine_tone_wav(*, silent: bool = False) -> bytes:
+    samples = array("h", [0 if silent else int(12_000 * math.sin(2 * math.pi * 440 * index / 16_000)) for index in range(16_000)])
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16_000)
+        wav.writeframes(samples.tobytes())
+    return output.getvalue()
+
+
+def test_machine_sound_analysis_validates_audio_and_does_not_invent_references(client: TestClient):
     login(client, settings.OPERATOR_EMAIL if hasattr(settings, "OPERATOR_EMAIL") else "operator@demo.local", "Operator@Gurukul2026!")
-    csrf_res = client.get("/api/v1/auth/csrf")
-    headers = {"X-CSRF-Token": csrf_res.json()["csrf_token"]}
+    csrf = client.get("/api/v1/auth/csrf").json()["csrf_token"]
+    headers = {settings.CSRF_HEADER_NAME: csrf}
+    response = client.post("/api/v1/audio/analyze", files={"file": ("machine.wav", _machine_tone_wav(), "audio/wav")}, headers=headers)
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "NO_RELIABLE_MATCH"
+    assert result["reason_code"] == "NO_APPROVED_REFERENCES"
+    assert result["matched_reference"] is None
+    assert result["candidate_matches"] == []
+    assert "no expert-approved reference" in result["message"].lower()
 
-    # 1. Normal Sound -> Expect MATCHED
-    norm_res = client.post("/api/v1/audio/analyze", json={"scenario": "normal_spindle"}, headers=headers)
-    assert norm_res.status_code == 201
-    norm_data = norm_res.json()
-    assert norm_data["status"] == "MATCHED"
-    assert norm_data["fault_label"] == "Normal Operation"
-    assert norm_data["similarity_score"] >= 0.85
+    silent = client.post("/api/v1/audio/analyze", files={"file": ("silent.wav", _machine_tone_wav(silent=True), "audio/wav")}, headers=headers)
+    assert silent.status_code == 422
+    assert silent.json()["error"]["code"] == "silent_audio"
 
-    # 2. Silence Sound -> Expect UNSUITABLE_AUDIO with ENERGY_TOO_LOW_SILENCE
-    sil_res = client.post("/api/v1/audio/analyze", json={"scenario": "silence"}, headers=headers)
-    assert sil_res.status_code == 201
-    sil_data = sil_res.json()
-    assert sil_data["status"] == "UNSUITABLE_AUDIO"
-    assert sil_data["reason_code"] == "ENERGY_TOO_LOW_SILENCE"
-
-    # 3. Speech / Unknown sound -> Expect NO_RELIABLE_MATCH (below threshold rejection)
-    sp_res = client.post("/api/v1/audio/analyze", json={"scenario": "speech"}, headers=headers)
-    assert sp_res.status_code == 201
-    sp_data = sp_res.json()
-    assert sp_data["status"] == "NO_RELIABLE_MATCH"
-    assert sp_data["reason_code"] == "BELOW_MATCH_THRESHOLD"
-    assert sp_data["requires_expert_review"] is True
+    unsupported = client.post("/api/v1/audio/analyze", files={"file": ("sound.mp3", b"not an audio stream", "audio/mpeg")}, headers=headers)
+    assert unsupported.status_code == 422
+    assert unsupported.json()["error"]["code"] == "unsupported_audio_format"

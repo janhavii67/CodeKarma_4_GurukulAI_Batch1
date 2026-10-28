@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Text, Boolean, Integer, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import String, Text, Boolean, Integer, ForeignKey, DateTime, UniqueConstraint, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
 
@@ -181,10 +181,18 @@ class TroubleshootingSession(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
-    guide_version_id: Mapped[str] = mapped_column(String(36), ForeignKey("troubleshooting_versions.id"), nullable=False, index=True)
+    guide_version_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("troubleshooting_versions.id"), nullable=True, index=True)
     machine_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("machines.id"), nullable=True, index=True)
+    process_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("manufacturing_processes.id"), nullable=True, index=True)
+    workflow_run_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("procedure_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    workflow_issue_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    problem_category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     reported_symptom: Mapped[str] = mapped_column(Text, nullable=False)
     current_node_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("troubleshooting_nodes.id"), nullable=True)
+    current_check_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    context: Mapped[Optional[dict]] = mapped_column(JSON, default=dict, nullable=True)
+    checks_snapshot: Mapped[Optional[List[dict]]] = mapped_column(JSON, default=list, nullable=True)
+    source_refs: Mapped[Optional[List[dict]]] = mapped_column(JSON, default=list, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default=SESSION_STATUS_IN_PROGRESS, index=True, nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -222,7 +230,9 @@ class TroubleshootingResponse(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     session_id: Mapped[str] = mapped_column(String(36), ForeignKey("troubleshooting_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
-    node_id: Mapped[str] = mapped_column(String(36), ForeignKey("troubleshooting_nodes.id"), nullable=False, index=True)
+    node_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("troubleshooting_nodes.id"), nullable=True, index=True)
+    check_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    outcome: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     answer: Mapped[str] = mapped_column(Text, nullable=False)  # JSON-encoded operator observation
     server_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     edge_taken_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("troubleshooting_edges.id"), nullable=True)

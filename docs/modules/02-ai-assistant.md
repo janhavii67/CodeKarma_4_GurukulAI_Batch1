@@ -1,15 +1,20 @@
-# Module 02 -- AI Knowledge Assistant (RAG Backend)
+# Module 02 -- AI Knowledge Assistant (RAG System)
 
-**Status:** PLANNED | **Phase:** 3 | **Last Updated:** Task C0 Inspection
+**Status:** IMPLEMENTED & TESTED | **Phase:** 3 | **Last Updated:** 2026-10-27 (TASK M02-D)
 
 ---
 
 ## 0. Overview
 
-The AI Knowledge Assistant answers manufacturing questions using a retrieval-augmented generation
-(RAG) pipeline. Every answer is grounded exclusively in **approved, published, non-withdrawn**
-knowledge that the requesting user is permitted to see. No answer may contain invented machine
-settings, tolerances, corrective actions or safety instructions.
+The AI Knowledge Assistant answers manufacturing questions using an industrial Retrieval-Augmented Generation (RAG) pipeline. Every answer is grounded exclusively in **approved, published, non-withdrawn** knowledge that the requesting user is permitted to see. No answer may contain invented machine settings, tolerances, corrective actions, or safety instructions.
+
+The system features:
+- Dual execution endpoints: Non-streaming JSON (`POST /chat`) and Server-Sent Events (`POST /chat/stream`).
+- Complete conversational lifecycle management with strict user-level multi-tenant isolation.
+- Answer grounding validation that blocks numerical and citation hallucinations.
+- Feedback capture loop with categorized problem reports for continuous evaluation.
+- Full two-column interactive frontend chat interface at `/app/assistant`.
+- Trainee machine-audio upload in the chat composer, using Module 07's approved sound matching and then asking RAG to explain a matched published reference.
 
 ---
 
@@ -17,253 +22,232 @@ settings, tolerances, corrective actions or safety instructions.
 
 | Module | Role | Status |
 |---|---|---|
-| 00 Foundation | Auth, sessions, permissions, audit_logs, notifications | Tested |
-| 01 Expert Knowledge Capture | knowledge_items, knowledge_versions, approval_records | Partially implemented |
-| 06 Validation and Versioning | publish/withdraw/supersede lifecycle hooks | PLANNED -- KnowledgeEligibilityPort used as fallback |
-| 04 Voice-to-Knowledge | transcripts, transcript_segments as indexable sources | PLANNED hook |
-| 03, 05 | Workflow steps, troubleshooting nodes as future sources | PLANNED stubs |
-| 07, 08 | Sound reports as context; graph expansion of candidates | PLANNED stubs |
-
-Module 06 is not yet implemented as a separate service.
-Task C3 introduces KnowledgeEligibilityPort -- a single-function interface implemented against the
-status columns on knowledge_versions. It is swappable when Module 06 exposes events.
+| 00 Foundation | Auth, sessions, RBAC permissions, audit_logs, CSRF protection | Implemented & Tested |
+| 01 Expert Knowledge Capture | knowledge_items, knowledge_versions, approval records | Implemented & Tested |
+| 06 Validation and Versioning | publish/withdraw/supersede lifecycle enforcement | Implemented via `KnowledgeEligibilityPort` |
+| 04 Voice-to-Knowledge | Transcripts & segments as indexable knowledge sources | Integrated via KnowledgeSource polymorphic model |
+| 03 Guided Workflows | Workflow steps and execution guidelines as RAG context | Registered stub in KnowledgeSource model |
+| 05 Troubleshooting | Fault trees and diagnostic nodes as retrieval context | Registered stub in KnowledgeSource model |
+| 08 Knowledge Graph | Multi-hop contextual expansion | Deferred (Requires M08) |
 
 ---
 
-## 2. Workflow (Mermaid)
+## 2. RAG Architecture & Flow
 
 ```mermaid
 flowchart TD
-  A["User asks question"] --> B["Authenticate. user_id from session ONLY."]
-  B --> C["Create or load conversation (owner check)"]
-  C --> D["Rewrite follow-up into standalone query"]
-  D --> E["SQL FTS retrieval with eligibility filter INSIDE query"]
-  E --> F{"Chunks above threshold?"}
-  F -- no --> G["Save insufficient message. Escalation. LLM NOT called."]
-  F -- yes --> H{"Ambiguous machine/process?"}
-  H -- yes --> I["Return clarification_needed + question. LLM NOT called."]
-  H -- no --> J["Build versioned prompt with delimited chunk blocks"]
-  J --> K["Call LLM provider"]
-  K --> L["Validate JSON schema. Citations in retrieved set. Numbers in cited source."]
-  L -- invalid retry --> K
-  L -- still invalid --> G
-  L -- ok --> M["Save messages + sources in 1 tx. Audit event (IDs only)."]
-  M --> N["Return answer + citations + disclaimer"]
+  A["User asks question via Chat UI"] --> B["CSRF & Session Authentication (Extract user_id)"]
+  B --> C["Check Rate Limit (20 req/min per user)"]
+  C --> D["Verify or Create ChatConversation (Ownership Isolation)"]
+  D --> E["Record User ChatMessage in DB"]
+  E --> F["Execute SQL Retrieval with Eligibility Filter"]
+  F --> G{"Eligible Chunks Found?"}
+  G -- No --> H["Return insufficient_evidence=True<br/>'Knowledge base does not contain sufficient information'"]
+  G -- Yes --> I["Assemble Grounded Prompt with [CHUNK:id] Blocks"]
+  I --> J["Invoke LLM Provider (FakeLLM / Gemini Provider)"]
+  J --> K["Validate via AnswerValidator<br/>- Check citations against retrieved set<br/>- Verify numerical parameters exist in sources<br/>- Check safety warning preservation"]
+  K --> L{"Validator Result"}
+  L -- Valid --> M["Persist Assistant Message & ChatMessageSource Citations"]
+  L -- Hallucination Detected --> N["Sanitize Hallucinated Citations / Downgrade to Insufficient"]
+  M --> O["Stream SSE Tokens + Final Sources Payload OR Return JSON"]
+  N --> O
+  O --> P["Log Audit Event: assistant.chat"]
 ```
 
 ---
 
-## 3. Target File Structure
+## 3. Implemented API Endpoints
 
-```
-backend/app/modules/assistant/
-  __init__.py
-  models.py
-  api/
-    __init__.py
-    router.py
-    schemas.py
-    dependencies.py
-  services/
-    __init__.py
-    chat_service.py
-    retrieval_service.py
-    indexing_service.py
-    conversation_service.py
-    feedback_service.py
-    prompt_builder.py
-    answer_validator.py
-    eligibility.py
-  providers/
-    __init__.py
-    llm_base.py
-    llm_fake.py
-    embedding_base.py
-    embedding_fake.py
-  chunking/
-    __init__.py
-    chunker.py
-  tests/
-    __init__.py
-    test_c1_models_migration.py
-    test_c2_providers.py
-    test_c3_eligibility.py
-    test_c4_chunking_indexing.py
-    test_c5_retrieval.py
-    test_c6_prompt_validator.py
-    test_c7_chat_endpoint.py
-    test_c8_source_open.py
-    test_c9_feedback.py
+All endpoints are mounted under `/api/v1/assistant` and require active session authentication with permission `assistant.use`. Mutating endpoints require CSRF token validation via `X-CSRF-Token`.
 
-backend/evals/assistant/
-  illustrative_eval_set.jsonl    (ILLUSTRATIVE -- NOT A REAL PROCEDURE)
-  run_eval.py
-```
-
----
-
-## 4. Data Model (Migration 007_assistant_rag)
-
-### chat_conversations
-id PK, user_id FK users, title, machine_id FK nullable, process_id FK nullable,
-status (active/archived/deleted), created_at, updated_at
-
-### chat_messages
-id PK, conversation_id FK, role (user/assistant), content, is_ai_generated bool,
-evidence_status (sufficient/insufficient/clarification_needed/conflict/n_a),
-provider_name, model_name, prompt_version, latency_ms, request_id, created_at
-
-### knowledge_sources
-id PK, source_type (knowledge_version/procedure_version/transcript/workflow_version/
-troubleshooting_version), source_ref_id, knowledge_version_id FK nullable,
-title, machine_id FK nullable, process_id FK nullable, product_family,
-status, access_policy_ref, indexed_at, index_version
-
-### knowledge_chunks
-id PK, source_id FK knowledge_sources, chunk_index int, text, section_label nullable,
-timestamp_start float nullable (transcripts), timestamp_end float nullable,
-token_count int, search_vector (TSVector on PostgreSQL / Text on SQLite -- GIN indexed on PG),
-metadata_json, is_active bool default True, created_at
-
-### chat_message_sources
-message_id FK PK, chunk_id FK knowledge_chunks PK, source_id FK,
-rank int, score float, cited bool
-
-### assistant_feedback
-id PK, message_id FK, user_id FK, rating int nullable (1-5),
-category (incorrect/missing_source/outdated/irrelevant/conflicting/insufficient/helpful),
-comment, status (new/triaged/closed), created_at
-
-knowledge_embeddings: C10 only, behind RETRIEVAL_MODE=hybrid flag.
-
----
-
-## 5. Permissions
-
-| Permission | EXPERT | TRAINEE | OPERATOR | How Granted |
+| Method | Endpoint | Description | Auth / Permission | Request / Response |
 |---|---|---|---|---|
-| assistant.use | role | role | role | Role-level (already seeded) |
-| assistant.index | user grant only | no | no | Per-user via user_permissions |
-| assistant.review_feedback | user grant only | no | no | Per-user via user_permissions |
+| `POST` | `/api/v1/assistant/chat` | Submit question; returns grounded answer, citations, and conversation ID. | `assistant.use` + CSRF | Body: `ChatRequest`<br/>Resp: `ChatResponse` |
+| `POST` | `/api/v1/assistant/chat/stream` | Server-Sent Events stream emitting `token` events, `sources` event, and `done`. | `assistant.use` + CSRF | Body: `ChatRequest`<br/>Resp: `text/event-stream` |
+| `GET` | `/api/v1/assistant/conversations` | Lists current user's active conversations sorted by `updated_at DESC`. | `assistant.use` | Resp: `List[ConversationSummary]` |
+| `GET` | `/api/v1/assistant/conversations/{id}` | Fetches full conversation history and source citations. Returns 404 for other users' chats. | `assistant.use` (Owner) | Resp: `ConversationDetail` |
+| `DELETE` | `/api/v1/assistant/conversations/{id}` | Soft-deletes a conversation (`status='deleted'`). Returns 404 for non-owners. | `assistant.use` + CSRF (Owner) | Resp: `{"status": "deleted", "id": "..."}` |
+| `POST` | `/api/v1/assistant/feedback` | Submits user feedback (rating 1-5, category enum, optional comment). | `assistant.use` + CSRF | Body: `FeedbackRequest`<br/>Resp: `FeedbackResponse` |
+| `GET` | `/api/v1/assistant/sources/{id}` | Permission-checked inspection of published knowledge source and its active chunks. | `knowledge.view_published` | Resp: `SourceDetailResponse` |
 
-assistant.use (PERM_ASSISTANT_USE) already exists and is seeded.
-assistant.index and assistant.review_feedback are new -- added to permissions table in C1.
-
----
-
-## 6. API Endpoints (all /api/v1, all authenticated)
-
-| Method | Path | Purpose | Permission |
-|---|---|---|---|
-| POST | /assistant/chat | Ask question; answer + citations | assistant.use |
-| GET | /assistant/conversations | List MY conversations (paginated) | assistant.use |
-| GET | /assistant/conversations/{id} | Get MY conversation | assistant.use + owner |
-| DELETE | /assistant/conversations/{id} | Archive/delete | owner only |
-| POST | /assistant/feedback | Submit feedback on a message | assistant.use |
-| GET | /assistant/sources/{id} | Open source/chunk (eligibility re-checked) | assistant.use + source access |
-| POST | /knowledge/index | Start reindexing a version | assistant.index |
-| GET | /assistant/index/status/{job_id} | Job status | assistant.index |
-| GET | /assistant/feedback | Review queue | assistant.review_feedback |
-
-Chat request fields: conversation_id (optional), question (max 1000 chars),
-machine_id (optional), process_id (optional), knowledge_item_id (optional).
-user_id is NEVER accepted in the request body.
+### Request Parameters
+- `message` (required, string, 1 to 1000 characters).
+- `conversation_id` (optional, UUID): Continues an existing thread.
+- `machine_id` (optional, string): Constrains retrieval ranking to a specific machine.
+- `process_id` (optional, string): Constrains retrieval to a manufacturing process.
+- `knowledge_item_id` (optional, UUID): Constrains retrieval to a specific SOP.
 
 ---
 
-## 7. Safety Rules Implementation Map
+## 4. Database Schema & Tables
 
-| Rule | Location | Status |
-|---|---|---|
-| Only published, not withdrawn/superseded | eligibility.py -- SQL fragment, single source | PLANNED C3 |
-| Filter inside SQL before ranking and LLM | retrieval_service.py WHERE clause | PLANNED C5 |
-| user_id from session only | api/dependencies.py + chat endpoint | PLANNED C7 |
-| Retrieved text wrapped in delimiters | prompt_builder.py [CHUNK:id]...[/CHUNK] | PLANNED C6 |
-| No invented numbers/settings | answer_validator.py number-in-source check | PLANNED C6 |
-| No LLM if no evidence | chat_service.py threshold check | PLANNED C7 |
-| Citations validated against retrieved set | answer_validator.py | PLANNED C6 |
-| AI answers stored separately | chat_messages.is_ai_generated=True | PLANNED C1 |
-| No credentials in logs | providers/ server-side only, redacted in audit | PLANNED C2 |
-| No full text logged at INFO | Log IDs, counts, latency only | PLANNED C7 |
-| LLM writes text only, no data mutations | Architecture: result through validator only | Design |
+Migration `007_assistant_rag.py` defines the following tables:
+
+### `chat_conversations`
+- `id` (UUID, Primary Key)
+- `user_id` (UUID, Foreign Key -> `users.id`, Indexed)
+- `title` (String(255), Not Null)
+- `machine_id` (String(64), Foreign Key -> `machines.id`, Nullable)
+- `process_id` (String(64), Nullable)
+- `status` (String(32), Default `'active'`, values: `active`, `archived`, `deleted`)
+- `created_at` (DateTime, UTC, Default `now()`)
+- `updated_at` (DateTime, UTC, Default `now()`, Indexed)
+
+### `chat_messages`
+- `id` (UUID, Primary Key)
+- `conversation_id` (UUID, Foreign Key -> `chat_conversations.id`, OnDelete CASCADE, Indexed)
+- `role` (String(16), Values: `'user'`, `'assistant'`)
+- `content` (Text, Not Null)
+- `is_ai_generated` (Boolean, Default `False`)
+- `evidence_status` (String(32), Values: `sufficient`, `insufficient`, `clarification_needed`, `conflict`, `n_a`)
+- `provider_name` (String(64), Nullable)
+- `model_name` (String(64), Nullable)
+- `prompt_version` (String(32), Nullable)
+- `latency_ms` (Integer, Nullable)
+- `request_id` (String(64), Nullable)
+- `created_at` (DateTime, UTC, Default `now()`, Indexed)
+
+### `knowledge_sources`
+- `id` (UUID, Primary Key)
+- `source_type` (String(64), Values: `knowledge_version`, `procedure_version`, `transcript`, etc.)
+- `source_ref_id` (UUID, Indexed)
+- `knowledge_version_id` (UUID, Foreign Key -> `knowledge_versions.id`, Nullable)
+- `title` (String(255), Not Null)
+- `machine_id` (String(64), Foreign Key -> `machines.id`, Nullable)
+- `process_id` (String(64), Nullable)
+- `product_family` (String(64), Nullable)
+- `status` (String(32), Values: `'published'`, `'archived'`, `'withdrawn'`, `'draft'`)
+- `access_policy_ref` (String(128), Nullable)
+- `indexed_at` (DateTime, UTC, Default `now()`)
+- `index_version` (Integer, Default 1)
+
+### `knowledge_chunks`
+- `id` (UUID, Primary Key)
+- `source_id` (UUID, Foreign Key -> `knowledge_sources.id`, OnDelete CASCADE, Indexed)
+- `chunk_index` (Integer, Not Null)
+- `text` (Text, Not Null)
+- `section_label` (String(128), Nullable)
+- `timestamp_start` (Float, Nullable)
+- `timestamp_end` (Float, Nullable)
+- `token_count` (Integer, Not Null)
+- `search_vector` (Text / TSVector, Indexed)
+- `metadata_json` (JSON, Nullable)
+- `is_active` (Boolean, Default `True`, Indexed)
+- `created_at` (DateTime, UTC, Default `now()`)
+
+### `chat_message_sources`
+- `message_id` (UUID, Foreign Key -> `chat_messages.id`, Primary Key Component)
+- `chunk_id` (UUID, Foreign Key -> `knowledge_chunks.id`, Primary Key Component)
+- `source_id` (UUID, Foreign Key -> `knowledge_sources.id`)
+- `rank` (Integer, Not Null)
+- `score` (Float, Not Null)
+- `cited` (Boolean, Default `False`)
+
+### `assistant_feedback`
+- `id` (UUID, Primary Key)
+- `message_id` (UUID, Foreign Key -> `chat_messages.id`, Indexed)
+- `user_id` (UUID, Foreign Key -> `users.id`, Indexed)
+- `rating` (Integer, Nullable, 1-5)
+- `category` (String(64), Enum: `incorrect`, `missing_source`, `outdated`, `irrelevant`, `conflicting`, `insufficient`, `helpful`)
+- `comment` (Text, Nullable)
+- `status` (String(32), Default `'new'`)
+- `created_at` (DateTime, UTC, Default `now()`)
 
 ---
 
-## 8. Configuration Flags (New Settings)
+## 5. System Limits & Safeguards
 
+1. **Rate Limiting:**
+   - 20 requests per minute per authenticated user (`settings.CHAT_RATE_LIMIT_PER_MINUTE`).
+   - Monitored per-user; returns HTTP 429 (`rate_limit_exceeded`) upon breach.
+2. **Retrieval Thresholds:**
+   - Top-K: Maximum 6 chunks retrieved (`settings.ASSISTANT_RETRIEVAL_TOP_K`).
+   - Minimum Score: 0.05 keyword relevance cutoff (`settings.ASSISTANT_RETRIEVAL_MIN_SCORE`).
+3. **Safety & Grounding Invariants:**
+   - **Zero Knowledge Leakage:** Withdrawn, draft, or superseded versions return `insufficient_evidence=True` with 0 sources.
+   - **Conversation Privacy:** Attempting to view or append to another user's conversation yields HTTP 404 (ID enumeration prevention).
+   - **Hallucination Prevention:** Numerical parameters (PSI, RPM, mm, °C) are cross-checked against source chunk text. Mismatches degrade evidence status to `insufficient`.
+   - **Direct Source Inspection:** `/sources/{id}` re-verifies that both the source and its underlying version are published.
+
+---
+
+## 6. Frontend Component Architecture
+
+Located at `frontend/src/features/assistant/`:
+- `AssistantPage.tsx`: Top-level two-column responsive layout.
+- `ConversationList.tsx`: Sidebar listing user's chat history, New Chat trigger, and deletion confirm modal.
+- `MessageList.tsx`: Thread rendering with auto-scroll and empty state fallback.
+- `MessageBubble.tsx`: Individual user and assistant bubbles, pulsing streaming cursor, timestamp, and metadata tags.
+- `SourceCitations.tsx`: Interactive source pills displaying title, section label, and relevance badge.
+- `SourceDetailDrawer.tsx`: Slide-over drawer displaying verified source details and full chunk text.
+- `MachineContextFilter.tsx`: Context selector populated from `/machines`.
+- `SuggestedQuestions.tsx`: Generic starter questions on empty conversations.
+- `InsufficientEvidenceNotice.tsx`: Warning banner when no verified SOP exists, with planned "Ask an Expert" link.
+- `FeedbackButtons.tsx`: Helpful upvote and "Report Problem" modal with 6 issue categories.
+- `SafeMarkdown.tsx`: Secure text and markdown formatter preventing raw HTML injection.
+- `useAssistantChat.ts`: Custom streaming hook utilizing native `fetch` + `ReadableStream` with `AbortController` cancellation and fallback. State is maintained strictly in React memory (no `localStorage`).
+- `TutorHandoffActions.tsx`: Shows only current, permission-eligible workflow/troubleshooting suggestions attached to a grounded answer. Starting a card is explicit; click-time checks happen on the backend.
+
+## Tutor-to-module handoffs (Chunk 10)
+
+- `/api/v1/assistant/chat` includes a `handoffs` array, and the SSE `sources` event carries the same field. Only cited source revisions are considered. Deterministic intent checks and source-to-target matching select at most one current target per module; the model does not select IDs or determine permissions.
+- `GET /api/v1/assistant/conversations/{id}` reconstructs eligible actions from each prior user question and current citations. Stale or withdrawn evidence yields no action. Targets are returned only when the caller has the corresponding `procedure.execute` or `troubleshoot.use` permission.
+- `POST /api/v1/assistant/handoffs/{workflow|troubleshooting}/{target_id}/start` accepts a conversation and assistant-message ID. The backend verifies ownership, assistant role, sufficient current citations, target association, publication, and permission again before using the existing session services.
+- Workflow handoffs start or resume the operator's active run. Troubleshooting handoffs pin retrieval to the cited current knowledge item, store the originating conversation/message/source revision in the existing session `context` JSON, and resume only an active investigation for the same target and symptom.
+- The frontend navigates to `/app/guided-workflows?run_id=...` or `/app/troubleshooting?session_id=...`. Opening or resuming does not record a completed workflow step or confirmed fault.
+- No migration was necessary. `TroubleshootingSession.context` supports Tutor provenance. `ProcedureRun` has no suitable origin-reference field, so workflow runs retain their existing procedure/source revision provenance without a Tutor conversation/message link.
+- Verification: `backend/app/tests/test_assistant_handoffs_chunk10.py` covers grounded suggestions, current history restoration, workflow/troubleshooting creation and resume, tampered IDs, cross-user access, permission revocation, streamed suggestions, and withdrawn-source handling. The focused frontend test covers user-initiated navigation. Full regression: backend 609 passed (17 warnings), frontend 87 passed, build/typecheck and Python compile passed.
+
+---
+
+## 7. Deferred Items
+
+## 8. Gemini generation and knowledge-base folder ingestion (M02-E)
+
+### Trainee machine-audio questions
+
+The Tutor has separate controls for machine-sound matching and contextual media attachments. Sound matching accepts WAV, FLAC, MP3, M4A, AAC, AIFF/AIF, OGG/Opus, WebM, MP4, MOV, AVI, FLV, MPEG/MPG, WMV, and 3GP recordings (video must contain an audio track), up to the 100 MB audio upload limit. Compressed formats require FFmpeg in the backend runtime; the Docker image installs it and native installs fall back to the bundled `imageio-ffmpeg` binary. Matching compares the recording against current expert-approved references, shows the expert interpretation and linked knowledge titles on a reliable match, and does not claim a confirmed fault or safety determination. Query bytes are processed in memory and retained only if the operator separately submits the recording for expert review.
+
+`POST /api/v1/assistant/chat/media` accepts one attachment up to 14 MiB: WAV, FLAC, MP3, M4A, AAC, AIFF/AIF, OGG/Opus, WEBA, WebM, MP4, MOV, AVI, FLV, MPEG/MPG, WMV, 3GP, BMP, PNG, JPEG, WebP, PDF, DOCX, PPTX, XLSX, CSV, TXT, or MD. The smaller inline limit leaves room for base64 and prompt overhead under Gemini's 20 MB total inline-audio request limit ([Gemini audio documentation](https://ai.google.dev/gemini-api/docs/audio)). Gemini supports the listed video containers and image types ([Gemini file input documentation](https://ai.google.dev/gemini-api/docs/file-input-methods)). The server extracts bounded text from supported documents and sends supported media parts to the configured Gemini provider. It uses attachment observations to find relevant approved RAG chunks; final manufacturing guidance remains citation-validated against published knowledge. User attachments are untrusted input and do not become approved knowledge. Scanned PDFs rely on Gemini's PDF understanding. Attachments are not stored as conversation media; only the attachment filename is recorded in chat history. Actual image/audio/video understanding requires a configured Gemini multimodal model and valid backend API credentials.
+
+Matched audio follow-ups persist only the analysis-job ID on the assistant chat message (`014_chat_audio_analysis_link`). When history is opened, the result card is reconstructed for the conversation owner from the job and current approved reference. If audio permission is absent or the reference has been withdrawn or superseded, the old answer and citations are suppressed and a current-guidance notice is shown. Unmatched analysis cards remain in the current page state and are not saved as chat turns.
+
+The runtime LLM provider is selected by `LLM_PROVIDER` (`gemini` for live generation; `mock` for deterministic test suites). Active models verified with the Gemini SDK:
+- Generation Model: `gemini-3.5-flash` (or `gemini-3.8-flash` / `gemini-2.5-flash` where enabled)
+- Embedding Model: `gemini-embedding-001` (3072 dimensions)
+
+The API key is strictly backend-managed via `settings.GEMINI_API_KEY` and never exposed to clients or logged. `ASSISTANT_MAX_HISTORY_TURNS` bounds recent messages passed to generation. `.env` is ignored by Git.
+
+### Knowledge Base Ingestion
+Local technical reference documents are ingested with:
+```bash
+cd backend
+python -m app.modules.assistant.ingest --path "../Knowledge Base"
 ```
-ASSISTANT_LLM_PROVIDER=fake
-ALLOW_EXTERNAL_LLM=false
-ASSISTANT_LLM_MODEL=claude-3-5-sonnet-20241022
-ASSISTANT_LLM_TIMEOUT_S=30
-ASSISTANT_LLM_MAX_RETRIES=2
-ASSISTANT_RETRIEVAL_TOP_K=6
-ASSISTANT_RETRIEVAL_MIN_SCORE=0.05
-ASSISTANT_QUESTION_MAX_CHARS=1000
-ASSISTANT_PROMPT_VERSION=v1
-RETRIEVAL_MODE=keyword
-CHAT_RETENTION_DAYS=365
-CHAT_RATE_LIMIT_PER_MINUTE=20
-```
+Supported formats: PDF, DOCX, TXT, Markdown, and CSV. Files above `MAX_INGEST_FILE_BYTES` (50MB) are skipped. Ingestion is content-hash idempotent (SHA-256).
 
----
+Currently indexed: **29 files, 377 total chunks** across the comprehensive engineering, surgical, and digital portfolios of:
+- **Ethosh Digital**: 3D interactive learning, WebGL digital twins, AR/VR simulation, life sciences training compliance (GAMP 5, 21 CFR Part 11).
+- **Biorad Medisys**: Complete clinical catalogs, surgical guides, implant kinetics, and ISO cleanroom SOPs across all three divisions:
+  - **Orthovasive**: Genuin PS/CR, OURO TiNbN gold knee, Excel MPK medial pivot kinematics, Evocon revision, SIGNATURE NX 3D trabecular hip system (Ti6Al4V ELI, 60-70% porosity, 650 µm pore size), SIGNATURE Duo dual mobility, and BIOLOX delta ceramic heads.
+  - **Indovasive**: Double 'J' stents (Standard, Bioflex mid-term, Pretoflex long-term up to 365 days, Pediatric, Endopyelotomy), PCNL Dilatron/Amplatz sets, Retrivo stone baskets, UroSheath access sheaths, Zebra guidewires, and GI endoscopy SEMS / Xpand balloon dilators.
+  - **Neurovasive**: Olympia mechanical stroke aspiration system (-27.5 in/Hg vacuum, 0.071" large-bore catheter), intracranial flow diverters with checkerboard dual-wire braid, microcatheters, and 3D embolic coiling.
+  - **Cleanrooms & Quality Systems**: ISO Class 7/5 cleanrooms, CNC Swiss 5-axis machining, ASTM A967 passivation, EtO (ISO 11135) and Gamma (ISO 11137) sterilization validation, and ISO 14243 knee wear simulation.
 
-## 9. Integration Hooks
+### Live Smoke Test & Automated Test Results
+- **Automated Backend Tests:** 74/74 passed (`pytest app/modules/assistant/tests app/tests/test_assistant.py app/tests/test_assistant_e2e.py`).
+- **Automated Frontend Tests:** 82/82 passed (`npm test -- --run`).
+- **Frontend Production Build:** Passed cleanly (`npm run build`).
+- **Live Smoke Test (Real Gemini API):**
+  1. *Excel MPK Kinematics & Flexion:* Answered with 1,779 characters citing 3 ground-truth chunks; `insufficient_evidence=False`.
+  2. *Pretoflex DJ Stent Duration & Material:* Answered with 1,654 characters citing 3 ground-truth chunks; `insufficient_evidence=False`.
+  3. *Sourdough Bread Recipe (Out-of-domain):* Correctly rejected with `"The verified technical knowledge base does not contain sufficient information..."`; `insufficient_evidence=True`.
 
-| Target | Hook | Status |
-|---|---|---|
-| 01/06 | on_publish(version_id) triggers indexing job | PLANNED stub |
-| 01/06 | on_withdraw/on_supersede deactivates chunks | PLANNED stub |
-| 04 | Index approved transcripts with timestamps | PLANNED stub |
-| 03 | Workflow step source_type registered | PLANNED stub |
-| 05 | Troubleshooting node explain calls retrieval | PLANNED stub |
-| 07 | Sound report as context (not confirmed fault) | PLANNED stub |
-| 08 | Graph traversal expands candidates; eligibility still applied | PLANNED stub |
+## 9. Deferred Items
 
----
-
-## 10. Task Build Order
-
-| Task | Description | Status |
-|---|---|---|
-| C0 | Inspect repo, write this doc, no code changes | COMPLETE |
-| C1 | Models, migration 007, permissions | PLANNED |
-| C2 | Provider interfaces + fakes | PLANNED |
-| C3 | Eligibility and access filter | PLANNED |
-| C4 | Chunking and indexing service | PLANNED |
-| C5 | Retrieval (keyword FTS) | PLANNED |
-| C6 | Prompt builder and answer validator | PLANNED |
-| C7 | Chat service and endpoint | PLANNED |
-| C8 | Source open and history re-check | PLANNED |
-| C9 | Feedback and review queue | PLANNED |
-| C10 | Hybrid retrieval with embeddings (pgvector, requires approval) | PLANNED |
-| C11 | Evaluation harness and quality gates | PLANNED |
-| C12 | Hardening, security review, final docs | PLANNED |
-
----
-
-## 11. Known Limitations (at C0)
-
-- SQLite today. TSVector/GIN is PostgreSQL-only; SQLite tests use LIKE fallback.
-- No streaming responses (not in scope).
-- English only.
-- Keyword retrieval only (C1-C9). Hybrid (C10) requires pgvector approval.
-- processing_jobs.media_id is currently NOT NULL -- must be relaxed in migration 007 for indexing jobs.
-- Notification model exists; no service wrapper yet. C9 uses model directly.
-- Rate limiting is in-memory (consistent with Module 00).
-
----
-
-## 12. Source Priority Rule
-
-No project-wide rule exists in the codebase.
-Decision: none -- report conflict.
-When two eligible sources disagree, set evidence_status=conflict, list both, point to owner.
-
----
-
-## 13. Decisions Needed Before C1
-
-1. processing_jobs.media_id nullable: Yes -- relax in migration 007. Confirm?
-2. Source priority rule: confirmed as none/conflict unless overridden.
-3. LLM provider: fake for all tests. Real provider only when ALLOW_EXTERNAL_LLM=true is confirmed and data-privacy terms approved.
+1. **Dense Vector Embeddings & Reranking:**
+   - Upgrading from SQL keyword search to hybrid dense vector retrieval with pgvector and ColBERT / Cross-Encoder reranking.
+2. **Automated Conversation Retention Worker:**
+   - Background retention policy worker to archive or permanently delete conversations older than `CHAT_RETENTION_DAYS`.
+3. **Graph-Guided Retrieval (Module 08 Dependency):**
+   - Traversing machine component ontologies and failure mode graphs for multi-hop diagnostic reasoning.

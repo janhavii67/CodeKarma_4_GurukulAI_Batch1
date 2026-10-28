@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 import wave
@@ -6,6 +7,19 @@ from pathlib import Path
 from typing import Optional
 from app.core.logging import logger
 from app.core.exceptions import ValidationError
+
+
+def _ffmpeg_executable() -> Optional[str]:
+    """Prefer the system tool, with the pinned imageio-ffmpeg wheel as a local fallback."""
+    executable = shutil.which("ffmpeg")
+    if executable:
+        return executable
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except (ImportError, RuntimeError, OSError):
+        return None
 
 
 def probe_duration(file_path: Path) -> float:
@@ -44,11 +58,27 @@ def probe_duration(file_path: Path) -> float:
     except Exception:
         pass
 
-    # 3. Fallback heuristic based on file size for compressed audio (e.g. webm / mp3 ~ 128kbps)
-    size_bytes = file_path.stat().st_size
-    # Estimate ~16 KB/s for 128kbps compressed audio
-    estimated_seconds = max(1.0, size_bytes / 16000.0)
-    return round(min(estimated_seconds, 300.0), 2)
+    # 3. Use FFmpeg's input probe when ffprobe is not installed (common on Windows).
+    ffmpeg_bin = _ffmpeg_executable()
+    if ffmpeg_bin:
+        try:
+            result = subprocess.run(
+                [ffmpeg_bin, "-hide_banner", "-i", str(file_path)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            probe_output = result.stderr or result.stdout or ""
+            match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", probe_output)
+            if match:
+                hours, minutes, seconds = match.groups()
+                return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.warning("FFmpeg duration probe failed for %s (%s).", file_path.name, type(exc).__name__)
+
+    raise ValidationError(code="invalid_audio", message="The audio duration could not be read. Verify the recording and try again.")
 
 
 def extract_audio_wav(input_path: Path, output_path: Path) -> Path:
@@ -59,29 +89,28 @@ def extract_audio_wav(input_path: Path, output_path: Path) -> Path:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    ffmpeg_bin = shutil.which("ffmpeg")
-    if ffmpeg_bin:
-        cmd = [
-            ffmpeg_bin,
-            "-y",  # Overwrite
-            "-i", str(input_path),
-            "-vn",  # No video
-            "-ar", "16000",  # 16 kHz sample rate
-            "-ac", "1",  # Mono
-            "-acodec", "pcm_s16le",  # 16-bit PCM
-            str(output_path),
-        ]
-        try:
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            return output_path
-        except Exception as e:
-            logger.warning(f"ffmpeg conversion failed: {e}. Falling back to direct copy.")
+    ffmpeg_bin = _ffmpeg_executable()
+    if not ffmpeg_bin:
+        raise ValidationError(code="ffmpeg_unavailable", message="FFmpeg is required to normalize voice recordings. Install the backend dependencies and retry.")
 
-    # Fallback if ffmpeg is not installed: copy file or create placeholder wav
-    if input_path.suffix.lower() == ".wav":
-        shutil.copyfile(input_path, output_path)
-        return output_path
-
-    # If it's a non-wav file and ffmpeg is unavailable, copy directly
-    shutil.copyfile(input_path, output_path)
+    cmd = [
+        ffmpeg_bin,
+        "-hide_banner",
+        "-loglevel", "error",
+        "-y",
+        "-i", str(input_path),
+        "-vn",
+        "-ar", "16000",
+        "-ac", "1",
+        "-acodec", "pcm_s16le",
+        str(output_path),
+    ]
+    try:
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        output_path.unlink(missing_ok=True)
+        logger.error("FFmpeg normalization failed for %s (%s).", input_path.name, type(exc).__name__)
+        raise ValidationError(code="audio_normalization_failed", message="The audio could not be normalized. Verify the recording and retry.") from exc
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise ValidationError(code="audio_normalization_failed", message="FFmpeg produced no normalized audio. Verify the recording and retry.")
     return output_path

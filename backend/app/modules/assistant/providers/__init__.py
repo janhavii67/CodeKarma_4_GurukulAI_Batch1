@@ -10,7 +10,7 @@ from app.modules.assistant.providers.llm_base import (
     get_llm_provider,
 )
 from app.modules.assistant.providers.llm_fake import FakeLLMProvider
-from app.modules.assistant.providers.llm_gemini import GeminiLLMProvider
+from app.modules.assistant.providers.llm_gemini import GeminiLLMProvider, GeminiProvider
 from app.modules.assistant.providers.embedding_base import (
     EmbeddingProvider,
     EmbeddingRequest,
@@ -18,6 +18,7 @@ from app.modules.assistant.providers.embedding_base import (
     get_embedding_provider,
 )
 from app.modules.assistant.providers.embedding_fake import FakeEmbeddingProvider
+from app.modules.assistant.providers.embedding_gemini import GeminiEmbeddingProvider
 
 __all__ = [
     "LLMProvider",
@@ -31,9 +32,11 @@ __all__ = [
     "get_llm_provider",
     "FakeLLMProvider",
     "GeminiLLMProvider",
+    "GeminiProvider",
     "EmbeddingProvider",
     "EmbeddingRequest",
     "EmbeddingResponse",
     "get_embedding_provider",
     "FakeEmbeddingProvider",
+    "GeminiEmbeddingProvider",
 ]

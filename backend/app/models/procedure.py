@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Text, Integer, Boolean, ForeignKey, DateTime
+from sqlalchemy import String, Text, Integer, Boolean, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
 
@@ -18,9 +18,15 @@ class Procedure(Base, TimestampMixin):
     prerequisites: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     required_tools: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     safety_warnings: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    operating_conditions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    operation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    troubleshooting_guidance: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    knowledge_version_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("knowledge_versions.id", ondelete="SET NULL", name="fk_procedures_knowledge_version_id"), nullable=True, unique=True, index=True)
+    source_refs: Mapped[Optional[List[dict]]] = mapped_column(JSON, default=list, nullable=True)
 
     steps: Mapped[List["ProcedureStep"]] = relationship("ProcedureStep", back_populates="procedure", cascade="all, delete-orphan", order_by="ProcedureStep.step_order")
     runs: Mapped[List["ProcedureRun"]] = relationship("ProcedureRun", back_populates="procedure")
+    knowledge_version = relationship("KnowledgeVersion", foreign_keys=[knowledge_version_id])
 
 
 class ProcedureStep(Base):
@@ -34,6 +40,7 @@ class ProcedureStep(Base):
     expected_observation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     safety_warning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_critical: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    details: Mapped[Optional[dict]] = mapped_column(JSON, default=dict, nullable=True)
 
     procedure: Mapped["Procedure"] = relationship("Procedure", back_populates="steps")
 
@@ -47,6 +54,8 @@ class ProcedureRun(Base):
     status: Mapped[str] = mapped_column(String(32), default="IN_PROGRESS", nullable=False)  # IN_PROGRESS, COMPLETED, ABORTED
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_step_order: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    issues: Mapped[Optional[List[dict]]] = mapped_column(JSON, default=list, nullable=True)
 
     procedure: Mapped["Procedure"] = relationship("Procedure", back_populates="runs")
     step_executions: Mapped[List["ProcedureRunStep"]] = relationship("ProcedureRunStep", back_populates="run", cascade="all, delete-orphan")

@@ -218,6 +218,17 @@ def submit_knowledge(
         )
 
     if version:
+        if item.category == "GUIDED_WORKFLOW":
+            source_refs = version.source_refs or []
+            if not source_refs:
+                raise ValidationError(code="workflow_sources_required", message="A guided workflow must retain its approved source references before review.")
+            for source_ref in source_refs:
+                source_version_id = source_ref.get("version_id") if isinstance(source_ref, dict) else None
+                if not source_version_id:
+                    continue
+                source_version = db.get(KnowledgeVersion, source_version_id)
+                if not source_version or source_version.status != "published":
+                    raise ValidationError(code="workflow_source_unavailable", message="A referenced source is no longer published. Refresh the workflow from current approved knowledge before submitting.")
         from app.services.voice_service import validate_version_for_submission
         validate_version_for_submission(db, version.id)
 

@@ -1,10 +1,12 @@
 import re
 import json
+import asyncio
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from app.integrations.speech.base import Segment
 from app.core.logging import logger
-from app.core.config import settings
+from app.services.ai_orchestrator import AIRequest, AICapability, ai_orchestrator
+from app.modules.assistant.providers.llm_base import LLMRequest
 
 STRUCTURING_SYSTEM_PROMPT = """You are Gurukul AI's Manufacturing Standard Operating Procedure (SOP) structuring assistant.
 Your sole job is to transform an expert manufacturing engineer's raw narration transcript into structured draft procedural steps.
@@ -32,7 +34,22 @@ class StepDraftSchema(BaseModel):
 
 
 class StructuredDraftResponse(BaseModel):
+    title: str = ""
+    machine: Optional[str] = None
+    machine_model: Optional[str] = None
+    component_or_tool: Optional[str] = None
+    operation: Optional[str] = None
+    purpose: Optional[str] = None
     summary: str = Field(description="High-level summary of the narrated standard procedure")
+    detailed_summary: str = ""
+    key_points: List[str] = Field(default_factory=list)
+    entities: List[str] = Field(default_factory=list)
+    procedures: List[str] = Field(default_factory=list)
+    troubleshooting: List[str] = Field(default_factory=list)
+    parameters: List[str] = Field(default_factory=list)
+    quality_checkpoints: List[str] = Field(default_factory=list)
+    safety_precautions: List[str] = Field(default_factory=list)
+    materials: List[str] = Field(default_factory=list)
     keywords: List[str] = Field(default_factory=list, description="Manufacturing keywords, machines, or materials")
     steps: List[StepDraftSchema] = Field(default_factory=list, description="Sequence of procedural steps")
     unclear_segments: List[int] = Field(default_factory=list, description="Segment IDs containing inaudible or ambiguous speech")
@@ -157,128 +174,42 @@ async def structure_transcript_with_ai(
 ) -> StructuredDraftResponse:
     """
     Structures timestamped narration segments into candidate procedural steps.
-    Uses Gemini API if configured; falls back to Claude API or deterministic expert engine.
+    Uses only the shared AI orchestration layer. A failed provider call is surfaced
+    to the processing job; no synthetic procedural content is generated offline.
     """
-    prompt_segments = "\n".join([f"[{s.idx}] {s.text}" for s in segments])
-
-    # 1. Try Gemini API first
-    if settings.GEMINI_API_KEY:
-        try:
-            from google import genai
-            from google.genai import types
-
-            client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            config = types.GenerateContentConfig(
-                system_instruction=STRUCTURING_SYSTEM_PROMPT,
-                temperature=0.0,
-                response_mime_type="application/json",
-            )
-            user_prompt = (
-                f"Machine context: {machine_name or 'General Machine'}\n\n"
-                f"Transcript segments:\n{prompt_segments}\n\n"
-                "Output structured JSON matching StructuredDraftResponse schema."
-            )
-            res = client.models.generate_content(
-                model=getattr(settings, "ASSISTANT_LLM_MODEL", "gemini-2.5-flash"),
-                contents=user_prompt,
-                config=config,
-            )
-            content_text = res.text or "{}"
-            if "```json" in content_text:
-                content_text = content_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in content_text:
-                content_text = content_text.split("```")[1].split("```")[0].strip()
-            parsed = json.loads(content_text)
-            draft = StructuredDraftResponse(**parsed)
-            return post_validate_structured_draft(draft, segments)
-        except Exception as e:
-            logger.warning(f"Gemini structuring API call failed ({e}). Trying fallback.")
-
-    # 2. Try Anthropic Claude API if key is present
-    if settings.ANTHROPIC_API_KEY:
-        try:
-            import httpx
-            headers = {
-                "x-api-key": settings.ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            }
-            payload = {
-                "model": settings.ANTHROPIC_MODEL or "claude-3-5-sonnet-20241022",
-                "max_tokens": 2048,
-                "temperature": 0.0,
-                "system": STRUCTURING_SYSTEM_PROMPT,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": f"Machine context: {machine_name or 'General Machine'}\n\nTranscript segments:\n{prompt_segments}\n\nOutput structured JSON.",
-                    }
-                ],
-            }
-            async with httpx.AsyncClient(timeout=45.0) as http_client:
-                res = await http_client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
-                if res.status_code == 200:
-                    resp_json = res.json()
-                    content_text = resp_json["content"][0]["text"]
-                    if "```json" in content_text:
-                        content_text = content_text.split("```json")[1].split("```")[0].strip()
-                    elif "```" in content_text:
-                        content_text = content_text.split("```")[1].split("```")[0].strip()
-                    parsed = json.loads(content_text)
-                    draft = StructuredDraftResponse(**parsed)
-                    return post_validate_structured_draft(draft, segments)
-        except Exception as e:
-            logger.warning(f"Anthropic structuring API call failed ({e}). Falling back to deterministic expert engine.")
-
-    # 2. Built-in deterministic industrial rule engine
-    # Accurately maps narration segments to steps and strictly enforces safety invariants
-    steps: List[StepDraftSchema] = []
-    summary_parts = []
-    keywords = {"machining", "procedure", "sop"}
-    if machine_name:
-        keywords.add(machine_name.lower())
-
-    for seg in segments:
-        text = get_segment_text(seg).strip()
-        if not text:
-            continue
-
-        summary_parts.append(text)
-        is_warning = any(w in text.lower() for w in ["warning", "danger", "caution", "never", "blast shield", "coolant"])
-        is_flagged, flag_reason = determine_segment_flags(text)
-        needs_review = is_flagged
-        note = flag_reason if is_flagged else None
-
-        # Detect tools
-        tools = []
-        for t in ["cnmg", "torque wrench", "chuck", "insert", "caliper", "micrometer", "indicator"]:
-            if t in text.lower():
-                tools.append(t.upper())
-                keywords.add(t)
-
-        # Derive title
-        first_sentence = text.split(".")[0].strip()
-        words = first_sentence.split()
-        title = " ".join(words[:6]) if len(words) > 6 else first_sentence
-
-        steps.append(
-            StepDraftSchema(
-                title=title,
-                instruction=text,
-                tools=tools,
-                safety_warning=text if is_warning else None,
-                expected_result=f"Verified step matching segment #{seg.idx}",
-                stop_condition="Target parameter confirmed within tolerance" if "bar" in text.lower() or "nm" in text.lower() else None,
-                source_segment_ids=[seg.idx],
-                needs_review=needs_review,
-                note=note,
-            )
-        )
-
-    draft = StructuredDraftResponse(
-        summary=" ".join(summary_parts[:2]),
-        keywords=sorted(list(keywords)),
-        steps=steps,
-        unclear_segments=[],
+    prompt_segments = "\n".join(
+        f"[{s.idx}] ({getattr(s, 'start_s', 0):.2f}-{getattr(s, 'end_s', 0):.2f}s) {get_segment_text(s)}"
+        for s in segments
     )
+    schema = StructuredDraftResponse.model_json_schema()
+    prompt = (
+        "Task: manufacturing_knowledge_capture.\n"
+        f"Machine context (unverified unless present in transcript): {machine_name or 'unknown'}\n"
+        f"Timestamped transcript:\n{prompt_segments}\n\n"
+        f"Return JSON matching this schema; unknown fields must be empty/null. "
+        f"Each step must cite source_segment_ids. Do not add details absent from the transcript.\n"
+        f"Schema: {json.dumps(schema)}"
+    )
+    request = AIRequest(
+        capability=AICapability.STRUCTURED_EXTRACTION,
+        payload=LLMRequest(
+            prompt=prompt,
+            system_prompt=STRUCTURING_SYSTEM_PROMPT,
+            temperature=0.0,
+            max_tokens=4096,
+            metadata={"task": "manufacturing_knowledge_capture"},
+        ),
+        metadata={"source": "voice_to_knowledge"},
+    )
+    response = await asyncio.to_thread(ai_orchestrator.execute, request)
+    if response.status != "succeeded" or not isinstance(response.result, str):
+        raise RuntimeError("AI structuring is unavailable. The transcript was saved, but no knowledge draft was generated.")
+    content_text = response.result.strip()
+    if content_text.startswith("```"):
+        content_text = content_text.strip("`").removeprefix("json").strip()
+    try:
+        draft = StructuredDraftResponse.model_validate_json(content_text)
+    except Exception as exc:
+        logger.warning("Shared AI structuring returned invalid JSON: %s", type(exc).__name__)
+        raise RuntimeError("AI structuring returned an unreadable draft. The transcript was saved for manual review.") from exc
     return post_validate_structured_draft(draft, segments)

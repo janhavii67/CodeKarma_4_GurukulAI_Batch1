@@ -14,6 +14,8 @@ from app.api.v1.endpoints import (
     learning,
     voice,
     jobs,
+    assistant,
+    simulations,
 )
 
 api_router = APIRouter()
@@ -32,3 +34,5 @@ api_router.include_router(audio.router)
 api_router.include_router(learning.router)
 api_router.include_router(voice.router)
 api_router.include_router(jobs.router)
+api_router.include_router(assistant.router)
+api_router.include_router(simulations.router)

@@ -123,6 +123,8 @@ class StepsListResponse(BaseModel):
     media_id: str
     version_id: Optional[str] = None
     item_id: Optional[str] = None
+    summary: Optional[str] = None
+    detailed_summary: Optional[str] = None
     origin: str = "ai_draft"
     steps: List[StepDraftResponse] = []
     unclear_segments: List[int] = []

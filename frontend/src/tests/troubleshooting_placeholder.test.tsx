@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { TroubleshootingPage } from '../features/troubleshooting/TroubleshootingPage';
 import { ProtectedRoute } from '../routes/ProtectedRoute';
@@ -6,226 +6,81 @@ import * as useAuthHook from '../hooks/useAuth';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { api } from '../lib/api/client';
 
-// Mock API client to verify no calls are made
 vi.mock('../lib/api/client', () => ({
-  api: {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-  },
-  ApiClientError: class extends Error {
-    code = 'test_error';
-    status = 400;
-  },
+  api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+  ApiClientError: class extends Error { code = 'test_error'; status = 400; },
 }));
 
-describe('Module 05: Troubleshooting Placeholder Tests (Task A1)', () => {
+const setUser = (role: 'TRAINEE' | 'EXPERT' | null, permissions: string[] = []) => {
+  vi.spyOn(useAuthHook, 'useAuth').mockReturnValue({
+    user: role ? { id: `user-${role}`, email: `${role.toLowerCase()}@demo.local`, name: role, role_id: role, is_active: true, created_at: new Date().toISOString() } : null,
+    permissions,
+    isAuthenticated: !!role,
+    isLoading: false,
+    error: null,
+    login: vi.fn(), register: vi.fn(), logout: vi.fn(), refreshUser: vi.fn(),
+    hasPermission: vi.fn((permission: string) => permissions.includes(permission)),
+    hasRole: vi.fn((candidate: string) => candidate === role),
+  });
+};
+
+describe('Module 05: evidence-grounded troubleshooting', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(api.get).mockImplementation(() => Promise.resolve([]) as any);
   });
 
-  it('renders read-only placeholder view for TRAINEE role', () => {
-    vi.spyOn(useAuthHook, 'useAuth').mockReturnValue({
-      user: {
-        id: 'usr_trainee_1',
-        email: 'trainee@demo.local',
-        name: 'Trainee Operator',
-        role_id: 'TRAINEE',
-        is_active: true,
-        created_at: new Date().toISOString(),
-      },
-      permissions: ['knowledge.view_published', 'assistant.use'],
-      isAuthenticated: true,
-      isLoading: false,
-      error: null,
-      login: vi.fn(),
-      register: vi.fn(),
-      logout: vi.fn(),
-      refreshUser: vi.fn(),
-      hasPermission: vi.fn((perm: string) =>
-        ['knowledge.view_published', 'assistant.use'].includes(perm)
-      ),
-      hasRole: vi.fn((role: string) => role === 'TRAINEE'),
-    });
+  it('renders the operator investigation form and safe evidence limitation', async () => {
+    setUser('TRAINEE', ['troubleshoot.use', 'knowledge.view_published']);
+    render(<MemoryRouter><TroubleshootingPage /></MemoryRouter>);
 
-    render(
-      <MemoryRouter initialEntries={['/app/troubleshooting']}>
-        <TroubleshootingPage />
-      </MemoryRouter>
-    );
-
-    // 1. Mandatory banner verification
-    expect(
-      screen.getByText(/Planned feature\. No approved troubleshooting guides exist yet\./i)
-    ).toBeInTheDocument();
-
-    // 2. Headings and placeholder tags
-    expect(
-      screen.getByRole('heading', { name: /Troubleshooting & Decision Trees/i })
-    ).toBeInTheDocument();
-    expect(screen.getAllByText(/PLACEHOLDER/i).length).toBeGreaterThan(0);
-
-    // 3. Disabled selector and empty states
-    expect(screen.getByLabelText(/Target Machine/i)).toBeDisabled();
-    expect(screen.getByLabelText(/Observed Symptom/i)).toBeDisabled();
-    expect(
-      screen.getByText(/No Active Troubleshooting Session/i)
-    ).toBeInTheDocument();
-
-    // 4. Disabled Request expert help button
-    const requestHelpBtn = screen.getByRole('button', {
-      name: /Request Expert Help/i,
-    });
-    expect(requestHelpBtn).toBeDisabled();
-
-    // 5. Trainee must NOT see the "Create Guide" button
-    expect(
-      screen.queryByRole('button', { name: /Create Guide/i })
-    ).not.toBeInTheDocument();
-
-    // 6. Non-negotiable safety invariant statement
-    expect(
-      screen.getByText(/No LLM chooses branches or modifies machine states\./i)
-    ).toBeInTheDocument();
-
-    // 7. Verify NO network calls were initiated
-    expect(api.get).not.toHaveBeenCalled();
-    expect(api.post).not.toHaveBeenCalled();
+    expect(await screen.findByRole('heading', { name: 'Troubleshooting' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Problem or symptom/i)).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Start investigation/i })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/Problem or symptom/i), { target: { value: 'Observed vibration during startup' } });
+    expect(screen.getByRole('button', { name: /Start investigation/i })).toBeEnabled();
+    expect(screen.getByText(/does not certify a diagnosis or confirm that a machine is safe/i)).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/troubleshooting/sessions/my/all');
+    expect(api.get).toHaveBeenCalledWith('/machines');
+    expect(api.get).toHaveBeenCalledWith('/troubleshooting/processes');
   });
 
-  it('renders placeholder view for EXPERT role with disabled Create Guide button', () => {
-    vi.spyOn(useAuthHook, 'useAuth').mockReturnValue({
-      user: {
-        id: 'usr_expert_1',
-        email: 'expert.a@demo.local',
-        name: 'Expert Author',
-        role_id: 'EXPERT',
-        is_active: true,
-        created_at: new Date().toISOString(),
-      },
-      permissions: [
-        'knowledge.create',
-        'knowledge.edit_own_draft',
-        'knowledge.submit_review',
-        'knowledge.view_published',
-      ],
-      isAuthenticated: true,
-      isLoading: false,
-      error: null,
-      login: vi.fn(),
-      register: vi.fn(),
-      logout: vi.fn(),
-      refreshUser: vi.fn(),
-      hasPermission: vi.fn(() => true),
-      hasRole: vi.fn((role: string) => role === 'EXPERT'),
-    });
+  it('shows an insufficient-evidence state without generating a procedure', async () => {
+    setUser('TRAINEE', ['troubleshoot.use']);
+    vi.mocked(api.post).mockResolvedValue({
+      id: 'session-1', reported_symptom: 'Unverified vibration', context: { evidence_status: 'insufficient_evidence' },
+      source_refs: [], checks: [], current_check_index: 0, status: 'in_progress', started_at: new Date().toISOString(), responses: [],
+    } as any);
+    render(<MemoryRouter><TroubleshootingPage /></MemoryRouter>);
 
-    render(
-      <MemoryRouter initialEntries={['/app/troubleshooting']}>
-        <TroubleshootingPage />
-      </MemoryRouter>
-    );
+    fireEvent.change(await screen.findByLabelText(/Problem or symptom/i), { target: { value: 'Unverified vibration at startup' } });
+    fireEvent.click(screen.getByRole('button', { name: /Start investigation/i }));
 
-    // Expert sees disabled Create Guide button
-    const createBtn = screen.getByRole('button', { name: /Create Guide/i });
-    expect(createBtn).toBeInTheDocument();
-    expect(createBtn).toBeDisabled();
-
-    // Banner and safety rules remain intact
-    expect(
-      screen.getByText(/Planned feature\. No approved troubleshooting guides exist yet\./i)
-    ).toBeInTheDocument();
-
-    // Verify NO network calls
-    expect(api.get).not.toHaveBeenCalled();
-    expect(api.post).not.toHaveBeenCalled();
+    expect(await screen.findByText(/No relevant approved source found/i)).toBeInTheDocument();
+    expect(screen.getByText(/The system has not generated a procedure/i)).toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledWith('/troubleshooting/sessions', expect.objectContaining({ reported_symptom: 'Unverified vibration at startup' }));
   });
 
-  it('demonstrates loading and error states without making network calls', () => {
-    vi.spyOn(useAuthHook, 'useAuth').mockReturnValue({
-      user: {
-        id: 'usr_trainee_1',
-        email: 'trainee@demo.local',
-        name: 'Trainee Operator',
-        role_id: 'TRAINEE',
-        is_active: true,
-        created_at: new Date().toISOString(),
-      },
-      permissions: [],
-      isAuthenticated: true,
-      isLoading: false,
-      error: null,
-      login: vi.fn(),
-      register: vi.fn(),
-      logout: vi.fn(),
-      refreshUser: vi.fn(),
-      hasPermission: vi.fn(() => false),
-      hasRole: vi.fn(() => false),
-    });
-
-    render(
-      <MemoryRouter initialEntries={['/app/troubleshooting']}>
-        <TroubleshootingPage />
-      </MemoryRouter>
-    );
-
-    // Switch to Loading State
-    const loadingTab = screen.getByRole('button', { name: /Loading State/i });
-    fireEvent.click(loadingTab);
-    expect(
-      screen.getByText(/Loading approved troubleshooting guide version\.\.\./i)
-    ).toBeInTheDocument();
-
-    // Switch to Error State
-    const errorTab = screen.getByRole('button', { name: /Error State/i });
-    fireEvent.click(errorTab);
-    expect(screen.getByText(/Guide Retrieval Failed/i)).toBeInTheDocument();
-
-    // Reset back to Empty State
-    const resetBtn = screen.getByRole('button', { name: /Reset State/i });
-    fireEvent.click(resetBtn);
-    expect(
-      screen.getByText(/No Active Troubleshooting Session/i)
-    ).toBeInTheDocument();
-
-    // Still no network calls
-    expect(api.get).not.toHaveBeenCalled();
-    expect(api.post).not.toHaveBeenCalled();
+  it('shows expert draft tools only to users with the existing knowledge-create permission', async () => {
+    setUser('EXPERT', ['troubleshoot.use', 'knowledge.create']);
+    vi.mocked(api.get).mockImplementation((path: string) => Promise.resolve(path.includes('/sessions/my/all') ? [] : []) as any);
+    render(<MemoryRouter><TroubleshootingPage /></MemoryRouter>);
+    expect(await screen.findByRole('heading', { name: 'Troubleshooting' })).toBeInTheDocument();
+    // Draft action appears after a session reaches a terminal state, never as an unapproved publishing control.
+    expect(screen.queryByRole('button', { name: /Publish/i })).not.toBeInTheDocument();
   });
 
-  it('redirects unauthenticated user away from protected troubleshooting route', () => {
-    vi.spyOn(useAuthHook, 'useAuth').mockReturnValue({
-      user: null,
-      permissions: [],
-      isAuthenticated: false,
-      isLoading: false,
-      error: null,
-      login: vi.fn(),
-      register: vi.fn(),
-      logout: vi.fn(),
-      refreshUser: vi.fn(),
-      hasPermission: vi.fn(() => false),
-      hasRole: vi.fn(() => false),
-    });
-
+  it('redirects unauthenticated users away from the protected troubleshooting route', async () => {
+    setUser(null);
     render(
       <MemoryRouter initialEntries={['/app/troubleshooting']}>
         <Routes>
           <Route path="/login" element={<div>Login Page Redirect Target</div>} />
-          <Route
-            path="/app/troubleshooting"
-            element={
-              <ProtectedRoute>
-                <TroubleshootingPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/app/troubleshooting" element={<ProtectedRoute><TroubleshootingPage /></ProtectedRoute>} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
-
-    expect(screen.getByText(/Login Page Redirect Target/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Troubleshooting & Decision Trees/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Login Page Redirect Target/i)).toBeInTheDocument());
+    expect(screen.queryByRole('heading', { name: 'Troubleshooting' })).not.toBeInTheDocument();
   });
 });

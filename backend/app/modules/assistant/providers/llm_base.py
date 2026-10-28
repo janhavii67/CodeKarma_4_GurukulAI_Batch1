@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Iterator
 from app.core.config import settings
 
 
@@ -37,6 +37,8 @@ class LLMRequest:
     max_tokens: int = 1024
     request_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    images: List[Dict[str, Any]] = field(default_factory=list)
+    media_parts: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -53,6 +55,8 @@ class LLMResponse:
 class LLMProvider(ABC):
     """Abstract interface for LLM providers."""
 
+    supports_multimodal = False
+
     @abstractmethod
     def generate(self, request: LLMRequest) -> LLMResponse:
         """Synchronously generate text response."""
@@ -63,6 +67,11 @@ class LLMProvider(ABC):
         """Asynchronously generate text response."""
         pass
 
+    @abstractmethod
+    def stream(self, request: LLMRequest) -> Iterator[str]:
+        """Synchronously stream text token chunks."""
+        pass
+
 
 def get_llm_provider(provider_name: Optional[str] = None) -> LLMProvider:
     """
@@ -70,9 +79,15 @@ def get_llm_provider(provider_name: Optional[str] = None) -> LLMProvider:
     Enforces ALLOW_EXTERNAL_LLM guard: external providers cannot be instantiated
     unless explicitly allowed by configuration.
     """
-    selected = (provider_name or settings.ASSISTANT_LLM_PROVIDER).lower().strip()
+    raw_selected = (
+        provider_name
+        or getattr(settings, "LLM_PROVIDER", None)
+        or getattr(settings, "ASSISTANT_LLM_PROVIDER", None)
+        or "gemini"
+    )
+    selected = raw_selected.lower().strip()
 
-    if selected == "fake":
+    if selected in ("fake", "mock"):
         from app.modules.assistant.providers.llm_fake import FakeLLMProvider
         return FakeLLMProvider()
 
@@ -97,8 +112,7 @@ def get_llm_provider(provider_name: Optional[str] = None) -> LLMProvider:
         if not settings.ANTHROPIC_API_KEY:
             raise LLMAuthenticationError("ANTHROPIC_API_KEY is not configured.")
 
-        # Real adapter can be loaded when enabled
         from app.modules.assistant.providers.llm_anthropic import AnthropicLLMProvider
         return AnthropicLLMProvider()
 
-    raise LLMError(f"Unknown LLM provider: '{selected}'. Supported: 'gemini', 'fake', 'anthropic'")
+    raise LLMError(f"Unknown LLM provider: '{selected}'. Supported: 'gemini', 'mock', 'fake', 'anthropic'")

@@ -60,3 +60,10 @@ Claude writes the task prompt, Antigravity implements, you run the tests, and re
 
 ## 6. Other information
 First task prompts (T1.1 and T1.2) are written on request. Update the Status column after each task.
+
+## 7. Post-hackathon AI Tutor integration
+
+| ID | Task | Status | Verification |
+|---|---|---|---|
+| M02-AUDIT | Unify streamed Tutor generation through the orchestrator; preserve follow-up retrieval context; enforce current published revisions; suppress stale history; persist safe unmatched/ambiguous audio results; normalize retrieval failures; bound Gemini provider requests. | Tested | 606 backend tests and 86 frontend tests passed; production build/TypeScript, Python compile, fresh SQLite migration through 014, and `git diff --check` passed. Post-fix synthetic Gemini connectivity succeeded in 6.11 seconds; full live RAG/stream verification remains. |
+| M02-HANDOFF | Add explicit user-initiated Tutor handoff into existing Guided Workflow or Troubleshooting sessions. | Tested | Deterministic suggestions from current cited evidence; click-time permission/publication/ownership revalidation; workflow and same-source/symptom troubleshooting session reuse; history restoration; no migration. Full regression: backend 609 passed (17 warnings), frontend 87 passed, build/typecheck, Python compile, and diff check passed. |

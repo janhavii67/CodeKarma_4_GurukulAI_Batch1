@@ -1,5 +1,6 @@
 import io
 import json
+import wave
 import pytest
 from pathlib import Path
 from sqlalchemy.orm import Session
@@ -28,6 +29,7 @@ from app.services.voice_service import (
     validate_version_for_submission,
 )
 from app.services.job_runner import execute_voice_processing_job
+from app.services import job_runner as job_runner_module
 from app.core.exceptions import ValidationError
 
 
@@ -117,12 +119,12 @@ def test_voice_upload_and_job_endpoint(client, db_session: Session, tmp_path):
     """Test POST /api/v1/voice/upload endpoint."""
     csrf_token = get_expert_credentials(client)
 
-    # Create dummy audio file
-    fake_audio = b"\x00" * 4096
+    # Use the real fixture so upload validation can probe the audio duration.
+    sample_audio = (Path(__file__).parent / "fixtures" / "multimodal" / "sample_voice.wav").read_bytes()
 
     response = client.post(
         "/api/v1/voice/upload",
-        files={"file": ("lathe_demo.webm", fake_audio, "audio/webm")},
+        files={"file": ("sample_voice.wav", sample_audio, "audio/wav")},
         data={"title": "Lathe Setup Audio Note"},
         headers={"X-CSRF-Token": csrf_token},
     )
@@ -148,11 +150,26 @@ def test_voice_upload_and_job_endpoint(client, db_session: Session, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_job_runner_vector_indexing_and_rag(db_session: Session, tmp_path):
-    """Test background runner executes transcription, vector indexing, and RAG search."""
-    # Create sample media file
+async def test_job_runner_vector_indexing_and_rag(db_session: Session, tmp_path, monkeypatch):
+    """Run the sample M04 narration through FFmpeg, timestamped transcription, and draft indexing."""
     dummy_wav = tmp_path / "test_narration.wav"
-    dummy_wav.write_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
+    sample_voice = Path(__file__).parent / "fixtures" / "multimodal" / "sample_voice.wav"
+    dummy_wav.write_bytes(sample_voice.read_bytes())
+
+    normalized = {}
+    actual_normalizer = job_runner_module.extract_audio_wav
+
+    def capture_normalized_audio(input_path, output_path):
+        result_path = actual_normalizer(input_path, output_path)
+        with wave.open(str(result_path), "rb") as normalized_wav:
+            normalized.update({
+                "channels": normalized_wav.getnchannels(),
+                "sample_rate": normalized_wav.getframerate(),
+                "sample_width": normalized_wav.getsampwidth(),
+            })
+        return result_path
+
+    monkeypatch.setattr(job_runner_module, "extract_audio_wav", capture_normalized_audio)
 
     media, job = create_voice_capture_job(
         db=db_session,
@@ -168,17 +185,44 @@ async def test_job_runner_vector_indexing_and_rag(db_session: Session, tmp_path)
     await execute_voice_processing_job(job.id, db=db_session)
 
     db_session.refresh(job)
-    assert job.status in ("completed", "needs_review")
+    assert job.status == "needs_review"
     assert job.progress == 100
+    assert normalized == {"channels": 1, "sample_rate": 16_000, "sample_width": 2}
 
     # Check transcript and segments were created
     transcript = db_session.query(Transcript).filter(Transcript.media_id == media.id).first()
     assert transcript is not None
     assert len(transcript.segments) >= 3
+    assert all(segment.start_s >= 0 and segment.end_s > segment.start_s for segment in transcript.segments)
 
     # Check vector embeddings were stored
     embeddings = db_session.query(KnowledgeEmbedding).filter(KnowledgeEmbedding.media_id == media.id).all()
     assert len(embeddings) >= 3
+
+    # Assistant RAG transcripts stay inactive while their KnowledgeVersion is a draft.
+    from app.modules.assistant.models import KnowledgeSource, KnowledgeChunk, SOURCE_TYPE_TRANSCRIPT
+    from app.modules.assistant.services.indexing_service import IndexingService
+    rag_source = db_session.query(KnowledgeSource).filter(
+        KnowledgeSource.source_type == SOURCE_TYPE_TRANSCRIPT,
+        KnowledgeSource.source_ref_id == transcript.id,
+    ).first()
+    assert rag_source is not None
+    assert rag_source.status == "draft"
+    assert not any(chunk.is_active for chunk in rag_source.chunks)
+
+    # The existing indexer activates the same source only after publication.
+    version = db_session.get(KnowledgeVersion, job.version_id)
+    assert version.origin == "ai_draft"
+    assert version.status == "draft"
+    generated_steps = json.loads(version.steps) if isinstance(version.steps, str) else version.steps
+    assert generated_steps
+    assert all(step.get("needs_review") is True for step in generated_steps)
+    version.status = "published"
+    db_session.commit()
+    IndexingService.index_transcript(transcript.id, db_session, title=media.title)
+    db_session.refresh(rag_source)
+    assert rag_source.status == "published"
+    assert all(chunk.is_active for chunk in rag_source.chunks)
 
     # Test RAG Vector Search
     search_results = search_vector_knowledge(

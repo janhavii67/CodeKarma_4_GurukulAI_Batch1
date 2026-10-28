@@ -42,7 +42,7 @@ from app.models.troubleshooting import (
     TroubleshootingEscalation,
 )
 from app.models.audio import AudioReference, AudioAnalysisJob
-from app.models.simulation import SimulationScenario, SimulationAttempt
+from app.models.simulation import SimulationScenario, SimulationAttempt, SimulationScenarioRevision, SimulationScenarioReport
 from app.models.learning import LearningPath, LearningItem, LearningAssignment
 from app.models.notification import Notification
 from app.models.media import (
@@ -143,6 +143,8 @@ __all__ = [
     "AudioAnalysisJob",
     "SimulationScenario",
     "SimulationAttempt",
+    "SimulationScenarioRevision",
+    "SimulationScenarioReport",
     "LearningPath",
     "LearningItem",
     "LearningAssignment",

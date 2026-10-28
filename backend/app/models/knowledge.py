@@ -197,6 +197,7 @@ class KnowledgeVersion(Base, TimestampMixin):
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     steps: Mapped[Any] = mapped_column(JSON, default=list, nullable=False)
+    source_refs: Mapped[Any] = mapped_column(JSON, default=list, nullable=True)
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     operating_conditions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     prerequisites: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -322,6 +323,7 @@ class ApprovalRecord(Base):
     status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     comments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    acknowledged_ai_draft: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     item: Mapped[Optional["KnowledgeItem"]] = relationship(

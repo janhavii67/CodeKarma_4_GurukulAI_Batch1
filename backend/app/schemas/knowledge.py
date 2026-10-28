@@ -13,6 +13,11 @@ class Step(BaseModel):
     title: str = Field(default="", max_length=255)
     instruction: str = Field(default="", max_length=5000)
     tools: List[str] = Field(default_factory=list)
+    materials: List[str] = Field(default_factory=list)
+    quality_checkpoints: List[str] = Field(default_factory=list)
+    machine_parameters: List[Dict[str, Any]] = Field(default_factory=list)
+    image_refs: List[Dict[str, Any]] = Field(default_factory=list)
+    source_refs: List[Dict[str, Any]] = Field(default_factory=list)
     safety_warning: Optional[str] = Field(None, max_length=2000)
     expected_result: Optional[str] = Field(None, max_length=2000)
     stop_condition: Optional[str] = Field(None, max_length=2000)
@@ -95,6 +100,7 @@ class KnowledgeVersionResponse(BaseModel):
     version_no: int
     status: str
     summary: Optional[str] = None
+    source_refs: Optional[List[Dict[str, Any]]] = None
     description: Optional[str] = None
     steps: List[Step] = Field(default_factory=list)
     origin: str

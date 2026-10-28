@@ -1,4 +1,4 @@
-import { api, getCsrfToken } from '../../lib/api/client';
+import { api } from '../../lib/api/client';
 
 export interface MediaAsset {
   id: string;
@@ -105,25 +105,7 @@ export async function uploadVoiceNarration(
   if (machineId) formData.append('machine_id', machineId);
   if (versionId) formData.append('version_id', versionId);
 
-  const csrfToken = getCsrfToken();
-  const headers: HeadersInit = {};
-  if (csrfToken) {
-    headers['X-CSRF-Token'] = csrfToken;
-  }
-
-  const response = await fetch('/api/v1/voice/upload', {
-    method: 'POST',
-    body: formData,
-    headers,
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData?.error?.message || `Upload failed with status ${response.status}`);
-  }
-
-  return response.json();
+  return api.postForm<VoiceUploadResponse>('/voice/upload', formData);
 }
 
 export async function getProcessingJob(jobId: string): Promise<ProcessingJob> {
@@ -143,18 +125,30 @@ export async function getVoiceAsset(mediaId: string): Promise<MediaAsset> {
   return api.get<MediaAsset>(`/voice/assets/${mediaId}`);
 }
 
-export async function getVersionTranscript(versionId: string): Promise<Transcript> {
-  return api.get<Transcript>(`/voice/knowledge-versions/${versionId}/transcript`);
+export async function getVersionTranscript(versionId: string): Promise<Transcript | null> {
+  try {
+    return await api.get<Transcript>(`/voice/knowledge-versions/${versionId}/transcript`);
+  } catch (err: any) {
+    if (err?.status === 404 || err?.code === 'transcript_not_found') return null;
+    throw err;
+  }
 }
 
-export async function getMediaTranscript(mediaId: string): Promise<Transcript> {
-  return api.get<Transcript>(`/voice/assets/${mediaId}/transcript`);
+export async function getMediaTranscript(mediaId: string): Promise<Transcript | null> {
+  try {
+    return await api.get<Transcript>(`/voice/assets/${mediaId}/transcript`);
+  } catch (err: any) {
+    if (err?.status === 404 || err?.code === 'transcript_not_found') return null;
+    throw err;
+  }
 }
 
 export interface StepsListResponse {
   media_id: string;
   version_id?: string;
   item_id?: string;
+  summary?: string;
+  detailed_summary?: string;
   origin: string;
   steps: StepDraft[];
   unclear_segments: number[];

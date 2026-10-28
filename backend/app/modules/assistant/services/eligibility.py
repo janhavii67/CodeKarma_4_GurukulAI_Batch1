@@ -2,7 +2,7 @@ from typing import Protocol, List, Optional, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from app.models.user import User
-from app.models.knowledge import KnowledgeVersion, STATUS_PUBLISHED, STATUS_WITHDRAWN, STATUS_SUPERSEDED
+from app.models.knowledge import KnowledgeItem, KnowledgeVersion, STATUS_PUBLISHED, STATUS_WITHDRAWN, STATUS_SUPERSEDED
 from app.modules.assistant.models import KnowledgeSource, KnowledgeChunk
 from app.repositories.user_repo import UserRepository
 from app.core.permissions import PERM_KNOWLEDGE_VIEW_PUBLISHED
@@ -62,7 +62,8 @@ class DefaultKnowledgeEligibilityService:
 
         if source.knowledge_version_id:
             kv = db.get(KnowledgeVersion, source.knowledge_version_id)
-            if not kv or kv.status != STATUS_PUBLISHED:
+            item = db.get(KnowledgeItem, kv.item_id) if kv else None
+            if not kv or kv.status != STATUS_PUBLISHED or not item or item.current_published_version_id != kv.id:
                 return False
 
         return True
@@ -80,7 +81,8 @@ class DefaultKnowledgeEligibilityService:
 
         if source.knowledge_version_id:
             kv = db.get(KnowledgeVersion, source.knowledge_version_id)
-            if not kv or kv.status != STATUS_PUBLISHED:
+            item = db.get(KnowledgeItem, kv.item_id) if kv else None
+            if not kv or kv.status != STATUS_PUBLISHED or not item or item.current_published_version_id != kv.id:
                 return False
 
         return True
@@ -99,7 +101,10 @@ class DefaultKnowledgeEligibilityService:
             KnowledgeSource.status == "published",
             or_(
                 KnowledgeSource.knowledge_version_id.is_(None),
-                KnowledgeVersion.status == STATUS_PUBLISHED,
+                and_(
+                    KnowledgeVersion.status == STATUS_PUBLISHED,
+                    KnowledgeItem.current_published_version_id == KnowledgeVersion.id,
+                ),
             ),
         ]
 

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ReviewDecisionRequest(BaseModel):
     decision: str = Field(..., pattern="^(APPROVED|REJECTED)$")
     comments: Optional[str] = Field(None, max_length=1000)
+    acknowledged_ai_draft: bool = False
 
 
 class ReviewQueueItem(BaseModel):
@@ -20,3 +21,4 @@ class ReviewQueueItem(BaseModel):
     version: int
     submitted_at: datetime
     content_preview: str
+    requires_ai_draft_acknowledgment: bool = False

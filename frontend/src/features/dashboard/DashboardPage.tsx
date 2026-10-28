@@ -19,6 +19,7 @@ import {
   Volume2,
   Clock,
   Mic,
+  GraduationCap,
 } from 'lucide-react';
 
 interface DashboardStats {
@@ -95,6 +96,13 @@ export const DashboardPage: React.FC = () => {
           </p>
 
           <div className="pt-2 flex flex-wrap gap-3">
+            {!isExpert && (
+              <Link to="/app/learning">
+                <Button variant="primary" size="sm" icon={<GraduationCap className="w-4 h-4" />}>
+                  Learning &amp; Curriculum (M10)
+                </Button>
+              </Link>
+            )}
             <Link to="/app/knowledge">
               <Button variant="primary" size="sm" icon={<FileText className="w-4 h-4" />}>
                 Knowledge Library (M01/M02)
@@ -396,6 +404,13 @@ export const DashboardPage: React.FC = () => {
             name="Troubleshooting Trees"
             desc="Expert decision trees for symptom isolation, runout checks, and tooling wear."
             route="/app/troubleshooting"
+            badge="Live DB"
+          />
+          <ModuleQuickCard
+            code="10"
+            name="Learning & Curriculum"
+            desc="Structured training tracks, simulation assessments, and verified skill progress records."
+            route="/app/learning"
             badge="Live DB"
           />
         </div>

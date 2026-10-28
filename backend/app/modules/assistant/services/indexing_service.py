@@ -135,8 +135,11 @@ class IndexingService:
         doc_title = title or f"Audio Recording Transcript ({transcript_id[:8]})"
 
         from app.models.media import MediaAsset
+        from app.models.knowledge import KnowledgeVersion
         media = db.get(MediaAsset, transcript.media_id) if transcript.media_id else None
         machine_id = media.machine_id if media else None
+        version = db.get(KnowledgeVersion, transcript.version_id) if transcript.version_id else None
+        approved = bool(version and version.status == STATUS_PUBLISHED)
 
         # Find or create source
         source = (
@@ -155,7 +158,7 @@ class IndexingService:
                 knowledge_version_id=transcript.version_id,
                 title=doc_title,
                 machine_id=machine_id,
-                status="published",
+                status=version.status if version else "draft",
                 index_version="v1",
             )
             db.add(source)
@@ -163,6 +166,8 @@ class IndexingService:
         else:
             source.title = doc_title
             source.machine_id = machine_id
+            source.knowledge_version_id = version.id if version else None
+            source.status = version.status if version else "draft"
             source.indexed_at = utc_now()
             db.query(KnowledgeChunk).filter(KnowledgeChunk.source_id == source.id).delete()
             db.flush()
@@ -179,7 +184,7 @@ class IndexingService:
                 token_count=p.token_count,
                 search_vector=p.search_vector,
                 metadata_json=p.metadata,
-                is_active=True,
+                is_active=approved,
             )
             db.add(chunk)
 

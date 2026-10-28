@@ -18,7 +18,12 @@ for p in [root_dir, backend_dir]:
 from app.main import app
 from app.db.base import Base
 from app.db.session import get_db
+from app.core.config import settings
 from infrastructure.scripts.seed import seed_database
+
+# Enforce mock provider for automated test suite per Part 6 requirements
+os.environ["LLM_PROVIDER"] = "mock"
+settings.LLM_PROVIDER = "mock"
 
 # ---------------------------------------------------------------------------
 # Primary in-memory DB: used by the standard `client` + `db_session` fixtures.

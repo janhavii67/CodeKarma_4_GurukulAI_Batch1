@@ -170,8 +170,30 @@ def test_gemini_provider_guard_and_initialization():
         provider = get_llm_provider("gemini")
         assert isinstance(provider, GeminiLLMProvider)
         assert provider.provider_name == "gemini"
-        assert provider.model_name == "gemini-2.5-flash"
+        assert provider.model_name == settings.GEMINI_MODEL
     finally:
         settings.GEMINI_API_KEY = original_key
         settings.ALLOW_EXTERNAL_LLM = original_allow
+
+
+def test_gemini_http_client_uses_configured_timeout_and_disables_nested_retries(monkeypatch):
+    from app.modules.assistant.providers.llm_gemini import GeminiLLMProvider
+
+    client_args = []
+
+    def client_stub(**kwargs):
+        client_args.append(kwargs)
+        return object()
+
+    monkeypatch.setattr("app.modules.assistant.providers.llm_gemini.genai.Client", client_stub)
+    provider = GeminiLLMProvider(api_key="synthetic-test-key", model_name="synthetic-test-model")
+
+    options = client_args[0]["http_options"]
+    assert options.timeout == int(settings.AI_REQUEST_TIMEOUT_S * 1000)
+    assert options.retry_options.attempts == 1
+
+    provider._bound_client_timeout(2.5)
+    shortened_options = client_args[1]["http_options"]
+    assert shortened_options.timeout == 2500
+    assert shortened_options.retry_options.attempts == 1
 

@@ -4,6 +4,7 @@ from app.db.session import get_db
 from app.core.permissions import get_current_user, AuthenticatedContext
 from app.core.exceptions import NotFoundError, ForbiddenError
 from app.models.processing_job import ProcessingJob
+from app.models.media import MediaAsset
 from app.schemas.voice import ProcessingJobResponse
 from app.services.voice_service import retry_voice_job
 from app.services.job_runner import execute_voice_processing_job
@@ -25,6 +26,10 @@ def get_job_status(
     if not job:
         raise NotFoundError(code="job_not_found", message=f"Processing job '{job_id}' not found.")
 
+    media = db.get(MediaAsset, job.media_id) if job.media_id else None
+    if auth_ctx.user.role_id != "ADMIN" and (not media or media.uploaded_by != auth_ctx.user.id):
+        raise ForbiddenError(code="not_author", message="You do not have access to this processing job.")
+
     return job
 
 
@@ -38,6 +43,12 @@ def retry_failed_job(
     """
     Retry a failed processing job.
     """
+    job = db.get(ProcessingJob, job_id)
+    if not job:
+        raise NotFoundError(code="job_not_found", message=f"Processing job '{job_id}' not found.")
+    media = db.get(MediaAsset, job.media_id) if job.media_id else None
+    if auth_ctx.user.role_id != "ADMIN" and (not media or media.uploaded_by != auth_ctx.user.id):
+        raise ForbiddenError(code="not_author", message="You do not have access to this processing job.")
     job = retry_voice_job(db=db, job_id=job_id, user_id=auth_ctx.user.id)
     background_tasks.add_task(execute_voice_processing_job, job.id)
     return job

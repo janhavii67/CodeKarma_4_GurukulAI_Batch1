@@ -106,12 +106,13 @@ export function useUpdateKnowledge(itemId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: KnowledgeUpdateRequest) => updateKnowledge(itemId, payload),
-    onSuccess: (updatedVersion) => {
+    onSuccess: (updatedDetail) => {
       // Invalidate list and detail caches for this item
       qc.invalidateQueries({ queryKey: knowledgeKeys.lists() });
       qc.invalidateQueries({ queryKey: knowledgeKeys.details() });
-      // Also optimistically refresh the versions list
-      qc.invalidateQueries({ queryKey: knowledgeKeys.versions(updatedVersion.item_id) });
+      // Optimistically refresh the versions list for the updated item
+      const targetId = updatedDetail?.id || (updatedDetail as any)?.item_id || itemId;
+      qc.invalidateQueries({ queryKey: knowledgeKeys.versions(targetId) });
     },
   });
 }

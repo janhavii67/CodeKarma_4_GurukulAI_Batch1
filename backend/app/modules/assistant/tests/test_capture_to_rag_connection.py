@@ -69,10 +69,11 @@ async def test_voice_capture_job_automatically_indexes_into_rag(db_session: Sess
     assert source is not None
     assert source.title == media.title
     assert len(source.chunks) > 0
+    assert source.status == STATUS_DRAFT
 
     # 4. Verify chunks have timestamps
     for ch in source.chunks:
-        assert ch.is_active is True
+        assert ch.is_active is False
         assert ch.timestamp_start is not None
         assert ch.timestamp_end is not None
 
@@ -91,7 +92,10 @@ async def test_voice_capture_job_automatically_indexes_into_rag(db_session: Sess
     gen_version = db_session.get(KnowledgeVersion, job.version_id)
     gen_version.status = STATUS_PUBLISHED
     gen_version.published_at = utc_now()
+    gen_version.item.current_published_version_id = gen_version.id
     db_session.commit()
+    IndexingService.index_transcript(transcript.id, db_session, title=media.title)
+    assert all(ch.is_active is True for ch in source.chunks)
 
     retrieved = RetrievalService.retrieve_chunks(query, db_session)
     assert len(retrieved) > 0
@@ -123,9 +127,25 @@ def test_updating_transcript_segment_refreshes_rag_chunks(db_session: Session):
     db_session.add(media)
     db_session.flush()
 
+    item = KnowledgeItem(title="Published Runout Procedure", author_id=expert.id, status="APPROVED")
+    db_session.add(item)
+    db_session.flush()
+    from app.db.base import utc_now
+    version = KnowledgeVersion(
+        item_id=item.id,
+        version_no=1,
+        title=item.title,
+        status=STATUS_PUBLISHED,
+        published_at=utc_now(),
+        created_by=expert.id,
+    )
+    db_session.add(version)
+    db_session.flush()
+    item.current_published_version_id = version.id
+    media.version_id = version.id
     transcript = Transcript(
         media_id=media.id,
-        version_id=None,
+        version_id=version.id,
         language="en",
         full_text="Spindle inspection recording.",
         status="completed",
@@ -245,6 +265,37 @@ def test_knowledge_capture_article_all_fields_indexed_on_approval(client: TestCl
         steps=steps_data,
     )
     db_session.add(version)
+    db_session.flush()
+    from app.models.media import MediaAsset
+    capture = MediaAsset(
+        title="Spindle expert recording",
+        version_id=version.id,
+        kind="audio",
+        file_path="private/spindle-expert.wav",
+        original_name="spindle-expert.wav",
+        mime_type="audio/wav",
+        size_bytes=128,
+        uploaded_by=author.id,
+    )
+    db_session.add(capture)
+    db_session.flush()
+    transcript = Transcript(
+        media_id=capture.id,
+        version_id=version.id,
+        language="en",
+        provider="test",
+        full_text="Inspect the spindle taper before operation.",
+        status="completed",
+    )
+    db_session.add(transcript)
+    db_session.flush()
+    db_session.add(TranscriptSegment(
+        transcript_id=transcript.id,
+        idx=1,
+        start_s=2.25,
+        end_s=5.75,
+        original_text="Inspect the spindle taper before operation.",
+    ))
     db_session.commit()
     db_session.refresh(item)
     db_session.refresh(version)
@@ -285,6 +336,19 @@ def test_knowledge_capture_article_all_fields_indexed_on_approval(client: TestCl
     assert source is not None
     assert source.status == "published"
     assert len(source.chunks) >= 6  # Overview, Safety, Operating Conditions, Prerequisites, Troubleshooting, Steps
+
+    transcript_source = (
+        db_session.query(KnowledgeSource)
+        .filter(
+            KnowledgeSource.source_type == SOURCE_TYPE_TRANSCRIPT,
+            KnowledgeSource.source_ref_id == transcript.id,
+        )
+        .first()
+    )
+    assert transcript_source is not None
+    assert transcript_source.status == "published"
+    assert transcript_source.chunks and all(chunk.is_active for chunk in transcript_source.chunks)
+    assert transcript_source.chunks[0].timestamp_start == 2.25
 
     # Verify all chunks are active
     assert all(c.is_active is True for c in source.chunks)

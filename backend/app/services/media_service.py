@@ -57,6 +57,7 @@ MIME_TO_KIND = {
     "audio/wav": KIND_AUDIO,
     "audio/mp4": KIND_AUDIO,
     "audio/ogg": KIND_AUDIO,
+    "audio/flac": KIND_AUDIO,
     "video/mp4": KIND_VIDEO,
     "video/webm": KIND_VIDEO,
     "image/png": KIND_IMAGE,
@@ -70,6 +71,7 @@ MIME_TO_EXT = {
     "audio/wav": ".wav",
     "audio/mp4": ".m4a",
     "audio/ogg": ".ogg",
+    "audio/flac": ".flac",
     "video/mp4": ".mp4",
     "video/webm": ".webm",
     "image/png": ".png",
@@ -84,6 +86,7 @@ ALLOWED_MIME_TYPES: Dict[str, List[str]] = {
         "audio/wav",
         "audio/mp4",
         "audio/ogg",
+        "audio/flac",
     ],
     KIND_VIDEO: [
         "video/mp4",
@@ -153,6 +156,9 @@ def verify_file_signature(header: bytes, canonical_mime: str) -> bool:
     # Ogg (OggS)
     if canonical_mime == "audio/ogg":
         return header.startswith(b"OggS")
+
+    if canonical_mime == "audio/flac":
+        return header.startswith(b"fLaC")
 
     # WAV (RIFF....WAVE)
     if canonical_mime == "audio/wav":

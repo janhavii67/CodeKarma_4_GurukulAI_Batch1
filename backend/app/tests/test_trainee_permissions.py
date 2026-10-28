@@ -1,3 +1,8 @@
+import io
+import math
+import wave
+from array import array
+
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
@@ -100,19 +105,27 @@ def test_trainee_cannot_view_another_operators_procedure_run():
     assert peek_resp.json()["error"]["code"] == "unauthorized_run"
 
 
-def test_trainee_sound_analysis_execution():
+def test_trainee_sound_analysis_execution(client: TestClient):
     """Trainee can submit machine audio for acoustic comparison."""
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
-    csrf = get_csrf()
+    client.post("/api/v1/auth/login", json={"email": settings.TRAINEE_EMAIL, "password": settings.TRAINEE_PASSWORD})
+    csrf = client.get("/api/v1/auth/csrf").json()["csrf_token"]
+    samples = array("h", (int(12_000 * math.sin(2 * math.pi * 440 * index / 16_000)) for index in range(16_000)))
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16_000)
+        wav.writeframes(samples.tobytes())
     resp = client.post(
         "/api/v1/audio/analyze",
-        json={"scenario": "normal_spindle"},
+        files={"file": ("machine.wav", output.getvalue(), "audio/wav")},
         headers={"X-CSRF-Token": csrf},
     )
     assert resp.status_code == 201
     data = resp.json()
-    assert data["status"] in ["MATCHED", "NO_RELIABLE_MATCH"]
-    assert len(data["candidate_matches"]) > 0
+    assert data["status"] == "NO_RELIABLE_MATCH"
+    assert data["reason_code"] == "NO_APPROVED_REFERENCES"
+    assert data["candidate_matches"] == []
 
 
 def test_trainee_notification_read_lifecycle():

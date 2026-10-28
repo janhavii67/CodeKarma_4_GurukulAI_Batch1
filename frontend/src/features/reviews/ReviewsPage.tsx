@@ -24,6 +24,7 @@ interface ReviewQueueItem {
   version: number;
   submitted_at: string;
   content_preview: string;
+  requires_ai_draft_acknowledgment?: boolean;
 }
 
 export const ReviewsPage: React.FC = () => {
@@ -35,6 +36,7 @@ export const ReviewsPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [acknowledgedAiDraft, setAcknowledgedAiDraft] = useState(false);
 
   const fetchQueue = () => {
     setLoading(true);
@@ -64,16 +66,23 @@ export const ReviewsPage: React.FC = () => {
       return;
     }
 
+    if (decision === 'APPROVED' && selectedItem.requires_ai_draft_acknowledgment && !acknowledgedAiDraft) {
+      setErrorMsg('Acknowledge that you checked the AI draft against its source before publishing.');
+      return;
+    }
+
     setActionLoading(true);
     try {
       await api.post(`/reviews/${selectedItem.article_id}/decision`, {
         decision,
         comments: comments || undefined,
+        acknowledged_ai_draft: decision === 'APPROVED' && acknowledgedAiDraft,
       });
 
       setSuccessMsg(`Procedure successfully ${decision === 'APPROVED' ? 'Approved & Published' : 'Rejected'}.`);
       setSelectedItem(null);
       setComments('');
+      setAcknowledgedAiDraft(false);
       fetchQueue();
     } catch (err: any) {
       setErrorMsg(err?.message || 'Failed to submit review decision.');
@@ -241,6 +250,7 @@ export const ReviewsPage: React.FC = () => {
                   onClick={() => {
                     setSelectedItem(item);
                     setErrorMsg(null);
+                    setAcknowledgedAiDraft(false);
                   }}
                   icon={<CheckSquare className="w-3.5 h-3.5" />}
                 >
@@ -333,6 +343,19 @@ export const ReviewsPage: React.FC = () => {
               </div>
             </div>
 
+            {selectedItem.requires_ai_draft_acknowledgment && (
+              <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+                <input
+                  type="checkbox"
+                  checked={acknowledgedAiDraft}
+                  onChange={(event) => setAcknowledgedAiDraft(event.target.checked)}
+                  className="mt-0.5"
+                  aria-label="Acknowledge AI draft verification"
+                />
+                <span>I reviewed this AI-generated draft against its source transcript and verified its procedures, parameters, and safety details before publishing.</span>
+              </label>
+            )}
+
             <div className="pt-3 border-t border-[#E8EEF5] flex items-center justify-between">
               <Button variant="secondary" size="sm" onClick={() => setSelectedItem(null)}>
                 Cancel
@@ -353,7 +376,7 @@ export const ReviewsPage: React.FC = () => {
                 <Button
                   variant="primary"
                   size="sm"
-                  disabled={actionLoading}
+                  disabled={actionLoading || Boolean(selectedItem.requires_ai_draft_acknowledgment && !acknowledgedAiDraft)}
                   onClick={() => handleDecision('APPROVED')}
                   className="bg-[#15966A] hover:bg-[#12815B] border border-[#15966A] text-white"
                   icon={<CheckCircle className="w-3.5 h-3.5" />}

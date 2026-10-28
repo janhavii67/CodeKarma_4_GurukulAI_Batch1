@@ -19,11 +19,13 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
     Asynchronous background job runner executing the complete voice-to-knowledge pipeline:
     1. Audio Extraction & Normalization (ffmpeg -> 16kHz mono WAV)
     2. Speech-to-Text Transcription (Whisper) -> Timestamped Segments
-    3. Vector Indexing into Knowledge Embeddings store for RAG
-    4. AI Structuring (Claude/Rules) into Candidate SOP Steps
+    3. Store transcript in the existing RAG index as inactive until approval
+    4. AI Structuring through the shared AI orchestrator into Candidate SOP Steps
     5. Draft Snapshot Update with Invariant Governance (origin: ai_draft, needs_review)
     """
     own_session = False
+    stage = "starting"
+    normalized_path: Optional[Path] = None
     if db is None:
         db = SessionLocal()
         own_session = True
@@ -51,8 +53,10 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
             return
 
         # 1. Normalize Audio
+        stage = "audio normalization"
         input_path = Path(media.file_path)
         wav_path = input_path.with_suffix(".16k.wav")
+        normalized_path = wav_path
         extract_audio_wav(input_path, wav_path)
 
         # Update media duration if missing
@@ -64,6 +68,7 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
         db.commit()
 
         # 2. Speech-to-Text Transcription
+        stage = "speech transcription"
         speech_provider = get_speech_provider()
         segments_data = await speech_provider.transcribe(wav_path)
 
@@ -116,7 +121,7 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
         except Exception as e:
             logger.error(f"Vector indexing error for job {job_id}: {e}")
 
-        # 3b. Index transcript chunks into Assistant Knowledge Base (Module 02 RAG)
+        # 3b. Index transcript chunks into Assistant Knowledge Base (inactive until publish)
         try:
             from app.modules.assistant.services.indexing_service import IndexingService
             IndexingService.index_transcript(transcript.id, db=db, title=media.title)
@@ -127,6 +132,7 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
         db.commit()
 
         # 4. AI Structuring into SOP Steps
+        stage = "AI structuring"
         machine_name = media.machine.name if media.machine else None
         structured_draft = await structure_transcript_with_ai(segments=segments_data, machine_name=machine_name)
 
@@ -138,8 +144,33 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
             version = db.get(KnowledgeVersion, job.version_id)
             if version and version.status in ("draft", "changes_requested"):
                 version.origin = "ai_draft"
-                if not version.summary:
-                    version.summary = structured_draft.summary
+                if structured_draft.title:
+                    version.title = structured_draft.title[:256]
+                version.summary = structured_draft.summary or ""
+                version.description = structured_draft.detailed_summary or None
+                version.content = json.dumps({
+                    "overview": structured_draft.summary,
+                    "detailed_summary": structured_draft.detailed_summary,
+                    "key_points": structured_draft.key_points,
+                    "machine": structured_draft.machine or machine_name,
+                    "machine_model": structured_draft.machine_model,
+                    "component_or_tool": structured_draft.component_or_tool,
+                    "operation": structured_draft.operation,
+                    "purpose": structured_draft.purpose,
+                    "materials": structured_draft.materials,
+                    "parameters": structured_draft.parameters,
+                    "quality_checkpoints": structured_draft.quality_checkpoints,
+                    "procedures": structured_draft.procedures,
+                    "troubleshooting": structured_draft.troubleshooting,
+                    "keywords": structured_draft.keywords,
+                    "unclear_segments": structured_draft.unclear_segments,
+                    "source": {"media_id": media.id, "transcript_id": transcript.id},
+                }, ensure_ascii=False)
+                version.safety_warnings = "\n".join(structured_draft.safety_precautions) or None
+                version.common_mistakes = "\n".join(structured_draft.troubleshooting) or None
+                version.operating_conditions = "\n".join(structured_draft.parameters) or None
+                version.prerequisites = "\n".join(structured_draft.materials) or None
+                version.corrective_actions = "\n".join(structured_draft.troubleshooting) or None
 
                 steps_payload = [step.model_dump() for step in structured_draft.steps]
                 version.steps = json.dumps(steps_payload)
@@ -165,10 +196,24 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
             job = db.get(ProcessingJob, job_id)
             if job:
                 job.status = "failed"
-                job.error_safe = "Narration processing failed. You can retry with clearer audio."
+                message = str(e)
+                if "AI structuring" in message:
+                    job.error_safe = message
+                elif stage == "speech transcription" and (
+                    "stt_provider_not_configured" in message or getattr(e, "code", None) == "stt_provider_not_configured"
+                ):
+                    job.error_safe = "Speech-to-text is unavailable: configure STT_PROVIDER and its API credentials, then retry."
+                elif stage == "speech transcription":
+                    job.error_safe = "Speech-to-text failed. Check the recording and configured speech provider, then retry."
+                elif stage == "audio normalization":
+                    job.error_safe = "The recording could not be decoded. Upload a supported audio format and retry."
+                else:
+                    job.error_safe = "Narration processing failed. Check the recording and retry."
                 db.commit()
         except Exception:
             pass
     finally:
+        if normalized_path:
+            normalized_path.unlink(missing_ok=True)
         if own_session:
             db.close()

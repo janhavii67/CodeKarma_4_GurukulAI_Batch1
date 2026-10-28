@@ -144,8 +144,9 @@ class AnswerValidator:
             chunk_all_text = " ".join([c.text for c in retrieved_chunks])
             allowed_numbers = self.extract_numbers_from_text(chunk_all_text)
 
-            # Collect numbers from answer, excluding obvious list numbers (1, 2, 3...)
-            answer_numbers = self.extract_numbers_from_text(sanitized_content)
+            # Collect numbers from answer, excluding citation IDs and obvious list numbers (1, 2, 3...)
+            text_without_citations = self.CITATION_REGEX.sub("", sanitized_content)
+            answer_numbers = self.extract_numbers_from_text(text_without_citations)
             step_numbers = self.extract_numbered_steps(sanitized_content)
 
             # Check each number
@@ -177,9 +178,9 @@ class AnswerValidator:
             EVIDENCE_STATUS_CLARIFICATION_NEEDED,
         }:
             evidence_status = declared_evidence_status
-        elif not valid_citations and len(retrieved_chunks) > 0 and not hallucinated_numbers:
-            # Grounded chunks available but model cited none - fallback to sufficient if plausible or warning
-            evidence_status = EVIDENCE_STATUS_SUFFICIENT
+        elif not valid_citations:
+            warnings.append("Answer contains no valid citations from the retrieved technical context.")
+            evidence_status = EVIDENCE_STATUS_INSUFFICIENT
         else:
             evidence_status = EVIDENCE_STATUS_SUFFICIENT
 

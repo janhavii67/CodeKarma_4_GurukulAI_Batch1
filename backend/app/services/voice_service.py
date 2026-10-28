@@ -1,6 +1,8 @@
+import hashlib
 import json
 from pathlib import Path
 from typing import Optional, Tuple, List
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.models.media import MediaAsset
@@ -25,6 +27,7 @@ def create_voice_capture_job(
     title: Optional[str] = None,
     machine_id: Optional[str] = None,
     version_id: Optional[str] = None,
+    content_sha256: Optional[str] = None,
 ) -> Tuple[MediaAsset, ProcessingJob]:
     """
     Creates media asset record, validates duration <= 5 minutes,
@@ -49,7 +52,24 @@ def create_voice_capture_job(
             raise NotFoundError(code="version_not_found", message=f"Knowledge version '{version_id}' not found.")
         if version.status not in ("draft", "changes_requested"):
             raise ForbiddenError(code="version_not_editable", message="Voice can only be attached to editable drafts.")
-    else:
+
+    idempotency_key = f"voice:{media_idempotency_digest(user_id, version_id, content_sha256)}" if content_sha256 else None
+    if idempotency_key:
+        existing_job = db.query(ProcessingJob).filter_by(idempotency_key=idempotency_key).first()
+        existing_media = db.get(MediaAsset, existing_job.media_id) if existing_job and existing_job.media_id else None
+        if existing_job and existing_media:
+            if not Path(existing_media.file_path).exists():
+                existing_media.file_path = str(audio_path.resolve())
+                existing_media.size_bytes = size_bytes
+                existing_job.status = "queued"
+                existing_job.progress = 0
+                existing_job.error_safe = None
+                db.commit()
+                db.refresh(existing_media)
+                db.refresh(existing_job)
+            return existing_media, existing_job
+
+    if not version_id:
         # Auto-create draft KnowledgeItem and KnowledgeVersion for standalone voice narrations
         from app.repositories.knowledge_repository import KnowledgeRepository
         draft_title = title or (f"Voice SOP - {original_name}" if original_name else "Expert Voice Narration SOP")
@@ -81,18 +101,26 @@ def create_voice_capture_job(
     db.flush()
 
     # 2. Idempotent ProcessingJob
-    idempotency_key = f"voice:{media.id}"
     job = ProcessingJob(
         type="voice_to_knowledge",
         media_id=media.id,
         version_id=version_id,
         status="queued",
         progress=0,
-        idempotency_key=idempotency_key,
+        idempotency_key=idempotency_key or f"voice:{media.id}",
         created_by=user_id,
     )
     db.add(job)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if idempotency_key:
+            existing_job = db.query(ProcessingJob).filter_by(idempotency_key=idempotency_key).first()
+            existing_media = db.get(MediaAsset, existing_job.media_id) if existing_job and existing_job.media_id else None
+            if existing_job and existing_media:
+                return existing_media, existing_job
+        raise
     db.refresh(media)
     db.refresh(job)
 
@@ -109,6 +137,12 @@ def create_voice_capture_job(
         commit=True,
     )
     return media, job
+
+
+def media_idempotency_digest(user_id: str, version_id: Optional[str], content_sha256: str) -> str:
+    """Scope a content digest to its uploader and target draft, keeping the DB key short."""
+    scope = f"{user_id}:{version_id or 'standalone'}:{content_sha256.lower()}"
+    return "v2:" + hashlib.sha256(scope.encode("utf-8")).hexdigest()
 
 
 def retry_voice_job(db: Session, job_id: str, user_id: str) -> ProcessingJob:

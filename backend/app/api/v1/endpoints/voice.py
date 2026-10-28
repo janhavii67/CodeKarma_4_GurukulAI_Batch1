@@ -1,13 +1,12 @@
+import hashlib
 import json
-import os
-import shutil
 import uuid
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, Depends, UploadFile, File, Form, BackgroundTasks, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
 from app.db.session import get_db
 from app.core.config import settings
 from app.core.permissions import (
@@ -15,7 +14,7 @@ from app.core.permissions import (
     require_permission,
     AuthenticatedContext,
     PERM_KNOWLEDGE_CREATE,
-    PERM_KNOWLEDGE_VIEW_PUBLISHED,
+    PERM_KNOWLEDGE_APPROVE,
 )
 from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError
 from app.models.media import MediaAsset
@@ -45,6 +44,45 @@ from app.services.vector_service import search_vector_knowledge
 
 router = APIRouter(prefix="/voice", tags=["Voice to Knowledge & RAG"])
 
+ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".oga", ".webm", ".mp4"}
+ALLOWED_AUDIO_MIME_TYPES = {
+    "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a",
+    "audio/aac", "audio/ogg", "audio/webm", "video/mp4", "application/octet-stream",
+}
+
+
+async def _store_validated_audio(file: UploadFile, target_path: Path) -> int:
+    original_name = Path(file.filename or "recording.webm").name
+    extension = Path(original_name).suffix.lower()
+    mime_type = (file.content_type or "application/octet-stream").lower().split(";")[0].strip()
+    if extension not in ALLOWED_AUDIO_EXTENSIONS or mime_type not in ALLOWED_AUDIO_MIME_TYPES:
+        raise ValidationError(code="unsupported_audio_type", message="Upload an audio recording in WAV, MP3, M4A, AAC, OGG, WebM, or MP4 format.")
+
+    limit = max(1, int(settings.MAX_UPLOAD_BYTES))
+    size = 0
+    try:
+        with target_path.open("wb") as output:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > limit:
+                    raise ValidationError(code="upload_too_large", message=f"Audio recording exceeds the {limit // (1024 * 1024)} MB upload limit.")
+                output.write(chunk)
+    except Exception:
+        target_path.unlink(missing_ok=True)
+        raise
+    if size == 0:
+        target_path.unlink(missing_ok=True)
+        raise ValidationError(code="empty_upload", message="The uploaded audio file is empty.")
+    return size
+
+
+def _sha256_file(file_path: Path) -> str:
+    digest = hashlib.sha256()
+    with file_path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
 
 @router.post("/upload", response_model=VoiceUploadResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_voice_narration(
@@ -60,34 +98,50 @@ async def upload_voice_narration(
     Upload an expert voice narration audio/video recording.
     Stores media asset, indexes into vector store for RAG, and launches background transcription.
     """
+    if version_id:
+        version = db.get(KnowledgeVersion, version_id)
+        if not version:
+            raise NotFoundError(code="version_not_found", message=f"KnowledgeVersion '{version_id}' not found.")
+        if version.created_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+            raise ForbiddenError(code="not_author", message="Only the draft author or an admin can attach a recording.")
+        if version.status not in ("draft", "changes_requested"):
+            raise ForbiddenError(code="version_not_editable", message="Recordings can only be attached to editable drafts.")
+        existing_media_count = db.query(MediaAsset).filter(MediaAsset.version_id == version_id).count()
+        if existing_media_count >= settings.MAX_MEDIA_PER_VERSION:
+            raise ValidationError(code="media_limit_exceeded", message="This knowledge version has reached its media attachment limit.")
+
     media_dir = Path(settings.MEDIA_DIR)
     media_dir.mkdir(parents=True, exist_ok=True)
 
-    file_extension = Path(file.filename or "recording.webm").suffix or ".webm"
+    file_extension = Path(file.filename or "recording.webm").suffix.lower() or ".webm"
     stored_filename = f"voice_{auth_ctx.user.id}_{uuid.uuid4().hex}{file_extension}"
     target_path = media_dir / stored_filename
 
-    # Save uploaded file to disk
-    with open(target_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    file_size = await _store_validated_audio(file, target_path)
+    mime_type = (file.content_type or "application/octet-stream").lower().split(";")[0].strip()
+    try:
+        media, job = create_voice_capture_job(
+            db=db,
+            user_id=auth_ctx.user.id,
+            file_path=str(target_path),
+            original_name=Path(file.filename or "recording.webm").name,
+            mime_type=mime_type,
+            size_bytes=file_size,
+            title=title,
+            machine_id=machine_id,
+            version_id=version_id,
+            content_sha256=_sha256_file(target_path),
+        )
+    except Exception:
+        target_path.unlink(missing_ok=True)
+        raise
 
-    file_size = target_path.stat().st_size
-    mime_type = file.content_type or "audio/webm"
-
-    media, job = create_voice_capture_job(
-        db=db,
-        user_id=auth_ctx.user.id,
-        file_path=str(target_path),
-        original_name=file.filename or "recording.webm",
-        mime_type=mime_type,
-        size_bytes=file_size,
-        title=title,
-        machine_id=machine_id,
-        version_id=version_id,
-    )
-
-    # Queue async processing pipeline in background
-    background_tasks.add_task(execute_voice_processing_job, job.id)
+    # A byte-identical re-upload reuses its original media/job and doesn't enqueue work twice.
+    is_duplicate = Path(media.file_path).resolve() != target_path.resolve()
+    if is_duplicate:
+        target_path.unlink(missing_ok=True)
+    else:
+        background_tasks.add_task(execute_voice_processing_job, job.id)
 
     return VoiceUploadResponse(
         media=MediaAssetResponse.model_validate(media),
@@ -140,8 +194,12 @@ def list_voice_assets(
     if machine_id:
         query = query.filter(MediaAsset.machine_id == machine_id)
 
-    # Experts only see their own recordings unless Admin
-    if auth_ctx.user.role_id != "ADMIN":
+    # Reviewers can inspect recordings attached to submissions awaiting approval.
+    if auth_ctx.user.role_id != "ADMIN" and PERM_KNOWLEDGE_APPROVE in auth_ctx.permissions:
+        query = query.outerjoin(KnowledgeVersion, MediaAsset.version_id == KnowledgeVersion.id).filter(
+            or_(MediaAsset.uploaded_by == auth_ctx.user.id, KnowledgeVersion.status == "in_review")
+        ).distinct()
+    elif auth_ctx.user.role_id != "ADMIN":
         query = query.filter(MediaAsset.uploaded_by == auth_ctx.user.id)
 
     assets = query.order_by(desc(MediaAsset.created_at)).all()
@@ -173,7 +231,7 @@ def get_voice_asset(
     if auth_ctx.user.role_id == "TRAINEE":
         raise ForbiddenError(code="trainee_draft_forbidden", message="Trainees cannot access unapproved draft procedures.")
 
-    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN" and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
         raise ForbiddenError(code="not_author", message="You do not have access to this voice recording.")
 
     return media
@@ -194,7 +252,7 @@ def get_media_transcript(
     if auth_ctx.user.role_id == "TRAINEE":
         raise ForbiddenError(code="trainee_draft_forbidden", message="Trainees cannot access unapproved draft procedures.")
 
-    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN" and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
         raise ForbiddenError(code="not_author", message="You do not have access to this voice recording.")
 
     transcript = (
@@ -223,19 +281,23 @@ def get_media_steps(
     if auth_ctx.user.role_id == "TRAINEE":
         raise ForbiddenError(code="trainee_draft_forbidden", message="Trainees cannot access unapproved draft procedures.")
 
-    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN" and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
         raise ForbiddenError(code="not_author", message="You do not have access to this voice recording.")
 
     steps: List[dict] = []
     origin = "ai_draft"
     unclear: List[int] = []
     item_id = None
+    summary = None
+    detailed_summary = None
 
     if media.version_id:
         version = db.get(KnowledgeVersion, media.version_id)
         if version:
             origin = version.origin or "ai_draft"
             item_id = version.item_id
+            summary = version.summary
+            detailed_summary = version.description
             if version.steps:
                 steps = json.loads(version.steps) if isinstance(version.steps, str) else version.steps
 
@@ -253,6 +315,8 @@ def get_media_steps(
         media_id=media.id,
         version_id=media.version_id,
         item_id=item_id,
+        summary=summary,
+        detailed_summary=detailed_summary,
         origin=origin,
         steps=steps,
         unclear_segments=list(set(unclear)),
@@ -281,7 +345,7 @@ def verify_candidate_step(
     if auth_ctx.user.role_id == "TRAINEE":
         raise ForbiddenError(code="trainee_edit_forbidden", message="Trainees cannot edit drafts.")
 
-    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN" and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
         raise ForbiddenError(code="not_author", message="Only the author or admin can verify draft steps.")
 
     if not media.version_id:
@@ -324,6 +388,8 @@ def verify_candidate_step(
         media_id=media.id,
         version_id=version.id,
         item_id=version.item_id,
+        summary=version.summary,
+        detailed_summary=version.description,
         origin=version.origin,
         steps=steps,
         unclear_segments=list(set(unclear)),
@@ -347,6 +413,9 @@ async def create_draft_from_voice_asset(
     media = db.get(MediaAsset, media_id)
     if not media:
         raise NotFoundError(code="media_not_found", message=f"Media asset '{media_id}' not found.")
+
+    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+        raise ForbiddenError(code="not_author", message="Only the recording owner or an admin can create a knowledge draft from this recording.")
 
     from app.repositories.knowledge_repository import KnowledgeRepository
     from app.services.structuring_service import structure_transcript_with_ai
@@ -420,6 +489,9 @@ def get_voice_job(
     job = db.get(ProcessingJob, job_id)
     if not job:
         raise NotFoundError(code="job_not_found", message=f"Processing job '{job_id}' not found.")
+    media = db.get(MediaAsset, job.media_id) if job.media_id else None
+    if auth_ctx.user.role_id != "ADMIN" and (not media or media.uploaded_by != auth_ctx.user.id):
+        raise ForbiddenError(code="not_author", message="You do not have access to this voice processing job.")
     return job
 
 
@@ -440,6 +512,13 @@ def get_version_transcript(
     )
     if not transcript:
         raise NotFoundError(code="transcript_not_found", message=f"No transcript found for version '{version_id}'.")
+
+    media = db.get(MediaAsset, transcript.media_id) if transcript.media_id else None
+    version = db.get(KnowledgeVersion, version_id)
+    if auth_ctx.user.role_id == "TRAINEE" and (not version or version.status != "published"):
+        raise ForbiddenError(code="trainee_draft_forbidden", message="Trainees cannot access unapproved transcripts.")
+    if auth_ctx.user.role_id != "ADMIN" and (not media or media.uploaded_by != auth_ctx.user.id) and (not version or version.status != "published"):
+        raise ForbiddenError(code="not_author", message="You do not have access to this transcript.")
 
     return transcript
 
@@ -485,6 +564,22 @@ def search_voice_knowledge_vector(
         source_type=payload.source_type,
     )
 
+    visible_results = []
+    for result in results:
+        media = db.get(MediaAsset, result.media_id) if result.media_id else None
+        if not media and result.source_type == "voice_segment":
+            segment = db.get(TranscriptSegment, result.source_id)
+            media = segment.transcript.media if segment and segment.transcript else None
+        version = db.get(KnowledgeVersion, result.version_id) if result.version_id else None
+        if not version and media and media.version_id:
+            version = db.get(KnowledgeVersion, media.version_id)
+        is_owner = bool(media and media.uploaded_by == auth_ctx.user.id)
+        is_published = bool(version and version.status == "published")
+        # Legacy standalone vector rows without an associated recording are not
+        # draft media records and remain searchable for backward compatibility.
+        if auth_ctx.user.role_id == "ADMIN" or is_owner or is_published or not media:
+            visible_results.append(result)
+
     items = [
         VectorSearchItemResponse(
             id=r.id,
@@ -501,7 +596,7 @@ def search_voice_knowledge_vector(
             end_s=r.end_s,
             metadata=r.metadata,
         )
-        for r in results
+        for r in visible_results
     ]
 
     return VectorSearchResponse(
@@ -514,6 +609,7 @@ def search_voice_knowledge_vector(
 @router.get("/stream/{media_id}")
 def stream_voice_audio(
     media_id: str,
+    auth_ctx: AuthenticatedContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
@@ -522,6 +618,11 @@ def stream_voice_audio(
     media = db.get(MediaAsset, media_id)
     if not media:
         raise NotFoundError(code="media_not_found", message="Media asset not found.")
+    version = db.get(KnowledgeVersion, media.version_id) if media.version_id else None
+    if auth_ctx.user.role_id == "TRAINEE" and (not version or version.status != "published"):
+        raise ForbiddenError(code="trainee_draft_forbidden", message="Trainees cannot access unapproved recordings.")
+    if auth_ctx.user.role_id != "ADMIN" and media.uploaded_by != auth_ctx.user.id and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions and (not version or version.status != "published"):
+        raise ForbiddenError(code="not_author", message="You do not have access to this recording.")
 
     target_path = None
     media_root = Path(settings.MEDIA_ROOT).resolve()

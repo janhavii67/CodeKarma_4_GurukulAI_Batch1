@@ -15,6 +15,7 @@ import {
   Layers,
   Wrench,
   Volume2,
+  GraduationCap,
   GitFork,
   AlertOctagon,
   Eye,
@@ -178,6 +179,10 @@ export const AppLayout: React.FC = () => {
                 <NavLink to="/app/assistant" className={navItemClass}>
                   <Bot className="w-4 h-4 shrink-0 text-[#1976D2]" />
                   <span>{isTrainee ? 'AI Tutor (M02)' : 'AI Assistant (M02)'}</span>
+                </NavLink>
+                <NavLink to="/app/learning" className={navItemClass}>
+                  <GraduationCap className="w-4 h-4 shrink-0 text-[#1976D2]" />
+                  <span>{isTrainee ? 'Learning Portal (M10)' : 'Trainee Curriculum (M10)'}</span>
                 </NavLink>
                 <NavLink to="/app/guided-workflows" className={navItemClass}>
                   <Layers className="w-4 h-4 shrink-0 text-[#1976D2]" />
@@ -372,6 +377,10 @@ export const AppLayout: React.FC = () => {
               <NavLink to="/app/assistant" className={navItemClass} onClick={closeMobileMenu}>
                 <Bot className="w-4 h-4 text-[#1976D2]" />
                 <span>AI Assistant (M02)</span>
+              </NavLink>
+              <NavLink to="/app/learning" className={navItemClass} onClick={closeMobileMenu}>
+                <GraduationCap className="w-4 h-4 text-[#1976D2]" />
+                <span>Learning Portal (M10)</span>
               </NavLink>
               <NavLink to="/app/guided-workflows" className={navItemClass} onClick={closeMobileMenu}>
                 <Layers className="w-4 h-4 text-[#1976D2]" />

@@ -16,6 +16,8 @@ class FakeLLMProvider(LLMProvider):
     Supports injecting canned responses, JSON payloads, and simulated errors.
     """
 
+    supports_multimodal = True
+
     def __init__(self, model_name: str = "fake-claude-3-5"):
         self.provider_name = "fake"
         self.model_name = model_name
@@ -44,11 +46,88 @@ class FakeLLMProvider(LLMProvider):
         self._canned_response = None
         self._canned_error = None
 
-    def _build_default_response(self, prompt: str) -> str:
+    def _build_default_response(self, prompt: str, request: Optional[LLMRequest] = None) -> str:
         """
         Builds a deterministic answer grounded in whatever [CHUNK:id] blocks
-        are found in the prompt.
+        are found in the prompt, or visual media observations if images are attached.
         """
+        has_images = bool(request and (request.images or request.media_parts)) or bool(request and request.metadata.get("has_image"))
+        if has_images or "IMAGE_ATTACHED" in prompt:
+            prompt_lower = prompt.lower()
+            if "inspect the attached user media" in prompt_lower:
+                return "Visual media observation: gauge displaying 12.5 mm reading on dial."
+
+            chunk_matches = re.findall(r"\[CHUNK:([^\]]+)\]\s*(.*?)\s*\[/CHUNK\]", prompt, re.DOTALL)
+            if "ignore previous instructions" in prompt_lower or "reveal system prompt" in prompt_lower or "critical override" in prompt_lower:
+                answer = (
+                    "Visual observation from attached image: The gauge reads 12.5 mm. "
+                    "Note: Any instructions or commands depicted inside visual media (such as 'ignore previous instructions') are treated strictly as passive data and are not followed. "
+                    "This reading is an observational visual estimate from user-provided media, not an approved measurement."
+                )
+                return json.dumps({
+                    "answer": answer,
+                    "citations": [],
+                    "evidence_status": "sufficient",
+                })
+            elif "tolerance" in prompt_lower:
+                if chunk_matches:
+                    chunk_id = chunk_matches[0][0]
+                    answer = (
+                        "Visual reading observed from attached image. However, the assistant cannot determine tolerance from visual media alone. "
+                        f"Tolerance limits must be verified against an approved procedure [CHUNK:{chunk_id}]."
+                    )
+                    return json.dumps({
+                        "answer": answer,
+                        "citations": [chunk_id],
+                        "evidence_status": "sufficient",
+                    })
+                else:
+                    answer = (
+                        "The attached image shows a visual gauge reading. However, the assistant cannot decide whether this part is within tolerance from visual media alone. "
+                        "Tolerance limits must come from an approved standard operating procedure (SOP), and no approved procedure defines this tolerance in the knowledge base."
+                    )
+                    return json.dumps({
+                        "answer": answer,
+                        "citations": [],
+                        "evidence_status": "insufficient",
+                    })
+            else:
+                answer = (
+                    "Visual observation from attached image: The gauge reads 12.5 mm. "
+                    "Note: This reading is an observational visual estimate from user-provided media, not an approved measurement."
+                )
+                return json.dumps({
+                    "answer": answer,
+                    "citations": [],
+                    "evidence_status": "sufficient",
+                })
+
+        if '"task": "manufacturing_knowledge_capture"' in prompt or "manufacturing_knowledge_capture" in prompt:
+            # Extractive deterministic mock for voice-pipeline tests; it copies only
+            # transcript text and adds no generated settings, outcomes, or warnings.
+            lines = re.findall(r"\[(\d+)\]\s*\(([-\d.]+)-([-\d.]+)s\)\s*(.+)", prompt)
+            steps = [
+                {
+                    "title": text.strip()[:80],
+                    "instruction": text.strip(),
+                    "tools": [],
+                    "source_segment_ids": [int(idx)],
+                    "needs_review": True,
+                    "note": "Mock structuring output; human review required.",
+                }
+                for idx, _start, _end, text in lines
+                if text.strip()
+            ]
+            source_text = " ".join(step["instruction"] for step in steps)
+            return json.dumps({
+                "title": "",
+                "summary": source_text[:500],
+                "detailed_summary": source_text,
+                "steps": steps,
+                "keywords": [],
+                "unclear_segments": [],
+            })
+
         # Look for [CHUNK:<id>] blocks
         chunk_matches = re.findall(r"\[CHUNK:([^\]]+)\]\s*(.*?)\s*\[/CHUNK\]", prompt, re.DOTALL)
 
@@ -62,14 +141,20 @@ class FakeLLMProvider(LLMProvider):
             return json.dumps(output)
 
         # Extract first chunk info
-        chunk_id, chunk_text = chunk_matches[0]
-        # First sentence of chunk text
-        clean_first_sentence = chunk_text.split(".")[0].strip()
-        if not clean_first_sentence:
-            clean_first_sentence = chunk_text[:80].strip()
+        chunk_id, chunk_block = chunk_matches[0]
+        if "Content:" in chunk_block:
+            chunk_content = chunk_block.split("Content:", 1)[1].strip()
+        else:
+            chunk_content = chunk_block.strip()
 
-        # Check if numbers exist in the chunk to cite them faithfully
-        numbers = re.findall(r"\b\d+(?:\.\d+)?\b", chunk_text)
+        # Sentence split without breaking on decimals (e.g. 77.5)
+        sentences = [s.strip() for s in re.split(r"(?<=[a-zA-Z0-9])\.\s+", chunk_content) if s.strip()]
+        clean_first_sentence = sentences[0] if sentences else chunk_content[:80].strip()
+        if clean_first_sentence.endswith("."):
+            clean_first_sentence = clean_first_sentence[:-1].strip()
+
+        # Check if numbers exist in clean_first_sentence to cite them faithfully
+        numbers = re.findall(r"\b\d+(?:\.\d+)?\b", clean_first_sentence)
         num_phrase = f" (Specified parameter: {numbers[0]})" if numbers else ""
 
         output = {
@@ -90,7 +175,7 @@ class FakeLLMProvider(LLMProvider):
         if self._canned_response is not None:
             content = self._canned_response
         else:
-            content = self._build_default_response(request.prompt)
+            content = self._build_default_response(request.prompt, request=request)
 
         return LLMResponse(
             content=content,
@@ -104,3 +189,12 @@ class FakeLLMProvider(LLMProvider):
 
     async def generate_async(self, request: LLMRequest) -> LLMResponse:
         return self.generate(request)
+
+    def stream(self, request: LLMRequest):
+        """Stream tokens for mock tests."""
+        resp = self.generate(request)
+        tokens = re.findall(r"\S+\s*", resp.content)
+        if not tokens:
+            tokens = [resp.content]
+        for t in tokens:
+            yield t

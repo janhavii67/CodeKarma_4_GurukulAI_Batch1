@@ -138,6 +138,17 @@ npm run dev
 
 Open `http://localhost:5173` in your browser.
 
+#### 3. Ingest the local knowledge base for the AI Assistant
+
+Set `GEMINI_API_KEY` in the backend environment file (the key is read by backend settings and is never sent to the frontend). From the repository root, run:
+
+```bash
+cd backend
+python -m app.modules.assistant.ingest --path "../Knowledge Base"
+```
+
+The command reports each file name and its chunk count. Re-run it after adding or changing documents; unchanged files are skipped by content hash. PDF, DOCX, TXT, Markdown, and CSV files are supported. Ingestion publishes these folder documents by default (`INGEST_AS_PUBLISHED=true`); set it to `false` to ingest them as drafts. The Expert-only `POST /api/v1/assistant/ingest` endpoint can run the same ingestion against a server-local folder.
+
 ---
 
 ## 4. Pre-Configured Demo Seed Accounts

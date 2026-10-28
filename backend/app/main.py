@@ -34,7 +34,7 @@ app.add_middleware(
 @app.middleware("http")
 async def payload_size_limit_middleware(request: Request, call_next):
     """Enforces body-size limits before and during multipart parsing."""
-    if request.method == "POST" and "/media" in request.url.path:
+    if request.method == "POST" and ("/media" in request.url.path or "/audio/" in request.url.path):
         content_length_header = request.headers.get("content-length")
         if content_length_header:
             try:

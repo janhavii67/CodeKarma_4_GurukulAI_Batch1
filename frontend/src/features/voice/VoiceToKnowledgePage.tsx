@@ -36,6 +36,8 @@ export const VoiceToKnowledgePage: React.FC = () => {
   const [currentSteps, setCurrentSteps] = useState<StepDraft[]>([]);
   const [stepsMeta, setStepsMeta] = useState<{
     itemId?: string;
+    summary?: string;
+    detailedSummary?: string;
     origin?: string;
     flaggedCount?: number;
     canSubmit?: boolean;
@@ -73,26 +75,25 @@ export const VoiceToKnowledgePage: React.FC = () => {
     setIsLoadingReview(true);
     try {
       const [tData, stepsData] = await Promise.all([
-        getMediaTranscript(asset.id).catch(() =>
-          asset.version_id ? getVersionTranscript(asset.version_id) : null
-        ),
+        getMediaTranscript(asset.id).then((t) => t || (asset.version_id ? getVersionTranscript(asset.version_id) : null)),
         getMediaSteps(asset.id).catch(() => null),
       ]);
-      if (tData) {
-        setCurrentTranscript(tData);
-      }
+      setCurrentTranscript(tData || null);
       if (stepsData) {
-        if (stepsData.steps) {
-          setCurrentSteps(stepsData.steps);
-        }
+        setCurrentSteps(stepsData.steps || []);
         setStepsMeta({
           itemId: stepsData.item_id,
+          summary: stepsData.summary,
+          detailedSummary: stepsData.detailed_summary,
           origin: stepsData.origin,
           flaggedCount: stepsData.flagged_count,
           canSubmit: stepsData.can_submit,
           isDemo: stepsData.is_demo,
           submissionGateStatus: stepsData.submission_gate_status,
         });
+      } else {
+        setCurrentSteps([]);
+        setStepsMeta({});
       }
       setActiveTab('review');
     } catch (err) {
@@ -108,16 +109,16 @@ export const VoiceToKnowledgePage: React.FC = () => {
     if (targetMediaId) {
       try {
         const [tData, stepsData] = await Promise.all([
-          getMediaTranscript(targetMediaId).catch(() =>
-            finishedJob.version_id ? getVersionTranscript(finishedJob.version_id) : null
-          ),
+          getMediaTranscript(targetMediaId).then((t) => t || (finishedJob.version_id ? getVersionTranscript(finishedJob.version_id) : null)),
           getMediaSteps(targetMediaId).catch(() => null),
         ]);
         if (tData) setCurrentTranscript(tData);
         if (stepsData) {
-          if (stepsData.steps) setCurrentSteps(stepsData.steps);
+          setCurrentSteps(stepsData.steps || []);
           setStepsMeta({
             itemId: stepsData.item_id,
+            summary: stepsData.summary,
+            detailedSummary: stepsData.detailed_summary,
             origin: stepsData.origin,
             flaggedCount: stepsData.flagged_count,
             canSubmit: stepsData.can_submit,
@@ -185,7 +186,7 @@ export const VoiceToKnowledgePage: React.FC = () => {
           <p className="text-[#5D7188] leading-relaxed">
             1. Every audio narration is strictly transcribed with timestamped segments.
             2. Unknown equipment parameters and tolerances are explicitly flagged (<code className="text-[#D98B13] font-semibold">needs_review: true</code>) with zero tolerance for hallucinations.
-            3. All spoken knowledge is vector-embedded into the knowledge database for grounded RAG query retrieval.
+            3. Recordings and transcripts stay in review until an authorized reviewer publishes the knowledge. Draft content is excluded from operational assistant answers.
           </p>
         </div>
       </div>
@@ -290,7 +291,7 @@ export const VoiceToKnowledgePage: React.FC = () => {
 
                     <div className="flex items-center justify-between text-[10px] text-[#5D7188] font-mono pt-1">
                       <span>{new Date(asset.created_at).toLocaleDateString()}</span>
-                      <span className="text-[#1976D2] font-semibold">Indexed in RAG</span>
+                      <span className="text-[#1976D2] font-semibold">Available after approval</span>
                     </div>
 
                     <div className="pt-2 border-t border-slate-800/80">
@@ -321,6 +322,14 @@ export const VoiceToKnowledgePage: React.FC = () => {
             </div>
           ) : currentTranscript && activeMediaId ? (
             <>
+              {stepsMeta.summary && (
+                <section className="bg-white border border-[#DCE6F0] rounded-2xl p-5 shadow-xs space-y-2">
+                  <h2 className="text-sm font-bold text-[#17324D]">AI draft overview</h2>
+                  <p className="text-sm text-[#40566D]">{stepsMeta.summary}</p>
+                  {stepsMeta.detailedSummary && <p className="text-xs leading-relaxed text-[#5D7188]">{stepsMeta.detailedSummary}</p>}
+                  <p className="text-[11px] text-amber-700">Verify every detail against the recording and transcript before submitting for approval.</p>
+                </section>
+              )}
               <TranscriptEditor
                 transcript={currentTranscript}
                 mediaId={activeMediaId}

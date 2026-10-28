@@ -251,6 +251,7 @@ export const KnowledgeEditorPage: React.FC = () => {
 
   // Reviewer Decision State (Module 06)
   const [reviewComments, setReviewComments] = useState('');
+  const [acknowledgedAiDraft, setAcknowledgedAiDraft] = useState(false);
   const [reviewActionLoading, setReviewActionLoading] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
@@ -267,11 +268,18 @@ export const KnowledgeEditorPage: React.FC = () => {
       return;
     }
 
+    const isAiGeneratedDraft = ['ai_draft', 'ai_draft_edited'].includes(data?.version?.origin || '');
+    if (decision === 'APPROVED' && isAiGeneratedDraft && !acknowledgedAiDraft) {
+      setReviewError('Acknowledge that you checked the AI draft against its source before publishing.');
+      return;
+    }
+
     setReviewActionLoading(true);
     try {
       await api.post(`/reviews/${id}/decision`, {
         decision,
         comments: reviewComments.trim() || undefined,
+        acknowledged_ai_draft: decision === 'APPROVED' && acknowledgedAiDraft,
       });
       setReviewSuccess(
         decision === 'APPROVED'
@@ -279,6 +287,7 @@ export const KnowledgeEditorPage: React.FC = () => {
           : 'Draft returned to author with requested modifications.'
       );
       setReviewComments('');
+      setAcknowledgedAiDraft(false);
       await queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
     } catch (err: any) {
       setReviewError(err?.message || 'Failed to submit review decision.');
@@ -308,6 +317,7 @@ export const KnowledgeEditorPage: React.FC = () => {
     setSaveStatus('idle');
     setSaveError(null);
     setSubmitError(null);
+    setAcknowledgedAiDraft(false);
   }, [data]);
 
   // Handle new creation submission
@@ -636,6 +646,19 @@ export const KnowledgeEditorPage: React.FC = () => {
           isApprovingReview={reviewActionLoading}
         />
 
+        {v.status === 'in_review' && ['ai_draft', 'ai_draft_edited'].includes(v.origin || '') && (
+          <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+            <input
+              type="checkbox"
+              checked={acknowledgedAiDraft}
+              onChange={(event) => setAcknowledgedAiDraft(event.target.checked)}
+              className="mt-0.5"
+              aria-label="Acknowledge AI draft verification"
+            />
+            <span>I reviewed this AI-generated draft against its source transcript and verified its procedures, parameters, and safety details before publishing.</span>
+          </label>
+        )}
+
         {/* Role Perspective Banners */}
         {user?.role_id === 'TRAINEE' && (
           <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between gap-3 shadow-xs">
@@ -805,7 +828,7 @@ export const KnowledgeEditorPage: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      disabled={reviewActionLoading}
+                      disabled={reviewActionLoading || (['ai_draft', 'ai_draft_edited'].includes(v.origin || '') && !acknowledgedAiDraft)}
                       onClick={() => handleReviewDecision('APPROVED')}
                       className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-xs font-extrabold shadow-sm transition-all disabled:opacity-50 flex items-center gap-2"
                     >

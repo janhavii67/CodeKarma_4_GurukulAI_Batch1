@@ -55,6 +55,8 @@ def test_chunk_eligibility_lifecycle(db_session: Session):
     )
     db_session.add(v1)
     db_session.commit()
+    item.current_published_version_id = v1.id
+    db_session.commit()
 
     src1 = KnowledgeSource(
         source_type=SOURCE_TYPE_KNOWLEDGE_VERSION,
@@ -78,6 +80,13 @@ def test_chunk_eligibility_lifecycle(db_session: Session):
     # Case A: Published and active -> Eligible
     assert eligibility.is_chunk_eligible(chunk1.id, user.id, db_session) is True
     assert eligibility.is_source_eligible(src1.id, user.id, db_session) is True
+
+    item.current_published_version_id = None
+    db_session.commit()
+    assert eligibility.is_chunk_eligible(chunk1.id, user.id, db_session) is False
+    assert eligibility.is_source_eligible(src1.id, user.id, db_session) is False
+    item.current_published_version_id = v1.id
+    db_session.commit()
 
     # Case B: Chunk marked inactive -> Ineligible
     chunk1.is_active = False
@@ -213,6 +222,7 @@ def test_sql_filter_inside_retrieval_query(db_session: Session):
         select(KnowledgeChunk)
         .join(KnowledgeSource, KnowledgeChunk.source_id == KnowledgeSource.id)
         .outerjoin(KnowledgeVersion, KnowledgeSource.knowledge_version_id == KnowledgeVersion.id)
+        .outerjoin(KnowledgeItem, KnowledgeItem.id == KnowledgeVersion.item_id)
         .where(*filters)
     )
     results = db_session.execute(query).scalars().all()

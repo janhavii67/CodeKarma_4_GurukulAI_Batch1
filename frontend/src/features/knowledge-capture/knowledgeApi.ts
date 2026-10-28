@@ -60,8 +60,8 @@ export async function createKnowledge(
 export async function updateKnowledge(
   itemId: string,
   payload: KnowledgeUpdateRequest
-): Promise<KnowledgeVersion> {
-  return api.patch<KnowledgeVersion>(`/knowledge/${itemId}`, payload);
+): Promise<KnowledgeItemDetail> {
+  return api.patch<KnowledgeItemDetail>(`/knowledge/${itemId}`, payload);
 }
 
 // ─── Versions ─────────────────────────────────────────────────────────────────

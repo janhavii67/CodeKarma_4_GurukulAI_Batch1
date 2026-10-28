@@ -644,54 +644,10 @@ def seed_database(db: Session) -> None:
         db.add_all([e1, e2, e3, e4])
         db.commit()
 
-    # 10. Seed Audio Reference Recordings
-    audio_refs = [
-        {
-            "id": "audio-spindle-normal",
-            "title": "HAAS VF-2 Normal Spindle Idle (6,000 RPM)",
-            "machine_id": "mach-haas-vf2",
-            "file_path": "audio/references/spindle_normal_6000rpm.wav",
-            "duration_seconds": 12.5,
-            "sample_rate": 22050,
-            "fault_label": "Normal Operation",
-            "is_expert_verified": True,
-            "operating_conditions": "No cut, warm spindle, 6,000 RPM, clean way lube",
-            "features_json": json.dumps({"centroid": 1420.5, "bandwidth": 1850.2, "rms": 0.045, "zcr": 0.068}),
-            "uploaded_by": expert_a.id,
-        },
-        {
-            "id": "audio-bearing-defect",
-            "title": "Spindle Bearing Fluting & High-Pitch Whine Fault",
-            "machine_id": "mach-haas-vf2",
-            "file_path": "audio/references/bearing_fluting_whine.wav",
-            "duration_seconds": 15.0,
-            "sample_rate": 22050,
-            "fault_label": "Spindle Bearing Damage (Inner Race Fluting)",
-            "is_expert_verified": True,
-            "operating_conditions": "Idle at 4,000 RPM, prominent 2,840 Hz harmonic spike",
-            "features_json": json.dumps({"centroid": 2840.1, "bandwidth": 920.4, "rms": 0.082, "zcr": 0.145}),
-            "uploaded_by": expert_b.id,
-        },
-        {
-            "id": "audio-press-cavitation",
-            "title": "Hydraulic Pump Cavitation Gravel Sound",
-            "machine_id": "mach-schuler-500",
-            "file_path": "audio/references/hydraulic_cavitation.wav",
-            "duration_seconds": 10.0,
-            "sample_rate": 22050,
-            "fault_label": "Hydraulic Pump Cavitation",
-            "is_expert_verified": True,
-            "operating_conditions": "Press stroke advance, 240 bar, oil temperature 32°C",
-            "features_json": json.dumps({"centroid": 3120.0, "bandwidth": 2400.0, "rms": 0.110, "zcr": 0.190}),
-            "uploaded_by": expert_b.id,
-        },
-    ]
-    for ar in audio_refs:
-        if not db.get(AudioReference, ar["id"]):
-            db.add(AudioReference(**ar))
-    db.commit()
+    # Module 07 no longer seeds synthetic audio matches. References require a
+    # real decoded recording, approved source revisions, and expert publication.
 
-    # 11. Seed Simulation Scenario
+    # 10. Seed Simulation Scenario
     sim_id = "sim-coolant-loss"
     if not db.get(SimulationScenario, sim_id):
         sim = SimulationScenario(
