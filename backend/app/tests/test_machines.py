@@ -1,6 +1,11 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from app.core.config import settings
+from app.models.machine import Machine, Tool
+from app.models.knowledge import KnowledgeItem
+from app.models.audit import AuditLog
+from app.models.user import User
 
 
 def _login(client: TestClient, email: str, password: str):
@@ -101,3 +106,114 @@ def test_create_machine_requires_csrf(client: TestClient):
     )
     assert resp.status_code == 403
     assert resp.json()["error"]["code"] == "csrf_failed"
+
+
+def _add_test_machine(db_session, machine_id: str = "machine-delete-empty") -> Machine:
+    machine = Machine(
+        id=machine_id,
+        name="Temporary deletion test machine",
+        code=f"{machine_id}-CODE",
+        status="ACTIVE",
+        is_demo=False,
+    )
+    db_session.add(machine)
+    db_session.flush()
+    return machine
+
+
+def test_delete_unused_machine_requires_auth_csrf_and_machine_permission(client, db_session):
+    machine = _add_test_machine(db_session)
+
+    assert client.delete(f"/api/v1/machines/{machine.id}").status_code == 401
+
+    trainee = client.post(
+        "/api/v1/auth/login",
+        json={"email": settings.TRAINEE_EMAIL, "password": settings.TRAINEE_PASSWORD},
+    )
+    csrf_trainee = trainee.cookies.get(settings.CSRF_COOKIE_NAME)
+    denied = client.delete(
+        f"/api/v1/machines/{machine.id}",
+        headers={settings.CSRF_HEADER_NAME: csrf_trainee},
+    )
+    assert denied.status_code == 403
+
+    expert_csrf = _login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    missing_csrf = client.delete(f"/api/v1/machines/{machine.id}")
+    assert missing_csrf.status_code == 403
+    assert missing_csrf.json()["error"]["code"] == "csrf_failed"
+
+    deleted = client.delete(
+        f"/api/v1/machines/{machine.id}",
+        headers={settings.CSRF_HEADER_NAME: expert_csrf},
+    )
+    assert deleted.status_code == 204
+    assert db_session.get(Machine, machine.id) is None
+    audit = db_session.query(AuditLog).filter(
+        AuditLog.action == "machine.delete", AuditLog.entity_id == machine.id
+    ).one()
+    assert audit.entity_type == "machine"
+
+
+def test_delete_machine_with_knowledge_and_tools_is_rejected_without_data_loss(client, db_session):
+    machine = _add_test_machine(db_session, "machine-delete-referenced")
+    expert = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).one()
+    knowledge = KnowledgeItem(
+        title="Retained machine knowledge",
+        machine_id=machine.id,
+        author_id=expert.id,
+        category="GENERAL",
+        status="DRAFT",
+    )
+    tool = Tool(name="Retained tool", tool_number="RET-001", machine_id=machine.id)
+    db_session.add_all([knowledge, tool])
+    db_session.flush()
+    knowledge_id, tool_id = knowledge.id, tool.id
+
+    csrf = _login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    response = client.delete(
+        f"/api/v1/machines/{machine.id}",
+        headers={settings.CSRF_HEADER_NAME: csrf},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "machine_in_use"
+    assert "knowledge records" in response.json()["error"]["message"]
+    assert "assigned tools" in response.json()["error"]["message"]
+    assert db_session.get(Machine, machine.id) is not None
+    assert db_session.get(KnowledgeItem, knowledge_id) is not None
+    assert db_session.get(Tool, tool_id) is not None
+
+
+def test_delete_machine_checks_unmodeled_database_foreign_keys(client, db_session):
+    machine = _add_test_machine(db_session, "machine-delete-hidden-history")
+    db_session.execute(text(
+        "CREATE TABLE machine_delete_guard_test ("
+        "id INTEGER PRIMARY KEY, machine_id VARCHAR(36) NOT NULL "
+        "REFERENCES machines(id) ON DELETE CASCADE, payload TEXT)"
+    ))
+    db_session.execute(
+        text("INSERT INTO machine_delete_guard_test (machine_id, payload) VALUES (:machine_id, :payload)"),
+        {"machine_id": machine.id, "payload": "retain this history"},
+    )
+
+    csrf = _login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    response = client.delete(
+        f"/api/v1/machines/{machine.id}",
+        headers={settings.CSRF_HEADER_NAME: csrf},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "machine_in_use"
+    assert db_session.get(Machine, machine.id) is not None
+    assert db_session.execute(text("SELECT COUNT(*) FROM machine_delete_guard_test")).scalar_one() == 1
+    db_session.execute(text("DROP TABLE machine_delete_guard_test"))
+
+
+def test_delete_machine_not_found_returns_404(client):
+    csrf = _login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    response = client.delete(
+        "/api/v1/machines/does-not-exist",
+        headers={settings.CSRF_HEADER_NAME: csrf},
+    )
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "machine_not_found"

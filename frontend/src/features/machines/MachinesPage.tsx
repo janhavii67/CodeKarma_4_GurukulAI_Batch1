@@ -83,6 +83,8 @@ const INITIAL_FORM: CreateMachineFormData = {
   is_demo: false,
 };
 
+const SUPPORTED_MACHINE_NAMES = new Set(['mri', 'ct-scan', 'ecg', 'xray']);
+
 export const MachinesPage: React.FC = () => {
   const { hasPermission } = useAuth();
   const canManageMachines = hasPermission('machine.manage');
@@ -109,8 +111,17 @@ export const MachinesPage: React.FC = () => {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
-  // Backend gap deletion confirmation modal
+  // Confirmed machine deletion state
   const [deleteTarget, setDeleteTarget] = useState<Machine | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+
+  // This page presents only the four requested medical machines. The complete
+  // backend catalog remains intact for historical knowledge and other modules.
+  const visibleMachines = machines.filter((machine) =>
+    SUPPORTED_MACHINE_NAMES.has(machine.name.trim().toLowerCase()),
+  );
 
   // Load categories
   const fetchCategories = () => {
@@ -249,6 +260,34 @@ export const MachinesPage: React.FC = () => {
     }
   };
 
+  const handleDeleteMachine = async () => {
+    const target = deleteTarget;
+    if (!target) return;
+    if (!target.id?.trim()) {
+      setDeleteError('This machine has no database ID, so it cannot be deleted. Refresh the equipment list and try again.');
+      return;
+    }
+
+    setDeleteSubmitting(true);
+    setDeleteError(null);
+    setDeleteSuccess(null);
+    try {
+      await api.delete<void>(`/machines/${encodeURIComponent(target.id)}`);
+      setMachines((current) => current.filter((machine) => machine.id !== target.id));
+      setDeleteSuccess(`Machine “${target.name}” was deleted.`);
+      setDeleteTarget(null);
+    } catch (cause) {
+      if (cause instanceof ApiClientError) {
+        setDeleteError(cause.message);
+      } else {
+        setDeleteError('The server response could not be confirmed. Refresh the equipment catalog before retrying.');
+        fetchMachines(searchTerm, selectedCategory);
+      }
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 py-6">
       {/* Header */}
@@ -264,7 +303,7 @@ export const MachinesPage: React.FC = () => {
             </Badge>
           </div>
           <p className="text-xs text-[#5D7188] max-w-2xl">
-            Live directory of industrial laboratory diagnostic equipment, centrifuges, and analyzers with tooling mappings.
+            Machine records for MRI, CT-Scan, ECG, and Xray, with their existing equipment details and tool mappings.
           </p>
         </div>
 
@@ -351,19 +390,25 @@ export const MachinesPage: React.FC = () => {
         </Alert>
       )}
 
+      {deleteSuccess && (
+        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {deleteSuccess}
+        </div>
+      )}
+
       {/* Content Area */}
       {loading ? (
         <div className="py-16 text-center">
           <LoadingSpinner size="lg" message="Loading equipment catalog from live database..." />
         </div>
-      ) : machines.length === 0 ? (
+      ) : visibleMachines.length === 0 ? (
         <EmptyState
           icon={<Cpu className="w-6 h-6 text-[#1976D2]" />}
-          title={searchTerm || selectedCategory ? 'No Matching Equipment Found' : 'No Equipment Assets Registered'}
+          title={searchTerm || selectedCategory ? 'No Matching Equipment Found' : 'No Supported Medical Machines Found'}
           description={
             searchTerm || selectedCategory
               ? 'Try adjusting your search criteria or resetting the category filter.'
-              : 'There are currently no machine assets in the database. Use Register Equipment to add one.'
+              : 'MRI, CT-Scan, ECG, and Xray are the supported machines shown here. Other registered machines and their records remain available to other modules.'
           }
           action={
             searchTerm || selectedCategory ? (
@@ -387,7 +432,7 @@ export const MachinesPage: React.FC = () => {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5">
-          {machines.map((m) => (
+          {visibleMachines.map((m) => (
             <Card
               key={m.id}
               title={m.name}
@@ -837,30 +882,34 @@ export const MachinesPage: React.FC = () => {
         </div>
       )}
 
-      {/* DELETE / BACKEND GAP CONFIRMATION MODAL */}
+      {/* MACHINE DELETION CONFIRMATION MODAL */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 bg-[#17324D]/40 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-[#17324D]/40 backdrop-blur-xs flex items-center justify-center p-4" role="alertdialog" aria-modal="true" aria-labelledby="delete-machine-title">
           <div className="bg-white rounded-2xl border border-rose-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-[#D98B13] flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-sm text-[#17324D]">Equipment Asset Deletion</h3>
+                <h3 id="delete-machine-title" className="font-bold text-sm text-[#17324D]">Delete machine?</h3>
                 <p className="text-xs text-[#5D7188] mt-0.5">
-                  Confirm action for: <span className="font-semibold text-[#17324D]">{deleteTarget.name}</span>
+                  Confirm deletion of <span className="font-semibold text-[#17324D]">{deleteTarget.name}</span>.
                 </p>
               </div>
             </div>
 
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 mb-5 leading-relaxed">
-              <span className="font-semibold block mb-1">Notice: Backend API Constraint</span>
-              The backend API does not currently expose a <code className="font-mono bg-amber-100 px-1 py-0.5 rounded text-[11px]">DELETE /api/v1/machines/&#123;id&#125;</code> endpoint. Machine assets are preserved to safeguard historical audit logs, guided workflow executions, and calibration records.
+              A machine can be deleted only when no knowledge, procedures, media, tools, or history still reference it. Related records and files are never deleted by this action.
             </div>
 
+            {deleteError && <p role="alert" className="mb-4 text-sm text-rose-700">{deleteError}</p>}
+
             <div className="flex justify-end gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setDeleteTarget(null)}>
-                Understood &amp; Close
+              <Button variant="secondary" size="sm" disabled={deleteSubmitting} onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="sm" disabled={deleteSubmitting} onClick={() => void handleDeleteMachine()}>
+                {deleteSubmitting ? 'Deleting…' : 'Delete machine'}
               </Button>
             </div>
           </div>

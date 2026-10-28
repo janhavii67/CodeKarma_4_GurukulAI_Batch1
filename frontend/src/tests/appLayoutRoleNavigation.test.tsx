@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppLayout } from '../layouts/AppLayout';
 
 const authState = vi.hoisted(() => ({
@@ -14,12 +14,13 @@ const authState = vi.hoisted(() => ({
     'simulation.attempt',
     'audio.analyze',
   ] as string[],
+  logout: vi.fn(),
 }));
 
 vi.mock('../hooks/useAuth', () => ({
   useAuth: () => ({
     user: { id: 'role-user', name: 'Role User', email: 'role@example.test', role_id: authState.role },
-    logout: vi.fn(),
+    logout: authState.logout,
     hasPermission: (permission: string) => authState.permissions.includes(permission),
     hasRole: (role: string) => authState.role === role,
   }),
@@ -39,6 +40,8 @@ const renderLayout = () =>
   );
 
 describe('AppLayout role navigation', () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it('shows trainee pages and hides authoring and reviewer actions', () => {
     authState.role = 'TRAINEE';
     authState.permissions = [
@@ -49,12 +52,18 @@ describe('AppLayout role navigation', () => {
 
     expect(screen.getByRole('link', { name: 'My Knowledge' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Guided Workflows' })).toBeInTheDocument();
+    expect(screen.queryByText(/PLANT FLOOR LINE/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Open profile menu' }));
-    expect(screen.getByRole('link', { name: /Knowledge Assistant/i })).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'Troubleshooting (M05)' }).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('link', { name: 'Capture Knowledge' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Review & Verify/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Voice-to-Knowledge (M04)' })).not.toBeInTheDocument();
+    const menu = screen.getByRole('menu', { name: 'Profile menu' });
+    expect(within(menu).getByText('Role User')).toBeInTheDocument();
+    expect(within(menu).getByText('role@example.test')).toBeInTheDocument();
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(1);
+    expect(within(menu).getByRole('menuitem', { name: 'Sign Out' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('link')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle navigation menu' }));
+    expect(screen.getByRole('link', { name: 'Troubleshooting (M05)' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Learning Portal (M10)' })).toBeInTheDocument();
   });
 
   it('shows the expert authoring and review links only when the permissions are granted', () => {
@@ -64,7 +73,12 @@ describe('AppLayout role navigation', () => {
 
     expect(screen.getByRole('link', { name: 'Capture Knowledge' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Open profile menu' }));
-    expect(screen.getByRole('link', { name: /Review & Verify/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Voice-to-Knowledge (M04)' })).toBeInTheDocument();
+    const menu = screen.getByRole('menu', { name: 'Profile menu' });
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(1);
+    expect(within(menu).getByRole('menuitem', { name: 'Sign Out' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(menu).queryByText(/Review & Verify|Voice-to-Knowledge|Machine Assets/i)).not.toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Sign Out' }));
+    expect(authState.logout).toHaveBeenCalledTimes(1);
   });
 });

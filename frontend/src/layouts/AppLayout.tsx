@@ -3,9 +3,6 @@ import { NavLink, Outlet, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import {
   LogOut,
-  Cpu,
-  Mic,
-  Volume2,
   Menu,
   X,
 } from 'lucide-react';
@@ -47,33 +44,7 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F5F8FC] flex flex-col text-[#0F172A] font-sans antialiased">
-      {/* ─── 1. SLIM BLUE INDUSTRIAL STATUS STRIP (TOP) ─── */}
-      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-3">
-        <div className="rounded-xl bg-[#0B2545] text-white px-5 sm:px-6 h-9 flex items-center justify-between text-xs font-medium tracking-wide shadow-sm select-none">
-          <div className="flex items-center gap-4 sm:gap-5">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
-              <span className="uppercase font-semibold tracking-wider text-[11px]">
-                PLANT FLOOR LINE 04 · SHIFT 01
-              </span>
-            </div>
-            <span className="text-white/20 hidden sm:inline">|</span>
-            <div className="hidden sm:flex items-center gap-1.5 text-white/90 text-[11px]">
-              <span className="material-symbols-outlined text-[15px] text-[#10B981]">verified</span>
-              <span>AS9100 / ISO 9001 Knowledge Integrity Assured</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 text-[11px] text-white/90">
-            <div className="flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-[15px]">cloud_done</span>
-              <span className="hidden sm:inline">Cloud Sync: Active (Real-Time)</span>
-              <span className="sm:hidden">Sync: Active</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ─── 2. EXACTLY ONE HORIZONTAL NAVBAR (BELOW STATUS STRIP) ─── */}
+      {/* ─── Primary horizontal navigation ─── */}
       <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-3 pb-1">
         <header className="bg-white rounded-2xl border border-[#E2E8F0] px-5 sm:px-6 py-3 shadow-xs flex items-center justify-between gap-4">
           {/* Left: Gurukul AI brandmark & tagline */}
@@ -200,7 +171,7 @@ export const AppLayout: React.FC = () => {
 
               {/* Profile Dropdown Menu */}
               {isProfileDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-[#E2E8F0] py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div role="menu" aria-label="Profile menu" className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-[#E2E8F0] py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                   <div className="px-4 py-2 border-b border-slate-100">
                     <span className="text-xs font-bold text-[#173B5E] block truncate">
                       {user?.name}
@@ -213,66 +184,10 @@ export const AppLayout: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="py-1">
-                    {canReadMachines && <Link
-                      to="/app/machines"
-                      onClick={() => setIsProfileDropdownOpen(false)}
-                      className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] flex items-center gap-2.5 transition-colors"
-                    >
-                      <Cpu className="w-4 h-4 text-[#1976C9]" />
-                      <span>Machine Assets (M00)</span>
-                    </Link>}
-
-                    {hasPermission('knowledge.create') && (
-                      <Link
-                        to="/app/voice-capture"
-                        onClick={() => setIsProfileDropdownOpen(false)}
-                        className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] flex items-center gap-2.5 transition-colors"
-                      >
-                        <Mic className="w-4 h-4 text-[#19A995]" />
-                        <span>Voice-to-Knowledge (M04)</span>
-                      </Link>
-                    )}
-
-                    {hasPermission('audio.analyze') && <Link
-                      to="/app/sound-analysis"
-                      onClick={() => setIsProfileDropdownOpen(false)}
-                      className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] flex items-center gap-2.5 transition-colors"
-                    >
-                      <Volume2 className="w-4 h-4 text-[#1976C9]" />
-                      <span>Sound Analysis (M07)</span>
-                    </Link>}
-                    {hasPermission('assistant.use') && (
-                      <Link
-                        to="/app/assistant"
-                        onClick={() => setIsProfileDropdownOpen(false)}
-                        className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] flex items-center gap-2.5 transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-[16px] text-[#1976C9]">smart_toy</span>
-                        <span>Knowledge Assistant (M02)</span>
-                      </Link>
-                    )}
-                    {canApprove && (
-                      <Link
-                        to="/app/reviews"
-                        onClick={() => setIsProfileDropdownOpen(false)}
-                        className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] flex items-center gap-2.5 transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-[16px] text-[#10B981]">verified</span>
-                        <span>Review &amp; Verify (M03)</span>
-                      </Link>
-                    )}
-                    {hasPermission('troubleshoot.use') && <Link to="/app/troubleshooting" onClick={() => setIsProfileDropdownOpen(false)} className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] block">Troubleshooting (M05)</Link>}
-                    {hasPermission('simulation.attempt') && <Link to="/app/failure-simulator" onClick={() => setIsProfileDropdownOpen(false)} className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] block">Failure Simulator (M09)</Link>}
-                    {canUseLearning && <Link to="/app/learning" onClick={() => setIsProfileDropdownOpen(false)} className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] block">Learning Portal (M10)</Link>}
-                    {hasPermission('knowledge.view_published') && <Link to="/app/knowledge-graph" onClick={() => setIsProfileDropdownOpen(false)} className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] block">Knowledge Graph (M08)</Link>}
-                    {hasPermission('procedure.execute') && <Link to="/app/skill-verification" onClick={() => setIsProfileDropdownOpen(false)} className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] block">Skill Verification (M10)</Link>}
-                    {hasPermission('simulation.attempt') && <Link to="/app/synchronized-simulation" onClick={() => setIsProfileDropdownOpen(false)} className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] block">Synchronized Simulation (M11)</Link>}
-                  </div>
-
                   <div className="pt-1 border-t border-slate-100 px-2">
                     <button
                       type="button"
+                      role="menuitem"
                       onClick={() => {
                         setIsProfileDropdownOpen(false);
                         logout();

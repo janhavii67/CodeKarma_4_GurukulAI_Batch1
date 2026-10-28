@@ -14,7 +14,7 @@ import {
   Video,
   X,
 } from 'lucide-react';
-import { getApiUrl } from '../../lib/api/client';
+import { ApiClientError, getApiUrl } from '../../lib/api/client';
 import type { MediaAsset } from '../knowledge-capture/media/types';
 import {
   MACHINE_DIARY_MACHINE_LABELS,
@@ -37,15 +37,23 @@ export const MachineDiaryLibraryPage: React.FC = () => {
   const [machines, setMachines] = useState<MachineDiaryMachine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [search, setSearch] = useState('');
   const [machineFilter, setMachineFilter] = useState('');
 
   const loadMachines = () => {
     setLoading(true);
     setError('');
+    setSessionExpired(false);
     fetchMachineDiaryLibrary()
       .then(setMachines)
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Could not load the machine library.'))
+      .catch((cause: unknown) => {
+        const expired = cause instanceof ApiClientError && cause.status === 401;
+        setSessionExpired(expired);
+        setError(expired
+          ? 'Your sign-in session has expired. Sign in again to view machine knowledge.'
+          : cause instanceof Error ? cause.message : 'Could not load the machine library.');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -99,13 +107,17 @@ export const MachineDiaryLibraryPage: React.FC = () => {
           </select>
         </section>
 
-        {loading && <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-busy="true" aria-label="Loading machine diaries">
+        {loading && <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="status" aria-busy="true" aria-label="Loading machine diaries">
+          <span className="sr-only">Loading machine knowledge library…</span>
           {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-[19rem] animate-pulse rounded-2xl border border-[#E2E8F0] bg-white" />)}
         </div>}
 
         {error && <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-800" role="alert">
           <p className="font-semibold">The machine library could not be loaded.</p><p className="mt-1 text-sm text-rose-700">{error}</p>
-          <button type="button" onClick={loadMachines} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"><RefreshCw size={15} /> Try again</button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {sessionExpired && <Link to="/login" className="inline-flex items-center rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium hover:bg-rose-100">Sign in</Link>}
+            <button type="button" onClick={loadMachines} className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"><RefreshCw size={15} /> Try again</button>
+          </div>
         </div>}
 
         {!loading && !error && machines.length === 0 && <div className="mt-8 rounded-2xl border border-[#E2E8F0] bg-white px-6 py-14 text-center">

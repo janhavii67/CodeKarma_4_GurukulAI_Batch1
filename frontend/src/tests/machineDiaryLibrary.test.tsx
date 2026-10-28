@@ -6,9 +6,18 @@ import { MachineDiaryLibraryPage, MachineDiaryPage } from '../features/knowledge
 vi.mock('../lib/api/client', () => ({
   api: { get: vi.fn() },
   getApiUrl: (path: string) => `http://api.test${path}`,
+  ApiClientError: class ApiClientError extends Error {
+    status: number;
+    code: string;
+    constructor(status: number, code: string, message: string) {
+      super(message);
+      this.status = status;
+      this.code = code;
+    }
+  },
 }));
 
-import { api } from '../lib/api/client';
+import { ApiClientError, api } from '../lib/api/client';
 const mockGet = api.get as ReturnType<typeof vi.fn>;
 
 const machine = {
@@ -77,6 +86,27 @@ describe('Machine diary library', () => {
     const options = within(selector).getAllByRole('option');
     expect(options.slice(1).map(option => option.textContent)).toEqual(['MRI', 'CT-Scan', 'Xray', 'ECG']);
     expect(options.slice(1).every(option => (option as HTMLOptionElement).disabled)).toBe(true);
+  });
+
+  it('shows API failures with retry instead of presenting them as an empty library', async () => {
+    mockGet.mockRejectedValueOnce(new Error('The knowledge service is unavailable.'));
+    renderRouter('/app/knowledge');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The machine library could not be loaded.');
+    expect(screen.getByRole('alert')).toHaveTextContent('The knowledge service is unavailable.');
+    expect(screen.queryByText('No registered machines yet')).not.toBeInTheDocument();
+
+    mockGet.mockResolvedValueOnce([machine]);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('button', { name: 'Open knowledge diary for MRI' })).toBeInTheDocument();
+  });
+
+  it('explains expired authentication and links back to sign in', async () => {
+    mockGet.mockRejectedValueOnce(new ApiClientError(401, 'session_expired', 'Session expired.'));
+    renderRouter('/app/knowledge');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your sign-in session has expired.');
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
   });
 
   it('loads machine records, searches metadata, and opens the selected diary', async () => {
