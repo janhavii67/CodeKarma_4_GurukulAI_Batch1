@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './routes/ProtectedRoute';
@@ -21,6 +21,7 @@ import { LibraryPage } from './features/knowledge-capture/LibraryPage';
 import { KnowledgeEditorPage } from './features/knowledge-capture/KnowledgeEditorPage';
 import { ForbiddenPage } from './features/errors/ForbiddenPage';
 import { NotFoundPage } from './features/errors/NotFoundPage';
+import { LandingPage } from './features/landing/LandingPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,13 +38,13 @@ export const App: React.FC = () => {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
+            {/* Marketing landing page */}
+            <Route path="/" element={<LandingPage />} />
+
             {/* Public Auth Routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/403" element={<ForbiddenPage />} />
-
-            {/* Root redirect */}
-            <Route path="/" element={<Navigate to="/app" replace />} />
 
             {/* Protected App Routes */}
             <Route
@@ -71,29 +72,14 @@ export const App: React.FC = () => {
               <Route path="assistant" element={<AssistantPage />} />
 
               {/* Graceful Specifications & Placeholders for Future Expansion Modules */}
-              <Route
-                path="troubleshooting"
-                element={<TroubleshootingPage />}
-              />
-              <Route
-                path="knowledge-graph"
-                element={<ModulePlaceholderPage moduleKeyOverride="knowledge-graph" />}
-              />
-              <Route
-                path="failure-simulator"
-                element={<FailureSimulatorPage />}
-              />
-              <Route
-                path="skill-verification"
-                element={<ModulePlaceholderPage moduleKeyOverride="skill-verification" />}
-              />
-              <Route
-                path="synchronized-simulation"
-                element={<ModulePlaceholderPage moduleKeyOverride="synchronized-simulation" />}
-              />
+              <Route path="troubleshooting" element={<TroubleshootingPage />} />
+              <Route path="knowledge-graph" element={<ModulePlaceholderPage moduleKeyOverride="knowledge-graph" />} />
+              <Route path="failure-simulator" element={<FailureSimulatorPage />} />
+              <Route path="skill-verification" element={<ModulePlaceholderPage moduleKeyOverride="skill-verification" />} />
+              <Route path="synchronized-simulation" element={<ModulePlaceholderPage moduleKeyOverride="synchronized-simulation" />} />
             </Route>
 
-            {/* 404 Route */}
+            {/* 404 */}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </BrowserRouter>
