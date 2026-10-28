@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def assemble_debug(cls, v: Union[bool, str]) -> bool:
+        if isinstance(v, str):
+            return v.lower() in ("true", "1", "yes", "debug", "dev", "development")
+        return bool(v)
+
     # Database
     DATABASE_URL: str = "sqlite:///./gurukul_dev.db"
     TEST_DATABASE_URL: str = "sqlite:///./gurukul_test.db"

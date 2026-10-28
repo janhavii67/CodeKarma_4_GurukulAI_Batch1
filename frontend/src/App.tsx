@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './routes/ProtectedRoute';
@@ -23,6 +23,7 @@ import { ForbiddenPage } from './features/errors/ForbiddenPage';
 import { NotFoundPage } from './features/errors/NotFoundPage';
 import { MachineKnowledgePage } from './features/knowledge/MachineKnowledgePage';
 import { ProcedureCreatePage } from './features/knowledge/ProcedureCreatePage';
+import { LandingPage } from './features/landing/LandingPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,13 +40,13 @@ export const App: React.FC = () => {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
+            {/* Marketing landing page */}
+            <Route path="/" element={<LandingPage />} />
+
             {/* Public Auth Routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/403" element={<ForbiddenPage />} />
-
-            {/* Root redirect */}
-            <Route path="/" element={<Navigate to="/app" replace />} />
 
             {/* Protected App Routes */}
             <Route
@@ -74,7 +75,6 @@ export const App: React.FC = () => {
               {/* AI Knowledge Assistant (Module 02) */}
               <Route path="assistant" element={<ProtectedRoute requiredPermission="assistant.use"><AssistantPage /></ProtectedRoute>} />
 
-              {/* Graceful Specifications & Placeholders for Future Expansion Modules */}
               <Route
                 path="troubleshooting"
                 element={<ProtectedRoute requiredPermission="troubleshoot.use"><TroubleshootingPage /></ProtectedRoute>}
@@ -97,7 +97,7 @@ export const App: React.FC = () => {
               />
             </Route>
 
-            {/* 404 Route */}
+            {/* 404 */}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </BrowserRouter>

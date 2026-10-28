@@ -12,17 +12,12 @@ import sys
 def get_speech_provider() -> SpeechProvider:
     """
     Factory creating configured SpeechProvider.
-    Supports Gemini, local Whisper, OpenAI Whisper, and a quarantined test/demo mock.
-    Mock provider is strictly quarantined behind settings.DEMO_MODE=True or test environments.
+    Supports explicit OpenAI, Gemini, and local Whisper choices. Mock transcription is
+    restricted to tests; no provider silently falls back to a paid service.
     """
-    if getattr(settings, "DEMO_MODE", False) or getattr(settings, "ENVIRONMENT", "") in ("testing", "test") or "pytest" in sys.modules:
-        return MockSpeechProvider()
+    provider_name = (settings.STT_PROVIDER or "local_whisper").strip().lower()
 
-    provider_name = (settings.STT_PROVIDER or "gemini").strip().lower()
-
-    if provider_name in ("gemini", "google") and settings.GEMINI_API_KEY:
-        return GeminiSpeechProvider()
-    elif provider_name in ("local_whisper", "local"):
+    if provider_name in ("local_whisper", "local"):
         return LocalWhisperProvider(
             model=settings.LOCAL_WHISPER_MODEL,
             device=settings.LOCAL_WHISPER_DEVICE,
@@ -30,14 +25,36 @@ def get_speech_provider() -> SpeechProvider:
             cpu_threads=settings.LOCAL_WHISPER_CPU_THREADS,
             language=settings.LOCAL_WHISPER_LANGUAGE,
         )
-    elif provider_name in ("openai", "whisper_api") and settings.OPENAI_API_KEY:
+
+    if provider_name in ("openai", "whisper_api"):
+        if not settings.OPENAI_API_KEY:
+            raise ValidationError(
+                code="transcription_not_configured",
+                message="OpenAI transcription is selected but OPENAI_API_KEY is not configured.",
+            )
         return OpenAIWhisperProvider(api_key=settings.OPENAI_API_KEY, model=settings.OPENAI_TRANSCRIPTION_MODEL)
-    elif settings.GEMINI_API_KEY:
+
+    if provider_name in ("gemini", "google"):
+        if not getattr(settings, "GEMINI_API_KEY", ""):
+            raise ValidationError(
+                code="transcription_not_configured",
+                message="Gemini transcription is selected but GEMINI_API_KEY is not configured.",
+            )
         return GeminiSpeechProvider()
-    elif settings.OPENAI_API_KEY:
-        return OpenAIWhisperProvider(api_key=settings.OPENAI_API_KEY, model=settings.OPENAI_TRANSCRIPTION_MODEL)
-    else:
+
+    if provider_name in ("mock", "test") and getattr(settings, "ENVIRONMENT", "").lower() in ("test", "testing"):
+        return MockSpeechProvider()
+
+    if getattr(settings, "DEMO_MODE", False):
+        return MockSpeechProvider()
+
+    if provider_name in ("mock", "test"):
         raise ValidationError(
-            code="stt_provider_not_configured",
-            message="No active Speech-to-Text provider credentials configured. Please set GEMINI_API_KEY (or OPENAI_API_KEY) in .env, or enable DEMO_MODE=true for offline demonstration.",
+            code="transcription_not_configured",
+            message="Mock transcription is only available in the test environment.",
         )
+
+    raise ValidationError(
+        code="transcription_provider_invalid",
+        message="The configured transcription provider is not supported. Select local_whisper, gemini, or whisper_api.",
+    )

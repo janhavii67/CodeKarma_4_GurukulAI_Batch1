@@ -186,7 +186,7 @@ def test_local_whisper_maps_pyav19_decoder_mismatch_to_actionable_error(monkeypa
 
 
 def test_faster_whisper_audio_decoder_accepts_audio_with_pinned_pyav(tmp_path):
-    import av
+    av = pytest.importorskip("av")
     from faster_whisper.audio import decode_audio
 
     audio = tmp_path / "decoder-fixture.wav"
