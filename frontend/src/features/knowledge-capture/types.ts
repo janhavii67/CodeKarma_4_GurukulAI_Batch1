@@ -66,11 +66,6 @@ export interface KnowledgeVersion {
   origin: VersionOrigin;
   revision_reason: string | null;
   created_by: string;
-  operating_conditions?: string | null;
-  prerequisites?: string | null;
-  safety_warnings?: string | null;
-  common_mistakes?: string | null;
-  corrective_actions?: string | null;
   submitted_at: string | null;
   published_at: string | null;
   created_at: string;
