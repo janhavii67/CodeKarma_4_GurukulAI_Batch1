@@ -179,8 +179,17 @@ def list_procedure_assets(procedure_id: str, auth_ctx: AuthenticatedContext = De
             raise ForbiddenError(code="forbidden", message="You may only view references on a published procedure, your own draft, or a procedure assigned for review.")
     for asset in procedure.media_assets:
         MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, asset)
-    return [{"id": a.id, "title": a.title, "kind": a.kind, "machine_id": a.machine_id,
-        "url": f"/api/v1/media/{a.id}"} for a in procedure.media_assets]
+    return [{
+        "id": a.id,
+        "title": a.title,
+        "kind": a.kind,
+        "machine_id": a.machine_id,
+        "url": f"/api/v1/media/{a.id}",
+        "mime": a.mime,
+        # A media file is verified only when it belongs to an approved/published
+        # knowledge version. Standalone uploads remain pending review.
+        "verification_status": a.version.status if a.version else "pending_review",
+    } for a in procedure.media_assets]
 
 
 @router.put("/{procedure_id}/assets", dependencies=[Depends(csrf_protect)])

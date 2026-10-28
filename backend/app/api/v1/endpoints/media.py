@@ -11,6 +11,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 import io
 import uuid
 from fastapi import BackgroundTasks
@@ -22,7 +23,7 @@ from app.models.media import MediaAsset
 from app.integrations.storage import get_storage_service
 from app.core.permissions import PERM_KNOWLEDGE_APPROVE
 from fastapi.responses import JSONResponse, StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.core.exceptions import ForbiddenError, RangeNotSatisfiableError, ValidationError
 from app.core.permissions import (
     AuthenticatedContext,
@@ -35,15 +36,113 @@ from app.core.permissions import (
     PERM_KNOWLEDGE_APPROVE,
 )
 from app.db.session import get_db
-from app.schemas.media import MediaAssetResponse, MediaConfigResponse
+from app.schemas.media import (
+    MachineKnowledgeLibraryResponse,
+    MediaAssetResponse,
+    MediaConfigResponse,
+)
 from app.services.media_service import MediaService
 from app.models.machine import Machine
+from app.models.knowledge import KnowledgeItem, KnowledgeVersion
 from app.repositories.media_repository import MediaRepository
 from app.core.exceptions import NotFoundError, PayloadTooLargeError
 from app.integrations.speech.factory import get_speech_provider
 from app.integrations.speech.mock_provider import MockSpeechProvider
 
 router = APIRouter(tags=["Media Assets"])
+
+
+@router.get(
+    "/machine-knowledge/library",
+    response_model=List[MachineKnowledgeLibraryResponse],
+    summary="List registered machines and counts of knowledge visible to the current user",
+)
+def list_machine_knowledge_library(
+    machine_id: Optional[str] = None,
+    auth_ctx: AuthenticatedContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    machines_query = db.query(Machine).options(joinedload(Machine.category_obj))
+    if machine_id:
+        machines_query = machines_query.filter(Machine.id == machine_id)
+    machines = machines_query.order_by(Machine.name.asc(), Machine.id.asc()).all()
+    if machine_id and not machines:
+        raise NotFoundError(code="machine_not_found", message="The selected machine was not found.")
+
+    counts = {
+        machine.id: {
+            "video": 0, "audio": 0, "transcript": 0,
+            "image": 0, "document": 0, "notes": 0, "total": 0,
+        }
+        for machine in machines
+    }
+    if not machines:
+        return []
+
+    # Resolve older version-attached media through its version/item machine
+    # relationship, while an explicit media_assets.machine_id remains canonical.
+    effective_machine_id = func.coalesce(
+        MediaAsset.machine_id,
+        KnowledgeVersion.machine_id,
+        KnowledgeItem.machine_id,
+    )
+    rows = (
+        db.query(MediaAsset, effective_machine_id.label("effective_machine_id"))
+        .options(joinedload(MediaAsset.version).joinedload(KnowledgeVersion.item))
+        .outerjoin(KnowledgeVersion, MediaAsset.version_id == KnowledgeVersion.id)
+        .outerjoin(KnowledgeItem, KnowledgeVersion.item_id == KnowledgeItem.id)
+        .filter(effective_machine_id.in_(list(counts)))
+        .all()
+    )
+
+    visible_audio_by_machine = {}
+    for asset, asset_machine_id in rows:
+        try:
+            MediaService.ensure_can_view_asset(
+                db, auth_ctx.user, auth_ctx.permissions, asset
+            )
+        except (ForbiddenError, NotFoundError):
+            continue
+        machine_counts = counts.get(asset_machine_id)
+        if machine_counts is None:
+            continue
+        machine_counts[asset.kind] = machine_counts.get(asset.kind, 0) + 1
+        machine_counts["total"] += 1
+        if asset.kind == "audio":
+            visible_audio_by_machine.setdefault(asset.id, asset_machine_id)
+
+    if visible_audio_by_machine:
+        transcripts = (
+            db.query(Transcript.media_id)
+            .filter(Transcript.media_id.in_(visible_audio_by_machine.keys()))
+            .all()
+        )
+        for (media_id,) in transcripts:
+            asset_machine_id = visible_audio_by_machine.get(media_id)
+            if asset_machine_id in counts:
+                counts[asset_machine_id]["transcript"] += 1
+                counts[asset_machine_id]["total"] += 1
+
+    result = []
+    for machine in machines:
+        item = MachineKnowledgeLibraryResponse.model_validate(
+            {
+                "id": machine.id,
+                "name": machine.name,
+                "code": machine.code,
+                "model_number": machine.model_number,
+                "serial_number": machine.serial_number,
+                "manufacturer": machine.manufacturer,
+                "category": machine.category,
+                "category_name": machine.category_name,
+                "location": machine.location,
+                "status": machine.status,
+                "is_demo": machine.is_demo,
+                "counts": counts[machine.id],
+            }
+        )
+        result.append(item)
+    return result
 
 
 def _asset_response(asset: MediaAsset, **overrides) -> MediaAssetResponse:
@@ -106,31 +205,34 @@ def list_machine_media(machine_id: str, kind: Optional[str] = None, q: Optional[
     if not db.get(Machine, machine_id):
         raise NotFoundError(code="machine_not_found", message="The selected machine was not found.")
     if kind == "transcript":
-        rows = db.query(Transcript, Machine.name).join(Transcript.media).join(Machine, Machine.id == MediaAsset.machine_id).filter(Machine.id == machine_id)
-        if q:
-            rows = rows.filter(Transcript.full_text.ilike(f"%{q}%"))
-        visible = []
-        for transcript, _ in rows.order_by(Transcript.created_at.desc()).all():
+        audio_assets = MediaRepository.list_by_machine_id(db, machine_id, "audio")
+        visible_audio = []
+        for audio in audio_assets:
             try:
-                MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, transcript.media)
-                visible.append(transcript)
-            except ForbiddenError:
+                MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, audio)
+                visible_audio.append(audio)
+            except (ForbiddenError, NotFoundError):
                 continue
+        audio_by_id = {asset.id: asset for asset in visible_audio}
+        rows = db.query(Transcript).filter(Transcript.media_id.in_(audio_by_id)).order_by(Transcript.created_at.desc()).all() if audio_by_id else []
+        if q:
+            query = q.casefold()
+            rows = [t for t in rows if query in (t.full_text or "").casefold()]
         return [{"id": t.id, "media_id": t.media_id, "version_id": t.version_id, "machine_id": machine_id,
-            "title": f"Transcript · {t.media.title}", "description": None, "tags": None,
+            "title": f"Transcript · {audio_by_id[t.media_id].title}", "description": None, "tags": None,
             "content": t.full_text, "transcript_id": t.id, "transcript_status": t.status,
             "transcript_job_id": None, "transcript_error": None,
-            "kind": "transcript", "original_name": t.media.original_name, "mime": "text/plain",
-            "size_bytes": len(t.full_text.encode("utf-8")), "uploaded_by": t.media.uploaded_by,
-            "author_name": t.media.uploader.name, "verification_status": "pending_review",
-            "created_at": t.created_at, "url": None} for t in visible]
+            "kind": "transcript", "original_name": audio_by_id[t.media_id].original_name, "mime": "text/plain",
+            "size_bytes": len(t.full_text.encode("utf-8")), "uploaded_by": audio_by_id[t.media_id].uploaded_by,
+            "author_name": audio_by_id[t.media_id].uploader.name, "verification_status": "pending_review",
+            "created_at": t.created_at, "url": None} for t in rows]
     assets = MediaRepository.list_by_machine_id(db, machine_id, kind)
     visible_assets = []
     for asset in assets:
         try:
             MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, asset)
             visible_assets.append(asset)
-        except ForbiddenError:
+        except (ForbiddenError, NotFoundError):
             continue
     assets = visible_assets
     if q:
@@ -139,7 +241,7 @@ def list_machine_media(machine_id: str, kind: Optional[str] = None, q: Optional[
     results = []
     storage = get_storage_service()
     for a in assets:
-        payload = {**a.__dict__, "url": f"/api/v1/media/{a.id}", "verification_status": "pending_review", "author_name": a.uploader.name}
+        payload = {**a.__dict__, "machine_id": machine_id, "url": f"/api/v1/media/{a.id}", "verification_status": "pending_review", "author_name": a.uploader.name}
         if a.kind == "notes":
             stream, _ = storage.open(a.storage_key)
             payload["content"] = b"".join(stream).decode("utf-8", errors="replace")

@@ -137,7 +137,6 @@ export const AppLayout: React.FC = () => {
 
             {canReadKnowledge && <NavLink
               to="/app/knowledge"
-              end
               className={({ isActive }) =>
                 `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
                   isActive
@@ -150,42 +149,6 @@ export const AppLayout: React.FC = () => {
                 <>
                   {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
                   <span>My Knowledge</span>
-                </>
-              )}
-            </NavLink>}
-
-            {canApprove && <NavLink
-              to="/app/reviews"
-              className={({ isActive }) =>
-                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
-                  isActive
-                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
-                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
-                  <span>Review &amp; Verify</span>
-                </>
-              )}
-            </NavLink>}
-
-            {hasPermission('assistant.use') && <NavLink
-              to="/app/assistant"
-              className={({ isActive }) =>
-                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
-                  isActive
-                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
-                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
-                  <span>Knowledge Assistant</span>
                 </>
               )}
             </NavLink>}
@@ -279,6 +242,26 @@ export const AppLayout: React.FC = () => {
                       <Volume2 className="w-4 h-4 text-[#1976C9]" />
                       <span>Sound Analysis (M07)</span>
                     </Link>}
+                    {hasPermission('assistant.use') && (
+                      <Link
+                        to="/app/assistant"
+                        onClick={() => setIsProfileDropdownOpen(false)}
+                        className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] flex items-center gap-2.5 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-[16px] text-[#1976C9]">smart_toy</span>
+                        <span>Knowledge Assistant (M02)</span>
+                      </Link>
+                    )}
+                    {canApprove && (
+                      <Link
+                        to="/app/reviews"
+                        onClick={() => setIsProfileDropdownOpen(false)}
+                        className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] flex items-center gap-2.5 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-[16px] text-[#10B981]">verified</span>
+                        <span>Review &amp; Verify (M03)</span>
+                      </Link>
+                    )}
                     {hasPermission('troubleshoot.use') && <Link to="/app/troubleshooting" onClick={() => setIsProfileDropdownOpen(false)} className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] block">Troubleshooting (M05)</Link>}
                     {hasPermission('simulation.attempt') && <Link to="/app/failure-simulator" onClick={() => setIsProfileDropdownOpen(false)} className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] block">Failure Simulator (M09)</Link>}
                     {canUseLearning && <Link to="/app/learning" onClick={() => setIsProfileDropdownOpen(false)} className="px-4 py-2 text-xs font-medium text-[#173B5E] hover:bg-[#F8FAFC] block">Learning Portal (M10)</Link>}
@@ -341,21 +324,6 @@ export const AppLayout: React.FC = () => {
               onClick={closeMobileMenu}
               className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
             >
-              <span>My Knowledge</span>
-            </NavLink>}
-            {canApprove && <NavLink
-              to="/app/reviews"
-              onClick={closeMobileMenu}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
-            >
-              <span>Review &amp; Verify</span>
-            </NavLink>}
-            {hasPermission('assistant.use') && <NavLink
-              to="/app/assistant"
-              onClick={closeMobileMenu}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
-            >
-              <span>Knowledge Assistant</span>
             </NavLink>}
             {hasPermission('procedure.execute') && <NavLink
               to="/app/guided-workflows"

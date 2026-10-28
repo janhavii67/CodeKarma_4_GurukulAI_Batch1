@@ -6,7 +6,13 @@ import { MachineKnowledgePage } from '../features/knowledge/MachineKnowledgePage
 
 const apiMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(), upload: vi.fn() }));
 vi.mock('../lib/api/client', () => ({ api: apiMock, getApiUrl: (path: string) => `http://api.test/api/v1${path}` }));
-vi.mock('../features/knowledge-capture/knowledgeApi', () => ({ fetchMachines: vi.fn().mockResolvedValue({ items: [{ id: 'machine-cnc', name: 'CNC Machine', code: 'CNC-1' }] }) }));
+vi.mock('../features/knowledge-capture/knowledgeApi', () => ({ fetchMachines: vi.fn().mockResolvedValue({ items: [
+  { id: 'machine-cnc', name: 'MRI', code: 'MRI-001' },
+  { id: 'machine-cityscan', name: 'CT-Scan', code: 'CITYSCAN-001' },
+  { id: 'machine-xray', name: 'Xray', code: 'XRAY-001' },
+  { id: 'machine-ecg', name: 'ECG', code: 'ECG-001' },
+  { id: 'legacy-machine', name: 'CNC Machine', code: 'CNC-1' },
+] }) }));
 vi.mock('../features/knowledge-capture/media/mediaApi', () => ({ mediaApi: { delete: apiMock.delete } }));
 vi.mock('../features/knowledge-capture/media/uploadWithProgress', () => ({ uploadWithProgress: apiMock.upload }));
 
@@ -16,11 +22,19 @@ describe('machine knowledge capture', () => {
     apiMock.get.mockResolvedValue([]);
   });
 
+  it('offers only the four registered machines in the capture selector', async () => {
+    render(<MemoryRouter><MachineKnowledgePage /></MemoryRouter>);
+    const selector = await screen.findByLabelText('Machine');
+    expect(Array.from(selector.querySelectorAll('option')).map(option => option.textContent)).toEqual([
+      'Select a registered machine…', 'MRI', 'CT-Scan', 'Xray', 'ECG',
+    ]);
+  });
+
   it('saves a note to the selected registered machine and reloads it in that machine library', async () => {
     const user = userEvent.setup();
     apiMock.post.mockResolvedValue({ id: 'note-1', machine_id: 'machine-cnc', title: 'Coolant check', kind: 'notes', original_name: 'note.txt', created_at: new Date().toISOString(), content: 'Check coolant flow.' });
     render(<MemoryRouter><MachineKnowledgePage /></MemoryRouter>);
-    await screen.findByRole('option', { name: /CNC Machine/ });
+    await screen.findByRole('option', { name: 'MRI' });
     await user.selectOptions(screen.getByLabelText('Machine'), 'machine-cnc');
     await user.click(screen.getByRole('button', { name: 'notes' }));
     await user.type(screen.getByPlaceholderText('Knowledge title'), 'Coolant check');

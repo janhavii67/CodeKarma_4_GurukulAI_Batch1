@@ -1,1045 +1,420 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card } from '../../components/ui/Card';
-import { Badge } from '../../components/ui/Badge';
-import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
-import { Alert } from '../../components/ui/Alert';
-import { EmptyState } from '../../components/ui/EmptyState';
-import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
-import { useAuth } from '../../hooks/useAuth';
-import { api, ApiClientError } from '../../lib/api/client';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  CheckCircle2,
   AlertTriangle,
-  Play,
-  CheckSquare,
-  Wrench,
-  History,
-  Layers,
-  Search,
-  RefreshCw,
-  Eye,
-  Trash2,
-  X,
-  Plus,
+  ArrowLeft,
   ArrowRight,
+  Check,
+  CheckCircle2,
+  Circle,
+  ClipboardCheck,
+  FileText,
+  Image as ImageIcon,
+  LoaderCircle,
+  ShieldCheck,
+  Video,
+  Volume2,
+  Wrench,
 } from 'lucide-react';
+import { api, getApiUrl } from '../../lib/api/client';
+import { fetchMachines } from '../knowledge-capture/knowledgeApi';
+import type { Machine } from '../knowledge-capture/types';
+import { MACHINE_DIARY_MACHINE_LABELS } from '../knowledge/machineDiaryApi';
 
-const formatWorkflowValue = (value: unknown): string[] => {
-  if (Array.isArray(value)) return value.map((entry) => typeof entry === 'string' ? entry : JSON.stringify(entry));
-  if (typeof value === 'string' && value.trim()) return [value];
-  if (value && typeof value === 'object') return Object.entries(value as Record<string, unknown>).map(([key, entry]) => `${key}: ${String(entry)}`);
-  return [];
-};
+type Stage = 1 | 2 | 3;
 
-interface Step {
+interface ProcedureStep {
   id: string;
   step_order: number;
   title: string;
   instruction: string;
-  expected_observation?: string;
-  safety_warning?: string;
+  expected_observation?: string | null;
+  safety_warning?: string | null;
   is_critical: boolean;
-  details: Record<string, any>;
-}
-
-interface WorkflowSource {
-  version_id: string;
-  item_id: string;
-  version_no: number;
-  title: string;
-  summary?: string;
-  machine_name?: string;
-  steps_count: number;
 }
 
 interface Procedure {
   id: string;
   title: string;
   description: string;
-  machine_id?: string;
-  machine_name?: string;
-  machine_model?: string;
-  operation?: string;
-  troubleshooting_guidance?: string;
-  prerequisites?: string;
-  required_tools?: string;
-  safety_warnings?: string;
-  operating_conditions?: string;
-  knowledge_version_id?: string;
-  version?: number | string;
-  source_refs: Array<Record<string, any>>;
-  steps: Step[];
+  machine_id: string | null;
+  machine_name?: string | null;
+  status: string;
+  version: number;
+  prerequisites?: string | null;
+  required_tools?: string | null;
+  safety_warnings?: string | null;
+  steps: ProcedureStep[];
+  updated_at: string;
 }
 
-interface RunStepExec {
+interface RunStep {
   id: string;
   step_id: string;
   is_completed: boolean;
-  operator_notes?: string;
-  verified_at?: string;
+  operator_notes?: string | null;
+  verified_at?: string | null;
 }
 
 interface ProcedureRun {
   id: string;
   procedure_id: string;
-  operator_id?: string;
-  status: string;
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'ABORTED' | string;
   started_at: string;
-  completed_at?: string;
-  current_step_order: number;
-  issues: Array<Record<string, any>>;
-  workflow?: Procedure;
-  step_executions: RunStepExec[];
+  completed_at?: string | null;
+  step_executions: RunStep[];
 }
 
-export const GuidedWorkflowsPage: React.FC = () => {
-  const { hasPermission } = useAuth();
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const canCreateProcedure = hasPermission('procedure.create');
+interface ProcedureReference {
+  id: string;
+  title: string;
+  kind: string;
+  machine_id: string | null;
+  url?: string | null;
+  verification_status?: string | null;
+  mime?: string | null;
+}
 
-  // Active view tab: 'execute' | 'history'
-  const [activeTab, setActiveTab] = useState<'execute' | 'history'>('execute');
+const theme = {
+  page: 'min-h-full bg-[#F5F8FC] text-[#173B5E]',
+  panel: 'rounded-2xl border border-[#E2E8F0] bg-white shadow-sm',
+  muted: 'text-[#536779]',
+};
 
-  // Execution states
-  const [procedures, setProcedures] = useState<Procedure[]>([]);
-  const [loadingProcedures, setLoadingProcedures] = useState(true);
-  const [procedureError, setProcedureError] = useState<string | null>(null);
-  const [workflowSearch, setWorkflowSearch] = useState('');
-  const [activeProcedure, setActiveProcedure] = useState<Procedure | null>(null);
-  const [activeRun, setActiveRun] = useState<ProcedureRun | null>(null);
-  const [startingRun, setStartingRun] = useState(false);
-  const [completingStepId, setCompletingStepId] = useState<string | null>(null);
+function explainError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return 'Something went wrong. Please try again.';
+}
 
-  // History states
-  const [runs, setRuns] = useState<ProcedureRun[]>([]);
-  const [loadingRuns, setLoadingRuns] = useState(false);
-  const [runsError, setRunsError] = useState<string | null>(null);
-  const [historySearch, setHistorySearch] = useState('');
-  const [historyStatusFilter, setHistoryStatusFilter] = useState<'ALL' | 'IN_PROGRESS' | 'COMPLETED'>('ALL');
+function isVerified(status?: string | null): boolean {
+  return ['verified', 'approved', 'published'].includes((status || '').toLowerCase());
+}
 
-  // Run detail modal states
-  const [inspectRunId, setInspectRunId] = useState<string | null>(null);
-  const [inspectedRun, setInspectedRun] = useState<ProcedureRun | null>(null);
-  const [loadingInspect, setLoadingInspect] = useState(false);
-  const [inspectError, setInspectError] = useState<string | null>(null);
-
-  // Modals for backend gaps
-  const [deleteRunTarget, setDeleteRunTarget] = useState<ProcedureRun | null>(null);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [workflowSources, setWorkflowSources] = useState<WorkflowSource[]>([]);
-  const [sourceSearch, setSourceSearch] = useState('');
-  const [loadingSources, setLoadingSources] = useState(false);
-  const [sourceError, setSourceError] = useState<string | null>(null);
-  const [creatingDraft, setCreatingDraft] = useState(false);
-  const [issueText, setIssueText] = useState('');
-  const [issueResponse, setIssueResponse] = useState<{ issue: Record<string, any>; guidance_status: string; guidance: Array<Record<string, any>> } | null>(null);
-
-  const fetchWorkflowSources = async (search = sourceSearch) => {
-    setLoadingSources(true);
-    setSourceError(null);
-    try {
-      const query = search.trim() ? `?q=${encodeURIComponent(search.trim())}` : '';
-      const rows = await api.get<WorkflowSource[]>(`/procedures/sources${query}`);
-      setWorkflowSources(Array.isArray(rows) ? rows : []);
-    } catch (err) {
-      setSourceError(err instanceof ApiClientError ? err.message : 'Could not load approved knowledge sources.');
-    } finally {
-      setLoadingSources(false);
-    }
-  };
-
-  const handleCreateWorkflowDraft = async (source: WorkflowSource) => {
-    setCreatingDraft(true);
-    setSourceError(null);
-    try {
-      const draft = await api.post<{ item_id: string }>(`/procedures/drafts/from-knowledge/${source.version_id}`, {});
-      setIsCreateModalOpen(false);
-      navigate(`/app/knowledge/${draft.item_id}`);
-    } catch (err) {
-      setSourceError(err instanceof ApiClientError ? err.message : 'Could not start a workflow draft.');
-    } finally {
-      setCreatingDraft(false);
-    }
-  };
-
-  // Fetch approved procedures
-  const fetchProcedures = (search = workflowSearch) => {
-    setLoadingProcedures(true);
-    setProcedureError(null);
-    api
-      .get<Procedure[]>(`/procedures${search.trim() ? `?q=${encodeURIComponent(search.trim())}` : ''}`)
-      .then((data) => {
-        const list = Array.isArray(data) ? data : [];
-        setProcedures(list);
-        if (list.length > 0 && !activeProcedure) {
-          setActiveProcedure(list[0]);
-        }
-        setLoadingProcedures(false);
-      })
-      .catch((err) => {
-        const msg = err instanceof ApiClientError ? err.message : 'Failed to retrieve procedures.';
-        setProcedureError(msg);
-        setProcedures([]);
-        setLoadingProcedures(false);
-      });
-  };
-
-  // Fetch operator execution runs
-  const fetchMyRuns = () => {
-    setLoadingRuns(true);
-    setRunsError(null);
-    api
-      .get<ProcedureRun[]>('/procedures/runs/my/all')
-      .then((data) => {
-        setRuns(Array.isArray(data) ? data : []);
-        setLoadingRuns(false);
-      })
-      .catch((err) => {
-        const msg = err instanceof ApiClientError ? err.message : 'Failed to retrieve execution run logs.';
-        setRunsError(msg);
-        setRuns([]);
-        setLoadingRuns(false);
-      });
-  };
+export function GuidedWorkflowsPage() {
+  const [stage, setStage] = useState<Stage>(1);
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [machinesLoading, setMachinesLoading] = useState(true);
+  const [machineError, setMachineError] = useState('');
+  const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
+  const [procedure, setProcedure] = useState<Procedure | null>(null);
+  const [run, setRun] = useState<ProcedureRun | null>(null);
+  const [references, setReferences] = useState<ProcedureReference[]>([]);
+  const [referenceNotice, setReferenceNotice] = useState('');
+  const [loadingMission, setLoadingMission] = useState(false);
+  const [savingStep, setSavingStep] = useState(false);
+  const [missionError, setMissionError] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [performed, setPerformed] = useState(false);
+  const [verified, setVerified] = useState(false);
+  const [safetyAcknowledged, setSafetyAcknowledged] = useState(false);
+  const [operatorNotes, setOperatorNotes] = useState('');
 
   useEffect(() => {
-    fetchProcedures();
+    let mounted = true;
+    setMachinesLoading(true);
+    fetchMachines({ page_size: 100 })
+      .then((result) => {
+        if (!mounted) return;
+        const supportedNames = new Set<string>(MACHINE_DIARY_MACHINE_LABELS);
+        setMachines(result.items.filter((machine) => supportedNames.has(machine.name)));
+      })
+      .catch((error: unknown) => {
+        if (mounted) setMachineError(explainError(error));
+      })
+      .finally(() => {
+        if (mounted) setMachinesLoading(false);
+      });
+    return () => { mounted = false; };
   }, []);
 
-  useEffect(() => {
-    const runId = searchParams.get('run_id');
-    if (!runId) return;
-    api.get<ProcedureRun>(`/procedures/runs/${encodeURIComponent(runId)}`).then((run) => {
-      setActiveRun(run);
-      if (run.workflow) setActiveProcedure(run.workflow);
-      setActiveTab('execute');
-    }).catch((err) => console.error('Could not resume linked workflow session:', err));
-  }, [searchParams]);
+  const stepExecutions = useMemo(() => {
+    const byStepId = new Map<string, RunStep>();
+    run?.step_executions.forEach((execution) => byStepId.set(execution.step_id, execution));
+    return byStepId;
+  }, [run]);
 
-  useEffect(() => {
-    if (activeTab === 'history') {
-      fetchMyRuns();
-    }
-  }, [activeTab]);
+  const completedCount = procedure?.steps.filter((step) => stepExecutions.get(step.id)?.is_completed).length || 0;
+  const stepCount = procedure?.steps.length || 0;
+  const allStepsCompleted = stepCount > 0 && completedCount === stepCount;
+  const serverConfirmedComplete = run?.status === 'COMPLETED' && allStepsCompleted && Boolean(run.completed_at);
+  const firstIncompleteIndex = procedure?.steps.findIndex((step) => !stepExecutions.get(step.id)?.is_completed) ?? -1;
+  const furthestAvailableIndex = firstIncompleteIndex === -1 ? Math.max(0, stepCount - 1) : firstIncompleteIndex;
+  const currentStep = procedure?.steps[activeIndex];
+  const currentExecution = currentStep ? stepExecutions.get(currentStep.id) : undefined;
+  const needsStepVerification = Boolean(currentStep && (currentStep.is_critical || currentStep.expected_observation || currentStep.safety_warning));
+  const needsSafetyAcknowledgement = Boolean(procedure?.safety_warnings?.trim());
+  const currentStepComplete = Boolean(currentExecution?.is_completed);
+  const canMarkComplete = performed && (!needsStepVerification || verified) && (!needsSafetyAcknowledgement || safetyAcknowledged);
 
-  // Start a new execution run
-  const handleStartRun = async (procId: string) => {
-    setStartingRun(true);
+  const resetStepChecks = useCallback(() => {
+    setPerformed(false);
+    setVerified(false);
+    setOperatorNotes('');
+  }, []);
+
+  const selectMachine = async (machine: Machine) => {
+    setSelectedMachine(machine);
+    setStage(2);
+    setProcedure(null);
+    setRun(null);
+    setReferences([]);
+    setReferenceNotice('');
+    setMissionError('');
+    setActiveIndex(0);
+    setSafetyAcknowledged(false);
+    resetStepChecks();
+    setLoadingMission(true);
     try {
-      const run = await api.post<ProcedureRun>(`/procedures/${procId}/start`, {});
-      if (run.workflow) setActiveProcedure(run.workflow);
-      setActiveRun(run);
-    } catch (err) {
-      console.error('Failed to start run:', err);
+      const procedures = await api.get<Procedure[]>(`/procedures?machine_id=${encodeURIComponent(machine.id)}`);
+      const machineProcedures = procedures
+        .filter((item) => item.status === 'APPROVED' && item.machine_id === machine.id && item.steps?.length)
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+      const selectedProcedure = machineProcedures[0];
+      if (!selectedProcedure) return;
+      setProcedure(selectedProcedure);
+
+      const runs = await api.get<ProcedureRun[]>('/procedures/runs/my/all');
+      const existingRun = runs.find((item) => item.procedure_id === selectedProcedure.id && item.status === 'IN_PROGRESS');
+      const activeRun = existingRun || await api.post<ProcedureRun>(`/procedures/${selectedProcedure.id}/start`, {});
+      setRun(activeRun);
+      const incomplete = selectedProcedure.steps.findIndex((step) => !activeRun.step_executions.find((execution) => execution.step_id === step.id)?.is_completed);
+      setActiveIndex(incomplete < 0 ? Math.max(0, selectedProcedure.steps.length - 1) : incomplete);
+
+      try {
+        const assets = await api.get<ProcedureReference[]>(`/procedures/${selectedProcedure.id}/assets`);
+        const compatible = assets.filter((asset) => asset.machine_id === machine.id && isVerified(asset.verification_status));
+        setReferences(compatible);
+        if (assets.length && !compatible.length) setReferenceNotice('This procedure has reference media, but none is marked verified for this machine.');
+      } catch {
+        setReferenceNotice('Reference media is unavailable for your current permissions.');
+      }
+    } catch (error) {
+      setMissionError(explainError(error));
     } finally {
-      setStartingRun(false);
+      setLoadingMission(false);
     }
   };
 
-  // Toggle checklist step completion
-  const handleToggleStep = async (stepId: string, currentStatus: boolean) => {
-    if (!activeRun) return;
-    setCompletingStepId(stepId);
+  const moveToStep = (index: number) => {
+    if (!procedure || index < 0 || index >= procedure.steps.length || index > furthestAvailableIndex) return;
+    setActiveIndex(index);
+    resetStepChecks();
+  };
+
+  const markCurrentStepComplete = async () => {
+    if (!procedure || !run || !currentStep || !canMarkComplete || currentStepComplete) return;
+    setSavingStep(true);
+    setMissionError('');
     try {
-      const updatedRun = await api.post<ProcedureRun>(
-        `/procedures/runs/${activeRun.id}/step/${stepId}`,
-        {
-          is_completed: !currentStatus,
-          operator_notes: !currentStatus ? 'Verified by operator.' : undefined,
-        }
+      const updated = await api.post<ProcedureRun>(
+        `/procedures/runs/${run.id}/step/${currentStep.id}`,
+        { is_completed: true, operator_notes: operatorNotes.trim() || undefined },
       );
-      setActiveRun(updatedRun);
-    } catch (err) {
-      console.error('Failed to complete step:', err);
+      setRun(updated);
+      resetStepChecks();
+      const count = procedure.steps.filter((step) => updated.step_executions.find((execution) => execution.step_id === step.id)?.is_completed).length;
+      if (count === procedure.steps.length && (updated.status !== 'COMPLETED' || !updated.completed_at)) {
+        setMissionError('All checkpoints are marked complete, but the server has not confirmed procedure completion yet. Refresh the run status before finishing.');
+      }
+    } catch (error) {
+      setMissionError(explainError(error));
     } finally {
-      setCompletingStepId(null);
+      setSavingStep(false);
     }
   };
 
-  const handleNavigateStep = async (stepOrder: number) => {
-    if (!activeRun) return;
-    try {
-      const updated = await api.patch<ProcedureRun>(`/procedures/runs/${activeRun.id}/current-step`, { step_order: stepOrder });
-      setActiveRun(updated);
-      setIssueResponse(null);
-      setIssueText('');
-    } catch (err) {
-      console.error('Failed to navigate workflow step:', err);
-    }
+  const startOver = () => {
+    setStage(1);
+    setSelectedMachine(null);
+    setProcedure(null);
+    setRun(null);
+    setReferences([]);
+    setMissionError('');
+    setReferenceNotice('');
+    setActiveIndex(0);
+    setSafetyAcknowledged(false);
+    resetStepChecks();
   };
 
-  const handleReportIssue = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!activeRun || !activeProcedure) return;
-    const current = activeProcedure.steps.find((step) => step.step_order === activeRun.current_step_order);
-    if (!current || !issueText.trim()) return;
-    try {
-      const response = await api.post<{ issue: Record<string, any>; guidance_status: string; guidance: Array<Record<string, any>> }>(
-        `/procedures/runs/${activeRun.id}/issues`,
-        { step_id: current.id, description: issueText.trim() },
-      );
-      setIssueResponse(response);
-      const refreshed = await api.get<ProcedureRun>(`/procedures/runs/${activeRun.id}`);
-      setActiveRun(refreshed);
-    } catch (err) {
-      console.error('Failed to report workflow issue:', err);
-    }
-  };
-
-  // Inspect run details modal
-  const handleInspectRun = (runId: string) => {
-    setInspectRunId(runId);
-    setLoadingInspect(true);
-    setInspectError(null);
-    setInspectedRun(null);
-
-    api
-      .get<ProcedureRun>(`/procedures/runs/${runId}`)
-      .then((data) => {
-        setInspectedRun(data);
-        setLoadingInspect(false);
-      })
-      .catch((err) => {
-        const msg = err instanceof ApiClientError ? err.message : 'Failed to load run details.';
-        setInspectError(msg);
-        setLoadingInspect(false);
-      });
-  };
-
-  // Resume an in-progress run in execution tab
-  const handleResumeRun = async (run: ProcedureRun) => {
-    const proc = run.workflow || procedures.find((p) => p.id === run.procedure_id);
-    if (proc) setActiveProcedure(proc);
-    setActiveRun(run);
-    setActiveTab('execute');
-  };
-
-  // Filtered runs
-  const filteredRuns = runs.filter((r) => {
-    const proc = procedures.find((p) => p.id === r.procedure_id);
-    const title = proc?.title || '';
-    const matchesSearch =
-      !historySearch.trim() ||
-      title.toLowerCase().includes(historySearch.toLowerCase()) ||
-      r.id.toLowerCase().includes(historySearch.toLowerCase());
-    const matchesStatus =
-      historyStatusFilter === 'ALL' || r.status === historyStatusFilter;
-    return matchesSearch && matchesStatus;
-  });
-  const activeStep = activeRun && activeProcedure
-    ? activeProcedure.steps.find((step) => step.step_order === activeRun.current_step_order)
-    : undefined;
-  const activeStepExecution = activeStep && activeRun
-    ? activeRun.step_executions.find((execution) => execution.step_id === activeStep.id)
-    : undefined;
-  const completedCount = activeRun?.step_executions.filter((execution) => execution.is_completed).length || 0;
+  const stageItems = [
+    { number: 1, title: 'Select Machine' },
+    { number: 2, title: 'Guided Mission' },
+    { number: 3, title: 'Review & Complete' },
+  ] as const;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 py-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#DCE6F0]">
-        <div>
-          <div className="flex items-center gap-2.5 mb-1">
-            <div className="w-10 h-10 rounded-xl bg-[#EAF3FF] border border-[#BCD7F5] flex items-center justify-center text-[#1976D2] shadow-xs">
-              <Layers className="w-5 h-5" />
-            </div>
+    <main className={`${theme.page} px-4 py-6 sm:px-6 lg:px-8`}>
+      <div className="mx-auto max-w-6xl space-y-6">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <span className="inline-flex rounded-full border border-[#1976C9]/20 bg-[#EFF4FF] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#1976C9]">
+              Expert workspace · Guided workflow
+            </span>
+            <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-[#173B5E] sm:text-4xl">Guided Workflow</h1>
+            <p className={`mt-2 max-w-2xl text-sm leading-6 ${theme.muted}`}>
+              Follow the approved procedure checkpoints in sequence. Progress reflects recorded verification only.
+            </p>
+          </div>
+          {stage > 1 && <button type="button" onClick={startOver} className="inline-flex items-center gap-2 self-start rounded-lg px-3 py-2 text-sm font-semibold text-[#1976C9] transition hover:bg-[#EFF4FF] sm:self-auto"><ArrowLeft size={16} /> Change machine</button>}
+        </header>
+
+        <nav aria-label="Guided workflow stages" className={`${theme.panel} p-4 sm:p-5`}>
+          <ol className="grid grid-cols-3 gap-2 sm:gap-5">
+            {stageItems.map((item, index) => {
+              const complete = stage > item.number;
+              const active = stage === item.number;
+              return <li key={item.number} className="relative flex items-center gap-2 sm:gap-3">
+                {index > 0 && <span aria-hidden="true" className={`absolute -left-2.5 top-4 hidden h-px w-4 sm:block ${complete || active ? 'bg-[#1976C9]' : 'bg-[#DCE6F0]'}`} />}
+                <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border text-sm font-bold ${complete ? 'border-[#10B981] bg-[#ECFDF5] text-[#059669]' : active ? 'border-[#1976C9] bg-[#EFF4FF] text-[#1976C9]' : 'border-[#DCE6F0] bg-white text-[#8292A3]'}`}>
+                  {complete ? <Check size={16} /> : item.number}
+                </span>
+                <span className={`text-[11px] font-semibold leading-tight sm:text-sm ${active ? 'text-[#173B5E]' : theme.muted}`}>{item.title}</span>
+              </li>;
+            })}
+          </ol>
+        </nav>
+
+        {machineError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Could not load registered machines: {machineError}</div>}
+        {missionError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{missionError}</div>}
+
+        {stage === 1 && <section aria-labelledby="machine-heading" className="space-y-4">
+          <div>
+            <h2 id="machine-heading" className="text-xl font-bold text-[#173B5E]">Select the machine</h2>
+            <p className={`mt-1 text-sm ${theme.muted}`}>Choose the registered equipment to load its approved procedure.</p>
+          </div>
+          {machinesLoading ? <div className={`${theme.panel} flex items-center gap-3 p-6 text-sm ${theme.muted}`}><LoaderCircle className="animate-spin text-[#1976C9]" size={20} />Loading registered machines…</div> : machines.length === 0 ? <div className={`${theme.panel} p-6 text-sm ${theme.muted}`}>No supported registered machines are currently available.</div> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {MACHINE_DIARY_MACHINE_LABELS.map((label, index) => {
+              const machine = machines.find((item) => item.name === label);
+              return <button key={label} type="button" disabled={!machine || loadingMission} onClick={() => machine && void selectMachine(machine)} className={`${theme.panel} group min-h-44 p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#1976C9]/50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-55`}>
+                <span className={`grid h-12 w-12 place-items-center rounded-xl ${index % 2 === 0 ? 'bg-[#EFF4FF] text-[#1976C9]' : 'bg-[#EAF8F4] text-[#15966A]'}`}><Wrench size={23} /></span>
+                <span className="mt-5 block text-lg font-bold text-[#173B5E]">{label}</span>
+                <span className={`mt-1 block text-xs ${theme.muted}`}>{machine ? machine.code : 'Not registered'}</span>
+                {loadingMission && selectedMachine?.id === machine?.id && <span className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-[#1976C9]"><LoaderCircle size={14} className="animate-spin" />Loading procedure</span>}
+                <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[#1976C9]">Open workflow <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" /></span>
+              </button>;
+            })}
+          </div>}
+        </section>}
+
+        {stage === 2 && <section aria-labelledby="mission-heading" className="space-y-5">
+          <div className="flex flex-col gap-4 rounded-2xl border border-[#C8D6E4] bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold text-[#17324D]">Guided Operating Workflows</h1>
-                <Badge variant="brand" size="sm">
-                  Module 03 · Execution &amp; Audits
-                </Badge>
-              </div>
-              <p className="text-xs text-[#5D7188] mt-0.5">
-                Ordered step checklists with mandatory verification checkpoints and non-repudiable audit trails.
-              </p>
+              <p className="text-xs font-bold uppercase tracking-wider text-[#1976C9]">Stage 2 · Guided Mission</p>
+              <h2 id="mission-heading" className="mt-1 text-xl font-bold text-[#173B5E]">{selectedMachine?.name || 'Selected machine'}</h2>
+              {procedure && <p className={`mt-1 text-sm ${theme.muted}`}>{procedure.title} · Approved version {procedure.version}</p>}
             </div>
-          </div>
-        </div>
-
-        {/* View Switcher & Action */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center bg-[#F3F8FE] border border-[#DCE6F0] rounded-xl p-1 text-xs">
-            <button
-              type="button"
-              onClick={() => setActiveTab('execute')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
-                activeTab === 'execute'
-                  ? 'bg-white text-[#17324D] font-semibold shadow-xs'
-                  : 'text-[#5D7188] hover:text-[#17324D]'
-              }`}
-            >
-              <Play className="w-3.5 h-3.5 text-[#1976D2]" />
-              <span>Interactive Execution</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('history')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
-                activeTab === 'history'
-                  ? 'bg-white text-[#17324D] font-semibold shadow-xs'
-                  : 'text-[#5D7188] hover:text-[#17324D]'
-              }`}
-            >
-              <History className="w-3.5 h-3.5 text-[#1976D2]" />
-              <span>Run History &amp; Audits</span>
-            </button>
+            {procedure && <div className="min-w-44 sm:text-right">
+              <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[#536779] sm:justify-end"><span>Step {stepCount ? activeIndex + 1 : 0} of {stepCount} · {completedCount} complete</span><span>{stepCount ? Math.round((completedCount / stepCount) * 100) : 0}%</span></div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#EAF0F6]"><div className="h-full rounded-full bg-[#1976C9] transition-all duration-500" style={{ width: `${stepCount ? (completedCount / stepCount) * 100 : 0}%` }} /></div>
+            </div>}
           </div>
 
-          {canCreateProcedure && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => { setIsCreateModalOpen(true); fetchWorkflowSources(''); }}
-              icon={<Plus className="w-3.5 h-3.5" />}
-            >
-              Author Procedure
-            </Button>
-          )}
-        </div>
-      </div>
+          {loadingMission && <div className={`${theme.panel} flex items-center gap-3 p-8 text-sm ${theme.muted}`}><LoaderCircle className="animate-spin text-[#1976C9]" size={20} />Loading the approved machine procedure…</div>}
+          {!loadingMission && !missionError && selectedMachine && !procedure && <div className={`${theme.panel} p-7 sm:p-9`}>
+            <div className="grid h-12 w-12 place-items-center rounded-xl bg-[#EFF4FF] text-[#1976C9]"><ClipboardCheck size={24} /></div>
+            <h3 className="mt-4 text-lg font-bold text-[#173B5E]">No approved procedure is available for {selectedMachine.name}</h3>
+            <p className={`mt-2 max-w-2xl text-sm leading-6 ${theme.muted}`}>Guided steps appear here after an expert creates and approves a procedure for this machine. This workflow does not create or invent operating instructions.</p>
+            <Link to="/app/procedures/new" className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3]"><FileText size={16} />Go to Create Procedure</Link>
+          </div>}
 
-      {/* TAB 1: INTERACTIVE WORKFLOW EXECUTION */}
-      {activeTab === 'execute' && (
-        <>
-          {procedureError && (
-            <Alert variant="error" title="Failed to Load Workflows">
-              {procedureError}
-              <div className="mt-2">
-                <Button size="sm" variant="secondary" onClick={() => fetchProcedures()}>
-                  Retry Request
-                </Button>
-              </div>
-            </Alert>
-          )}
+          {!loadingMission && procedure && !run && <div className={`${theme.panel} p-6`}>
+            <h3 className="font-bold text-[#173B5E]">The procedure run could not be opened</h3>
+            <p className={`mt-1 text-sm ${theme.muted}`}>Retry to resume an existing run or start the approved procedure.</p>
+            <button type="button" onClick={() => selectedMachine && void selectMachine(selectedMachine)} className="mt-4 rounded-lg bg-[#1976C9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#125EA3]">Retry</button>
+          </div>}
 
-          {loadingProcedures ? (
-            <div className="py-16 text-center">
-              <LoadingSpinner size="lg" message="Loading approved procedures catalog..." />
-            </div>
-          ) : procedures.length === 0 ? (
-            <EmptyState
-              icon={<Layers className="w-6 h-6 text-[#1976D2]" />}
-              title="No Standard Procedures Found"
-              description="No approved standard operating procedures are currently registered in the database."
-            />
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Procedures List */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between pb-1">
-                  <h3 className="text-xs font-bold text-[#7C8DA1] uppercase tracking-wider">
-                    Available Procedures ({procedures.length})
-                  </h3>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => fetchProcedures()}
-                    icon={<RefreshCw className="w-3 h-3" />}
-                  >
-                    Refresh
-                  </Button>
-                </div>
+          {!loadingMission && procedure && run && currentStep && <>
+            {procedure.safety_warnings?.trim() && <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertTriangle className="mt-0.5 shrink-0" size={19} /><div><p className="font-bold">Procedure safety alert</p><p className="mt-1 whitespace-pre-line leading-6">{procedure.safety_warnings}</p></div></div>}
+            {(procedure.prerequisites || procedure.required_tools) && <div className={`${theme.panel} grid gap-4 p-4 sm:grid-cols-2`}>
+              {procedure.prerequisites && <div><p className="text-xs font-bold uppercase tracking-wide text-[#536779]">Prerequisites</p><p className="mt-1 whitespace-pre-line text-sm leading-6 text-[#173B5E]">{procedure.prerequisites}</p></div>}
+              {procedure.required_tools && <div><p className="text-xs font-bold uppercase tracking-wide text-[#536779]">Required tools</p><p className="mt-1 whitespace-pre-line text-sm leading-6 text-[#173B5E]">{procedure.required_tools}</p></div>}
+            </div>}
 
-                <form onSubmit={(event) => { event.preventDefault(); fetchProcedures(); }} className="flex gap-2">
-                  <Input aria-label="Search approved workflows" value={workflowSearch} onChange={(event) => setWorkflowSearch(event.target.value)} placeholder="Search by workflow, operation, or machine" className="flex-1 text-xs" />
-                  <Button type="submit" size="sm" variant="secondary" icon={<Search className="w-3.5 h-3.5" />}>Search</Button>
-                </form>
-
-                <div className="space-y-2.5">
-                  {procedures.map((p) => (
-                    <div
-                      key={p.id}
-                      onClick={() => {
-                        setActiveProcedure(p);
-                        setActiveRun(null);
-                      }}
-                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                        activeProcedure?.id === p.id
-                          ? 'bg-[#EAF3FF] border-[#1976D2] shadow-xs'
-                          : 'bg-white border-[#DCE6F0] hover:border-[#1976D2]/50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[11px] font-mono font-bold text-[#1976D2]">
-                          {p.steps.length} Steps
-                        </span>
-                        <Badge variant="success" size="sm">
-                          Approved SOP
-                        </Badge>
-                      </div>
-                      <h4 className="text-sm font-bold text-[#17324D] mb-1">{p.title}</h4>
-                      <p className="text-xs text-[#5D7188] line-clamp-2 leading-relaxed">{p.description}</p>
-                      <div className="mt-2.5 text-[11px] text-[#7C8DA1] flex items-center gap-1.5 border-t border-[#DCE6F0]/60 pt-2">
-                        <span>Target:</span>
-                        <span className="text-[#17324D] font-medium">{p.machine_name || 'Machine not specified'}{p.machine_model ? ` · ${p.machine_model}` : ''}</span>
-                        <span className="ml-auto text-slate-500">v{p.version}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Active Procedure Runner */}
-              <div className="lg:col-span-2 space-y-4">
-                {activeProcedure && (
-                  <Card
-                    title={activeProcedure.title}
-                    subtitle={`Machine: ${activeProcedure.machine_name || 'Not specified'}${activeProcedure.machine_model ? ` · ${activeProcedure.machine_model}` : ''} · Approved revision v${activeProcedure.version}`}
-                    badge={
-                      activeRun ? (
-                        <Badge
-                          variant={activeRun.status === 'COMPLETED' ? 'success' : 'warning'}
-                          size="sm"
-                          dot
-                        >
-                          {activeRun.status === 'COMPLETED' ? 'Run Completed' : 'Run In Progress'}
-                        </Badge>
-                      ) : (
-                        <Badge variant="neutral" size="sm">
-                          Ready to Execute
-                        </Badge>
-                      )
-                    }
-                  >
-                    <div className="space-y-4 text-xs">
-                      <p className="text-[#5D7188] leading-relaxed">{activeProcedure.description}</p>
-                      {activeProcedure.operation && <p className="text-sm text-[#40566D]"><strong>Operation:</strong> {activeProcedure.operation}</p>}
-
-                      {/* Prerequisites & Warnings */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {activeProcedure.troubleshooting_guidance && (
-                          <div className="p-3 rounded-xl bg-[#F8FAFD] border border-[#DCE6F0] md:col-span-2">
-                            <div className="font-bold text-[#17324D] mb-1">Approved troubleshooting notes</div>
-                            <p className="text-[#5D7188] text-[11px] leading-relaxed whitespace-pre-line">{activeProcedure.troubleshooting_guidance}</p>
-                          </div>
-                        )}
-                        {activeProcedure.prerequisites && (
-                          <div className="p-3 rounded-xl bg-[#F3F8FE] border border-[#DCE6F0]">
-                            <div className="flex items-center gap-1.5 font-bold text-[#17324D] mb-1">
-                              <Wrench className="w-3.5 h-3.5 text-[#1976D2]" />
-                              Prerequisites:
-                            </div>
-                            <p className="text-[#5D7188] text-[11px] leading-relaxed">
-                              {activeProcedure.prerequisites}
-                            </p>
-                          </div>
-                        )}
-
-                        {activeProcedure.required_tools && (
-                          <div className="p-3 rounded-xl bg-[#F3F8FE] border border-[#DCE6F0]">
-                            <div className="font-bold text-[#17324D] mb-1">Required tools and materials</div>
-                            <p className="text-[#5D7188] text-[11px] leading-relaxed">{activeProcedure.required_tools}</p>
-                          </div>
-                        )}
-                        {activeProcedure.operating_conditions && (
-                          <div className="p-3 rounded-xl bg-[#F3F8FE] border border-[#DCE6F0]">
-                            <div className="font-bold text-[#17324D] mb-1">Documented machine parameters</div>
-                            <p className="text-[#5D7188] text-[11px] leading-relaxed">{activeProcedure.operating_conditions}</p>
-                          </div>
-                        )}
-                        {activeProcedure.safety_warnings && (
-                          <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900">
-                            <div className="flex items-center gap-1.5 font-bold text-[#D98B13] mb-1">
-                              <AlertTriangle className="w-3.5 h-3.5" />
-                              Mandatory Safety Interlock:
-                            </div>
-                            <p className="text-[11px] text-amber-800 leading-relaxed">
-                              {activeProcedure.safety_warnings}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {activeProcedure.source_refs?.length > 0 && (
-                        <div className="rounded-xl border border-[#DCE6F0] p-3">
-                          <div className="font-bold text-[#17324D] mb-2">Approved source references</div>
-                          <ul className="space-y-1.5">
-                            {activeProcedure.source_refs.map((source, index) => (
-                              <li key={`${source.version_id || source.media_id || index}`} className="text-[11px] text-[#5D7188]">
-                                {source.item_id ? <a className="text-[#1976D2] underline" href={`/app/knowledge/${source.item_id}`}>{source.title || 'Knowledge source'}</a> : source.media_id && source.kind === 'image' ? <a href={`/api/v1/media/${source.media_id}`} target="_blank" rel="noreferrer" className="text-[#1976D2] underline">{source.title || source.original_name || 'Approved image'}</a> : (source.title || source.original_name || 'Supporting media')}
-                                {source.version_no ? ` · v${source.version_no}` : ''}
-                                {source.media_id && source.kind === 'image' && <img src={`/api/v1/media/${source.media_id}`} alt={source.title || 'Workflow reference diagram'} className="mt-2 max-h-48 rounded border border-[#DCE6F0]" />}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {/* Start Run Button */}
-                      {!activeRun && (
-                        <div className="pt-2">
-                          <Button
-                            variant="primary"
-                            onClick={() => handleStartRun(activeProcedure.id)}
-                            disabled={startingRun}
-                            icon={<Play className="w-4 h-4" />}
-                          >
-                            {startingRun ? 'Starting workflow...' : 'Start workflow'}
-                          </Button>
-                        </div>
-                      )}
-
-                      {/* One-step execution view; navigation never records completion. */}
-                      {activeRun && (
-                        <div className="space-y-3 pt-2">
-                          <div className="flex items-center justify-between pb-2 border-b border-[#E8EEF5]">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-[#17324D]">Workflow steps</span>
-                              <span className="text-[10px] font-mono text-[#7C8DA1]">Run #{activeRun.id.slice(0, 8)}</span>
-                            </div>
-                            <span className="text-[11px] font-mono font-bold text-[#1976D2]">
-                              {completedCount} of{' '}
-                              {activeProcedure.steps.length} Steps Verified
-                            </span>
-                          </div>
-
-                          {activeStep ? (
-                            <div className="rounded-xl border border-[#BCD7F5] bg-white p-5 shadow-xs space-y-4" aria-live="polite">
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="text-sm font-semibold text-[#17324D]">Step {activeRun.current_step_order} of {activeProcedure.steps.length}</span>
-                                <span className="text-xs text-[#5D7188]">{activeStepExecution?.is_completed ? 'Recorded complete' : 'Not recorded complete'}</span>
-                              </div>
-                              <div className="h-2 rounded bg-[#E8EEF5]"><div className="h-2 rounded bg-[#1976D2] transition-all" style={{ width: `${(activeRun.current_step_order / activeProcedure.steps.length) * 100}%` }} /></div>
-                              <h3 className="text-lg font-bold text-[#17324D]">{activeStep.title}</h3>
-                              <p className="text-base leading-relaxed text-[#40566D]">{activeStep.instruction}</p>
-                              {activeStep.safety_warning && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><strong>Safety:</strong> {activeStep.safety_warning}</div>}
-                              {activeStep.is_critical && <Badge variant="danger" size="sm">Critical checkpoint</Badge>}
-                              {formatWorkflowValue(activeStep.details?.tools || activeStep.details?.materials).length > 0 && <div><strong className="text-[#17324D]">Tools and materials</strong><ul className="list-disc pl-5 text-sm text-[#5D7188]">{formatWorkflowValue(activeStep.details?.tools || activeStep.details?.materials).map((value, index) => <li key={index}>{value}</li>)}</ul></div>}
-                              {formatWorkflowValue(activeStep.details?.parameters).length > 0 && <div><strong className="text-[#17324D]">Documented parameters</strong><ul className="list-disc pl-5 text-sm text-[#5D7188]">{formatWorkflowValue(activeStep.details?.parameters).map((value, index) => <li key={index}>{value}</li>)}</ul></div>}
-                              {activeStep.expected_observation && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900"><strong>Expected result / checkpoint:</strong> {activeStep.expected_observation}</div>}
-                              {formatWorkflowValue(activeStep.details?.quality_checkpoints).length > 0 && <div><strong className="text-[#17324D]">Quality checkpoints</strong><ul className="list-disc pl-5 text-sm text-[#5D7188]">{formatWorkflowValue(activeStep.details?.quality_checkpoints).map((value, index) => <li key={index}>{value}</li>)}</ul></div>}
-                              {activeStepExecution?.is_completed && activeStepExecution.verified_at && <p className="text-xs text-emerald-700">You recorded this step complete at {new Date(activeStepExecution.verified_at).toLocaleTimeString()}.</p>}
-
-                              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#E8EEF5] pt-3">
-                                <Button variant="outline" size="sm" disabled={activeRun.current_step_order <= 1 || activeRun.status !== 'IN_PROGRESS'} onClick={() => handleNavigateStep(activeRun.current_step_order - 1)}>Previous step</Button>
-                                <Button variant={activeStepExecution?.is_completed ? 'secondary' : 'primary'} size="sm" disabled={!!activeStepExecution?.is_completed || activeRun.status !== 'IN_PROGRESS' || completingStepId === activeStep.id} onClick={() => handleToggleStep(activeStep.id, false)} icon={<CheckSquare className="w-4 h-4" />}>
-                                  {activeStepExecution?.is_completed ? 'Completion recorded' : 'I completed this step'}
-                                </Button>
-                                <Button variant="outline" size="sm" disabled={activeRun.current_step_order >= activeProcedure.steps.length || activeRun.status !== 'IN_PROGRESS'} onClick={() => handleNavigateStep(activeRun.current_step_order + 1)}>Next step <ArrowRight className="w-4 h-4 ml-1" /></Button>
-                              </div>
-
-                              <form onSubmit={handleReportIssue} className="border-t border-[#E8EEF5] pt-3 space-y-2">
-                                <label className="block font-semibold text-[#17324D]" htmlFor="workflow-issue">Problem or unclear instruction</label>
-                                <textarea id="workflow-issue" value={issueText} onChange={(event) => setIssueText(event.target.value)} maxLength={1000} rows={2} className="w-full rounded-lg border border-[#DCE6F0] p-2 text-sm" placeholder="Describe what is unclear or what went wrong" />
-                                <Button type="submit" size="sm" variant="secondary" disabled={!issueText.trim()}>Report problem and find approved guidance</Button>
-                              </form>
-                              {issueResponse && <div className="rounded-lg border border-[#DCE6F0] bg-[#F8FAFD] p-3 space-y-2">
-                                <strong className="text-[#17324D]">{issueResponse.guidance_status === 'matched_published_knowledge' ? 'Approved troubleshooting references' : 'No approved troubleshooting guidance found. Pause and ask a supervisor before proceeding.'}</strong>
-                                {issueResponse.guidance.map((source, index) => <div key={`${source.source_id}-${index}`} className="text-xs text-[#5D7188]"><span className="font-semibold">{source.title}</span><p>{source.text}</p>{source.item_id && <a className="text-[#1976D2] underline" href={`/app/knowledge/${source.item_id}`}>View source document</a>}</div>)}
-                                <Button size="sm" variant="secondary" onClick={() => navigate(`/app/troubleshooting?workflow_run_id=${encodeURIComponent(activeRun.id)}&workflow_issue_id=${encodeURIComponent(String(issueResponse.issue.id))}&issue=${encodeURIComponent(String(issueResponse.issue.description || ''))}`)}>Continue in Troubleshooting</Button>
-                              </div>}
-                            </div>
-                          ) : <Alert variant="error" title="Step unavailable">This workflow revision has an invalid step sequence. Stop and report the issue.</Alert>}
-
-                          {activeRun.status === 'COMPLETED' && (
-                            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-[#15966A] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-                              <div className="flex items-center gap-2.5">
-                                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                                <div>
-                                  <span className="font-bold text-sm text-emerald-950 block">
-                                    All checkpoints verified! Workflow logged successfully.
-                                  </span>
-                                  <span className="text-xs text-emerald-800">
-                                    Audit execution record stored in the compliance database.
-                                  </span>
-                                </div>
-                              </div>
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => setActiveTab('history')}
-                                icon={<History className="w-3.5 h-3.5" />}
-                              >
-                                View Run Audit Logs
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                )}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* TAB 2: RUN HISTORY & AUDITS (Resource 3 Core Implementation) */}
-      {activeTab === 'history' && (
-        <div className="space-y-6">
-          {/* History Search & Filters */}
-          <div className="bg-white p-3.5 rounded-xl border border-[#DCE6F0] shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="flex-1 relative">
-              <Input
-                value={historySearch}
-                onChange={(e) => setHistorySearch(e.target.value)}
-                placeholder="Search historical runs by procedure title or run ID..."
-                leftIcon={<Search className="w-4 h-4 text-[#7C8DA1]" />}
-                className="w-full text-xs"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <select
-                value={historyStatusFilter}
-                aria-label="Filter runs by execution status"
-                onChange={(e) => setHistoryStatusFilter(e.target.value as any)}
-                className="text-xs bg-[#F3F8FE] border border-[#DCE6F0] rounded-lg px-3 py-2.5 text-[#17324D] focus:outline-none focus:border-[#1976D2]"
-              >
-                <option value="ALL">All Run Statuses</option>
-                <option value="IN_PROGRESS">In Progress</option>
-                <option value="COMPLETED">Completed</option>
-              </select>
-
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={fetchMyRuns}
-                icon={<RefreshCw className={`w-3.5 h-3.5 ${loadingRuns ? 'animate-spin' : ''}`} />}
-              >
-                Refresh Runs
-              </Button>
-            </div>
-          </div>
-
-          {runsError && (
-            <Alert variant="error" title="Failed to Load Run History">
-              {runsError}
-              <div className="mt-2">
-                <Button size="sm" variant="secondary" onClick={fetchMyRuns}>
-                  Retry Request
-                </Button>
-              </div>
-            </Alert>
-          )}
-
-          {loadingRuns ? (
-            <div className="py-16 text-center">
-              <LoadingSpinner size="lg" message="Loading operator execution runs from compliance log..." />
-            </div>
-          ) : filteredRuns.length === 0 ? (
-            <EmptyState
-              icon={<History className="w-6 h-6 text-[#1976D2]" />}
-              title="No Execution Runs Found"
-              description={
-                historySearch || historyStatusFilter !== 'ALL'
-                  ? 'No execution runs match your search filters.'
-                  : 'You have not executed any guided workflows yet. Switch to Interactive Execution to start your first procedure.'
-              }
-              action={
-                historySearch || historyStatusFilter !== 'ALL' ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setHistorySearch('');
-                      setHistoryStatusFilter('ALL');
-                    }}
-                  >
-                    Reset Filters
-                  </Button>
-                ) : (
-                  <Button variant="primary" size="sm" onClick={() => setActiveTab('execute')} icon={<Play className="w-3.5 h-3.5" />}>
-                    Start First Procedure Run
-                  </Button>
-                )
-              }
-            />
-          ) : (
-            <div className="bg-white rounded-xl border border-[#DCE6F0] overflow-hidden shadow-xs">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#F8FAFD] border-b border-[#DCE6F0] text-[#5D7188]">
-                  <tr>
-                    <th className="py-3 px-4 font-semibold">Run ID</th>
-                    <th className="py-3 px-4 font-semibold">Standard Operating Procedure</th>
-                    <th className="py-3 px-4 font-semibold">Status</th>
-                    <th className="py-3 px-4 font-semibold">Checkpoints</th>
-                    <th className="py-3 px-4 font-semibold">Started At</th>
-                    <th className="py-3 px-4 font-semibold">Completed At</th>
-                    <th className="py-3 px-4 font-semibold text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E8EEF5]">
-                  {filteredRuns.map((r) => {
-                    const proc = procedures.find((p) => p.id === r.procedure_id);
-                    const completedStepsCount = r.step_executions.filter((s) => s.is_completed).length;
-                    const totalStepsCount = r.step_executions.length;
-
-                    return (
-                      <tr key={r.id} className="hover:bg-[#F3F8FE]/60 transition-colors">
-                        <td className="py-3 px-4 font-mono text-[11px] font-bold text-[#1976D2]">
-                          #{r.id.slice(0, 8)}
-                        </td>
-                        <td className="py-3 px-4 font-semibold text-[#17324D]">
-                          {proc?.title || `Procedure ${r.procedure_id.slice(0, 8)}`}
-                          <span className="block text-[10px] font-normal text-[#5D7188]">
-                            {proc?.machine_name || 'Standard Analyzer'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <Badge
-                            variant={r.status === 'COMPLETED' ? 'success' : 'warning'}
-                            size="sm"
-                            dot
-                          >
-                            {r.status}
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-4 font-mono text-[11px] text-[#17324D]">
-                          {completedStepsCount} / {totalStepsCount} verified
-                        </td>
-                        <td className="py-3 px-4 text-[#5D7188] whitespace-nowrap">
-                          {new Date(r.started_at).toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 text-[#5D7188] whitespace-nowrap">
-                          {r.completed_at ? new Date(r.completed_at).toLocaleString() : '—'}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => handleInspectRun(r.id)}
-                              icon={<Eye className="w-3.5 h-3.5 text-[#1976D2]" />}
-                            >
-                              Inspect Log
-                            </Button>
-
-                            {r.status === 'IN_PROGRESS' && (
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => handleResumeRun(r)}
-                                icon={<ArrowRight className="w-3.5 h-3.5" />}
-                              >
-                                Resume
-                              </Button>
-                            )}
-
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setDeleteRunTarget(r)}
-                              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                              icon={<Trash2 className="w-3.5 h-3.5" />}
-                            >
-                              Delete
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
+            <div className="grid gap-5 lg:grid-cols-[minmax(250px,0.8fr)_minmax(0,1.6fr)]">
+              <aside className={`${theme.panel} p-4 sm:p-5`}>
+                <h3 className="text-sm font-bold text-[#173B5E]">Procedure checkpoints</h3>
+                <ol className="mt-4 space-y-1">
+                  {procedure.steps.map((step, index) => {
+                    const done = Boolean(stepExecutions.get(step.id)?.is_completed);
+                    const isCurrent = index === activeIndex;
+                    const locked = index > furthestAvailableIndex;
+                    const requiresVerification = Boolean(step.is_critical || step.expected_observation || step.safety_warning);
+                    return <li key={step.id}>
+                      <button type="button" disabled={locked || savingStep} onClick={() => moveToStep(index)} aria-current={isCurrent ? 'step' : undefined} className={`relative flex w-full items-start gap-3 rounded-xl p-3 text-left transition ${isCurrent ? 'bg-[#EFF4FF] ring-1 ring-[#1976C9]/25' : locked ? 'cursor-not-allowed opacity-45' : 'hover:bg-[#F5F8FC]'}`}>
+                        <span className={`relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full border text-xs font-bold ${done ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : isCurrent ? 'border-[#1976C9] bg-white text-[#1976C9]' : 'border-[#DCE6F0] bg-white text-[#8292A3]'}`}>{done ? <Check size={15} /> : step.step_order}</span>
+                        <span className="min-w-0 flex-1"><span className="block text-xs font-semibold leading-5 text-[#173B5E]">{step.title}</span><span className={`mt-1 block text-[10px] font-medium uppercase tracking-wide ${done ? 'text-emerald-700' : isCurrent ? 'text-[#1976C9]' : 'text-[#8292A3]'}`}>{done ? 'Completed' : locked ? 'Not started' : isCurrent && requiresVerification ? 'Requires verification' : isCurrent ? 'In progress' : 'Ready'}</span></span>
+                        {step.is_critical && <ShieldCheck size={15} className="mt-1 shrink-0 text-amber-600" aria-label="Critical verification" />}
+                      </button>
+                    </li>;
                   })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+                </ol>
+                <p className="mt-4 border-t border-[#E8EEF5] pt-3 text-[11px] text-[#536779]">Future checkpoints become available after the current step is recorded complete.</p>
+              </aside>
 
-      {/* INSPECT RUN LOG DETAIL MODAL */}
-      {inspectRunId && (
-        <div className="fixed inset-0 z-50 bg-[#17324D]/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-[#BCD7F5] shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-[#DCE6F0] flex items-center justify-between bg-[#F8FAFD]">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#EAF3FF] border border-[#BCD7F5] flex items-center justify-center text-[#1976D2]">
-                  <History className="w-5 h-5" />
+              <article className={`${theme.panel} overflow-hidden`}>
+                <div className="border-b border-[#E8EEF5] bg-gradient-to-r from-white to-[#F5F9FF] p-5 sm:p-7">
+                  <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-[#BCD7F5] bg-[#EFF4FF] px-2.5 py-1 text-[11px] font-bold text-[#1976C9]">STEP {activeIndex + 1} OF {stepCount}</span>{currentStep.is_critical && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800"><ShieldCheck size={13} />Critical verification</span>}</div>
+                  <h3 className="mt-4 text-xl font-bold text-[#173B5E] sm:text-2xl">{currentStep.title}</h3>
+                  <p className="mt-3 whitespace-pre-line text-sm leading-7 text-[#344B60]">{currentStep.instruction}</p>
                 </div>
-                <div>
-                  <h3 className="font-bold text-base text-[#17324D]">Procedure Execution Audit Log</h3>
-                  <p className="text-xs font-mono text-[#5D7188]">Run ID: {inspectRunId}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setInspectRunId(null)}
-                className="w-8 h-8 rounded-lg hover:bg-[#E8EEF5] flex items-center justify-center text-[#5D7188]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+                <div className="space-y-4 p-5 sm:p-7">
+                  {currentStep.safety_warning && <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertTriangle size={18} className="mt-0.5 shrink-0" /><div><p className="font-bold">Safety warning</p><p className="mt-1 whitespace-pre-line leading-6">{currentStep.safety_warning}</p></div></div>}
+                  {currentStep.expected_observation && <div className="rounded-xl border border-[#C8D6E4] bg-[#F5F8FC] p-4"><p className="text-xs font-bold uppercase tracking-wide text-[#536779]">Expected observation</p><p className="mt-1 whitespace-pre-line text-sm leading-6 text-[#173B5E]">{currentStep.expected_observation}</p></div>}
+                  {references.length > 0 && <div><h4 className="text-sm font-bold text-[#173B5E]">Verified media for this procedure</h4><div className="mt-2 grid gap-2 sm:grid-cols-2">{references.map((asset) => {
+                    const url = getApiUrl(asset.url || `/media/${asset.id}`);
+                    return <div key={asset.id} className="flex items-center gap-3 rounded-xl border border-[#E2E8F0] bg-white p-3">
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#EFF4FF] text-[#1976C9]">{asset.kind === 'video' ? <Video size={17} /> : asset.kind === 'audio' ? <Volume2 size={17} /> : asset.kind === 'image' ? <ImageIcon size={17} /> : <FileText size={17} />}</span>
+                      <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-[#173B5E]">{asset.title}</span><span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700"><CheckCircle2 size={12} />Verified reference</span></span>
+                      {asset.kind === 'video' && <video aria-label={`${asset.title} preview`} controls className="max-h-16 max-w-24 rounded" crossOrigin="use-credentials"><source src={url} type={asset.mime || undefined} /></video>}
+                      {asset.kind === 'audio' && <audio aria-label={`${asset.title} preview`} controls className="w-28" crossOrigin="use-credentials"><source src={url} type={asset.mime || undefined} /></audio>}
+                      {asset.kind === 'image' && <a href={url} target="_blank" rel="noreferrer" aria-label={`Preview ${asset.title}`}><img src={url} alt={asset.title} crossOrigin="use-credentials" className="h-12 w-12 rounded-lg border border-[#E2E8F0] object-cover" /></a>}
+                      {asset.kind === 'document' && <a href={url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#1976C9]">Open</a>}
+                    </div>;
+                  })}</div></div>}
+                  {referenceNotice && <p className="text-xs text-[#536779]">{referenceNotice}</p>}
 
-            {/* Content */}
-            <div className="p-6 overflow-y-auto space-y-5 text-xs">
-              {loadingInspect ? (
-                <div className="py-12 text-center">
-                  <LoadingSpinner size="md" message="Loading verification checklist log..." />
-                </div>
-              ) : inspectError ? (
-                <Alert variant="error" title="Log Error">
-                  {inspectError}
-                </Alert>
-              ) : inspectedRun ? (
-                <>
-                  {/* Status Banner */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-[#F3F8FE] rounded-xl border border-[#DCE6F0]">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-[#7C8DA1] block mb-0.5">Execution Status</span>
-                      <Badge
-                        variant={inspectedRun.status === 'COMPLETED' ? 'success' : 'warning'}
-                        size="sm"
-                        dot
-                      >
-                        {inspectedRun.status}
-                      </Badge>
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-[#7C8DA1] block mb-0.5">Start Time</span>
-                      <span className="font-medium text-[#17324D]">
-                        {new Date(inspectedRun.started_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-[#7C8DA1] block mb-0.5">Completion Time</span>
-                      <span className="font-medium text-[#17324D]">
-                        {inspectedRun.completed_at ? new Date(inspectedRun.completed_at).toLocaleString() : 'In Progress'}
-                      </span>
-                    </div>
+                  {currentStepComplete ? <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 size={19} className="mt-0.5 shrink-0" /><div><p className="font-bold">Checkpoint recorded complete</p>{currentExecution?.verified_at && <p className="mt-1 text-xs">Verified {new Date(currentExecution.verified_at).toLocaleString()}</p>}</div></div> : <div className="space-y-3 rounded-xl border border-[#E2E8F0] bg-[#FBFCFE] p-4">
+                    <label className="flex cursor-pointer items-start gap-3 text-sm text-[#344B60]"><input type="checkbox" checked={performed} onChange={(event) => setPerformed(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-[#C8D6E4] accent-[#1976C9]" /><span>I performed this checkpoint according to the approved procedure.</span></label>
+                    {needsStepVerification && <label className="flex cursor-pointer items-start gap-3 text-sm text-[#344B60]"><input type="checkbox" checked={verified} onChange={(event) => setVerified(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-[#C8D6E4] accent-[#1976C9]" /><span>I checked the expected observation and applicable safety conditions.</span></label>}
+                    {needsSafetyAcknowledgement && <label className="flex cursor-pointer items-start gap-3 text-sm text-[#344B60]"><input type="checkbox" checked={safetyAcknowledged} onChange={(event) => setSafetyAcknowledged(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-[#C8D6E4] accent-[#1976C9]" /><span>I reviewed the procedure-level safety alert before proceeding.</span></label>}
+                    <label className="block text-xs font-semibold text-[#536779]">Operator observation <span className="font-normal">(optional)</span><textarea value={operatorNotes} onChange={(event) => setOperatorNotes(event.target.value)} maxLength={500} rows={2} placeholder="Record an observation for this checkpoint" className="mt-1.5 w-full resize-y rounded-lg border border-[#DCE6F0] bg-white px-3 py-2 text-sm font-normal text-[#173B5E] outline-none focus:border-[#1976C9] focus:ring-2 focus:ring-[#1976C9]/15" /></label>
+                    <ButtonMarkComplete disabled={!canMarkComplete || savingStep} loading={savingStep} onClick={() => void markCurrentStepComplete()} />
+                    {!canMarkComplete && <p className="text-xs text-[#536779]">Complete the required confirmation checks to record this checkpoint.</p>}
+                  </div>}
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#E8EEF5] pt-4">
+                    <button type="button" disabled={activeIndex === 0 || savingStep} onClick={() => moveToStep(activeIndex - 1)} className="inline-flex items-center gap-2 rounded-lg border border-[#DCE6F0] bg-white px-4 py-2.5 text-sm font-semibold text-[#173B5E] transition hover:bg-[#F5F8FC] disabled:opacity-40"><ArrowLeft size={16} />Previous Step</button>
+                    {activeIndex < stepCount - 1 ? <button type="button" disabled={!currentStepComplete || savingStep} onClick={() => moveToStep(activeIndex + 1)} className="inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3] disabled:cursor-not-allowed disabled:opacity-45">Next Step<ArrowRight size={16} /></button> : <button type="button" disabled={!serverConfirmedComplete || savingStep} onClick={() => setStage(3)} className="inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3] disabled:cursor-not-allowed disabled:opacity-45">Review &amp; Complete<ArrowRight size={16} /></button>}
                   </div>
-
-                  {/* Step Executions Table */}
-                  <div className="space-y-2">
-                    <span className="text-xs font-semibold text-[#17324D] block">
-                      Verification Checkpoint Logs ({inspectedRun.step_executions.length})
-                    </span>
-
-                    <div className="border border-[#DCE6F0] rounded-xl overflow-hidden">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-[#F8FAFD] border-b border-[#DCE6F0] text-[#5D7188]">
-                          <tr>
-                            <th className="py-2.5 px-3 font-semibold">Checkpoint</th>
-                            <th className="py-2.5 px-3 font-semibold">Status</th>
-                            <th className="py-2.5 px-3 font-semibold">Verified Timestamp</th>
-                            <th className="py-2.5 px-3 font-semibold">Operator Notes</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#E8EEF5]">
-                          {inspectedRun.step_executions.map((s, index) => (
-                            <tr key={s.id} className="hover:bg-[#F3F8FE]/60">
-                              <td className="py-2.5 px-3 font-medium text-[#17324D]">
-                                Step {index + 1}
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <Badge variant={s.is_completed ? 'success' : 'neutral'} size="sm">
-                                  {s.is_completed ? 'Verified' : 'Pending'}
-                                </Badge>
-                              </td>
-                              <td className="py-2.5 px-3 text-[#5D7188] font-mono text-[11px]">
-                                {s.verified_at ? new Date(s.verified_at).toLocaleTimeString() : '—'}
-                              </td>
-                              <td className="py-2.5 px-3 text-[#5D7188] italic text-[11px]">
-                                {s.operator_notes || '—'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              ) : null}
+                </div>
+              </article>
             </div>
+          </>}
+        </section>}
 
-            {/* Footer */}
-            <div className="px-6 py-3.5 border-t border-[#DCE6F0] bg-[#F8FAFD] flex justify-end">
-              <Button variant="secondary" size="sm" onClick={() => setInspectRunId(null)}>
-                Close Run Log
-              </Button>
+        {stage === 3 && procedure && run && selectedMachine && <section aria-labelledby="review-heading" className="mx-auto max-w-3xl space-y-5">
+          <div className={`${theme.panel} overflow-hidden`}>
+            <div className={`p-6 sm:p-9 ${serverConfirmedComplete ? 'bg-gradient-to-br from-emerald-50 to-white' : 'bg-gradient-to-br from-amber-50 to-white'}`}>
+              <div className={`grid h-14 w-14 place-items-center rounded-2xl ${serverConfirmedComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{serverConfirmedComplete ? <CheckCircle2 size={30} /> : <AlertTriangle size={28} />}</div>
+              <p className="mt-5 text-xs font-bold uppercase tracking-[0.12em] text-[#536779]">Stage 3 · Review &amp; Complete</p>
+              <h2 id="review-heading" className="mt-2 text-2xl font-extrabold text-[#173B5E]">{serverConfirmedComplete ? 'Procedure complete' : 'Completion needs confirmation'}</h2>
+              <p className={`mt-2 text-sm leading-6 ${theme.muted}`}>{serverConfirmedComplete ? 'The backend has recorded every checkpoint as complete.' : 'The procedure is not marked complete by the server. Review the remaining checks before finishing.'}</p>
+            </div>
+            <div className="space-y-5 p-6 sm:p-9">
+              <dl className="grid gap-4 sm:grid-cols-2"><div className="rounded-xl bg-[#F5F8FC] p-4"><dt className="text-xs font-semibold uppercase tracking-wide text-[#536779]">Machine</dt><dd className="mt-1 font-bold text-[#173B5E]">{selectedMachine.name}</dd></div><div className="rounded-xl bg-[#F5F8FC] p-4"><dt className="text-xs font-semibold uppercase tracking-wide text-[#536779]">Approved procedure</dt><dd className="mt-1 font-bold text-[#173B5E]">{procedure.title} · v{procedure.version}</dd></div></dl>
+              <div><div className="flex items-center justify-between text-sm"><span className="font-semibold text-[#173B5E]">Recorded checkpoints</span><span className="font-bold text-[#173B5E]">{completedCount} / {stepCount}</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-[#EAF0F6]"><div className={`h-full rounded-full transition-all ${serverConfirmedComplete ? 'bg-[#10B981]' : 'bg-[#1976C9]'}`} style={{ width: `${stepCount ? (completedCount / stepCount) * 100 : 0}%` }} /></div></div>
+              <ul className="space-y-2">{procedure.steps.map((step) => { const done = Boolean(stepExecutions.get(step.id)?.is_completed); return <li key={step.id} className="flex items-start gap-3 rounded-lg border border-[#E8EEF5] p-3 text-sm"><span className={done ? 'mt-0.5 text-emerald-600' : 'mt-0.5 text-amber-600'}>{done ? <CheckCircle2 size={17} /> : <Circle size={17} />}</span><span className="flex-1 text-[#344B60]">{step.step_order}. {step.title}</span><span className={`text-[11px] font-bold uppercase ${done ? 'text-emerald-700' : 'text-amber-700'}`}>{done ? 'Completed' : 'Remaining'}</span></li>; })}</ul>
+              <div className="flex flex-wrap justify-end gap-3 border-t border-[#E8EEF5] pt-5"><button type="button" onClick={() => setStage(2)} className="rounded-lg border border-[#DCE6F0] bg-white px-4 py-2.5 text-sm font-semibold text-[#173B5E] transition hover:bg-[#F5F8FC]">Return to procedure</button><button type="button" onClick={startOver} disabled={!serverConfirmedComplete} className="rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3] disabled:cursor-not-allowed disabled:opacity-45">Finish workflow</button></div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* DELETE RUN AUDIT MODAL (WITH BACKEND GAP FLAG) */}
-      {deleteRunTarget && (
-        <div className="fixed inset-0 z-50 bg-[#17324D]/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-rose-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-[#D98B13] flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm text-[#17324D]">Run Log Deletion Request</h3>
-                <p className="text-xs text-[#5D7188] mt-0.5">
-                  Target Run ID: <span className="font-mono font-semibold text-[#17324D]">#{deleteRunTarget.id.slice(0, 8)}</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 mb-5 leading-relaxed">
-              <span className="font-semibold block mb-1">Notice: Regulatory Compliance Invariant</span>
-              The backend API does not implement a <code className="font-mono bg-amber-100 px-1 py-0.5 rounded text-[10px]">DELETE /api/v1/procedures/runs/&#123;id&#125;</code> endpoint. In accordance with ISO 13485 and GMP standards, equipment procedure runs are permanent compliance audit trails that cannot be erased or modified after execution.
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setDeleteRunTarget(null)}>
-                Understood &amp; Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Create a workflow as a knowledge draft from a currently approved source. */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-[#17324D]/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-[#BCD7F5] shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-[#DCE6F0] flex items-center justify-between bg-[#F8FAFD]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-[#EAF3FF] border border-[#BCD7F5] flex items-center justify-center text-[#1976D2]">
-                  <Plus className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-[#17324D]">Start a workflow draft</h3>
-                  <p className="text-[11px] text-[#5D7188]">Choose an approved source. You will review and edit it before submitting through the normal approval flow.</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsCreateModalOpen(false)}
-                className="w-8 h-8 rounded-lg hover:bg-[#E8EEF5] flex items-center justify-center text-[#5D7188]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-4 text-xs">
-              <form onSubmit={(event) => { event.preventDefault(); fetchWorkflowSources(); }} className="flex gap-2">
-                <Input aria-label="Search approved workflow sources" value={sourceSearch} onChange={(event) => setSourceSearch(event.target.value)} placeholder="Search approved knowledge" className="flex-1" />
-                <Button type="submit" variant="secondary" disabled={loadingSources} icon={<Search className="w-4 h-4" />}>Search</Button>
-              </form>
-              {sourceError && <Alert variant="error" title="Could not load source">{sourceError}</Alert>}
-              {loadingSources ? <LoadingSpinner size="md" message="Finding approved step-based knowledge..." /> : workflowSources.length === 0 ? (
-                <EmptyState icon={<Layers className="w-5 h-5" />} title="No approved workflow sources found" description="Publish a knowledge item with ordered steps before creating a guided workflow." />
-              ) : (
-                <div className="space-y-2 max-h-[55vh] overflow-y-auto">
-                  {workflowSources.map((source) => (
-                    <div key={source.version_id} className="flex items-center justify-between gap-3 rounded-xl border border-[#DCE6F0] p-3">
-                      <div className="min-w-0">
-                        <h4 className="font-semibold text-sm text-[#17324D] truncate">{source.title}</h4>
-                        <p className="text-[11px] text-[#5D7188] mt-1">{source.machine_name || 'Machine not specified'} · v{source.version_no} · {source.steps_count} documented steps</p>
-                        {source.summary && <p className="text-xs text-[#5D7188] mt-1 line-clamp-2">{source.summary}</p>}
-                      </div>
-                      <Button size="sm" variant="primary" disabled={creatingDraft} onClick={() => handleCreateWorkflowDraft(source)}>{creatingDraft ? 'Creating…' : 'Use source'}</Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="px-6 py-3.5 border-t border-[#DCE6F0] bg-[#F8FAFD] flex justify-end gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setIsCreateModalOpen(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+        </section>}
+      </div>
+    </main>
   );
-};
+}
+
+function ButtonMarkComplete({ disabled, loading, onClick }: { disabled: boolean; loading: boolean; onClick: () => void }) {
+  return <button type="button" disabled={disabled} onClick={onClick} className="inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3] disabled:cursor-not-allowed disabled:opacity-45">
+    {loading ? <LoaderCircle size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}{loading ? 'Saving checkpoint…' : 'Mark Complete'}
+  </button>;
+}

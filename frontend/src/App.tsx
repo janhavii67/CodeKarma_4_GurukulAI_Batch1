@@ -24,6 +24,7 @@ import { NotFoundPage } from './features/errors/NotFoundPage';
 import { MachineKnowledgePage } from './features/knowledge/MachineKnowledgePage';
 import { ProcedureCreatePage } from './features/knowledge/ProcedureCreatePage';
 import { LandingPage } from './features/landing/LandingPage';
+import { MachineDiaryLibraryPage, MachineDiaryPage } from './features/knowledge/MachineDiaryLibraryPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,7 +60,10 @@ export const App: React.FC = () => {
             >
               <Route index element={<DashboardPage />} />
               <Route path="machines" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'machine.manage']}><MachinesPage /></ProtectedRoute>} />
-              <Route path="knowledge" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><LibraryPage /></ProtectedRoute>} />
+              <Route path="knowledge" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><MachineDiaryLibraryPage /></ProtectedRoute>} />
+              <Route path="knowledge/machine/:machineId" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><MachineDiaryPage /></ProtectedRoute>} />
+              {/* Keep the existing SOP listing and draft workflow available. */}
+              <Route path="procedures/library" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><LibraryPage /></ProtectedRoute>} />
               <Route path="knowledge-assets" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><MachineKnowledgePage /></ProtectedRoute>} />
               <Route path="procedures/new" element={<ProtectedRoute requiredPermission="procedure.create"><ProcedureCreatePage /></ProtectedRoute>} />
               <Route path="knowledge/new" element={<ProtectedRoute requiredPermission="knowledge.create"><KnowledgeEditorPage /></ProtectedRoute>} />

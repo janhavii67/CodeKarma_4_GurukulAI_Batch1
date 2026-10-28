@@ -43,6 +43,19 @@ const renderAppLayout = () =>
   );
 
 describe('Capture Knowledge navigation', () => {
+  it('omits Review & Verify and Knowledge Assistant from desktop and mobile navigation', () => {
+    renderAppLayout();
+
+    expect(screen.queryByRole('link', { name: 'Review & Verify' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Knowledge Assistant' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Guided Workflows' }).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle navigation menu' }));
+    expect(screen.queryByRole('link', { name: 'Review & Verify' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Knowledge Assistant' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Guided Workflows' }).length).toBeGreaterThan(0);
+  });
+
   it('opens the audio/video capture workflow from the desktop Navbar, matching Home', () => {
     renderAppLayout();
 

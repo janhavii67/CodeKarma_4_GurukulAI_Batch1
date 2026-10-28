@@ -48,12 +48,12 @@ describe('AppLayout role navigation', () => {
     renderLayout();
 
     expect(screen.getByRole('link', { name: 'My Knowledge' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Knowledge Assistant' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Guided Workflows' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Open profile menu' }));
+    expect(screen.getByRole('link', { name: /Knowledge Assistant/i })).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Troubleshooting (M05)' }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('link', { name: 'Capture Knowledge' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Review & Verify' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Review & Verify/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Voice-to-Knowledge (M04)' })).not.toBeInTheDocument();
   });
 
@@ -63,8 +63,8 @@ describe('AppLayout role navigation', () => {
     renderLayout();
 
     expect(screen.getByRole('link', { name: 'Capture Knowledge' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Review & Verify' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Open profile menu' }));
+    expect(screen.getByRole('link', { name: /Review & Verify/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Voice-to-Knowledge (M04)' })).toBeInTheDocument();
   });
 });

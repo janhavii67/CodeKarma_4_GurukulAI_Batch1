@@ -2,6 +2,7 @@ from typing import List, Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.models.media import MediaAsset
+from app.models.knowledge import KnowledgeItem, KnowledgeVersion
 
 
 class MediaRepository:
@@ -57,7 +58,20 @@ class MediaRepository:
 
     @staticmethod
     def list_by_machine_id(db: Session, machine_id: str, kind: Optional[str] = None) -> List[MediaAsset]:
-        stmt = select(MediaAsset).where(MediaAsset.machine_id == machine_id)
+        # `machine_id` was added to standalone media later in the schema
+        # history. For older assets attached to knowledge versions, resolve
+        # their machine through the version and then its knowledge item.
+        effective_machine_id = func.coalesce(
+            MediaAsset.machine_id,
+            KnowledgeVersion.machine_id,
+            KnowledgeItem.machine_id,
+        )
+        stmt = (
+            select(MediaAsset)
+            .outerjoin(KnowledgeVersion, MediaAsset.version_id == KnowledgeVersion.id)
+            .outerjoin(KnowledgeItem, KnowledgeVersion.item_id == KnowledgeItem.id)
+            .where(effective_machine_id == machine_id)
+        )
         if kind:
             stmt = stmt.where(MediaAsset.kind == kind)
         stmt = stmt.order_by(MediaAsset.created_at.desc())
