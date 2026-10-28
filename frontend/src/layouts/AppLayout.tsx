@@ -112,7 +112,7 @@ export const AppLayout: React.FC = () => {
             </NavLink>
 
             <NavLink
-              to="/app/knowledge/new"
+              to="/app/knowledge-assets?kind=notes"
               className={({ isActive }) =>
                 `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
                   isActive
@@ -314,7 +314,7 @@ export const AppLayout: React.FC = () => {
               <span>Home</span>
             </NavLink>
             <NavLink
-              to="/app/knowledge/new"
+              to="/app/knowledge-assets?kind=notes"
               onClick={closeMobileMenu}
               className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
             >
