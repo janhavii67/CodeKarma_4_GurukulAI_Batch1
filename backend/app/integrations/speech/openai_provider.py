@@ -4,6 +4,7 @@ import httpx
 from app.integrations.speech.base import SpeechProvider, Segment
 from app.core.exceptions import ValidationError
 from app.core.logging import logger
+from app.core.config import settings
 
 
 class OpenAIWhisperProvider(SpeechProvider):
@@ -12,14 +13,14 @@ class OpenAIWhisperProvider(SpeechProvider):
     Requires OPENAI_API_KEY.
     """
 
-    def __init__(self, api_key: str, model: str = "whisper-1"):
+    def __init__(self, api_key: str, model: str | None = None):
         if not api_key:
             raise ValidationError(
                 code="missing_api_key",
                 message="OpenAI API key is missing. Set OPENAI_API_KEY in .env or switch STT_PROVIDER.",
             )
         self.api_key = api_key
-        self.model = model
+        self.model = model or settings.OPENAI_TRANSCRIPTION_MODEL
 
     async def transcribe(self, audio_path: Path) -> List[Segment]:
         audio_path = Path(audio_path)
@@ -42,14 +43,45 @@ class OpenAIWhisperProvider(SpeechProvider):
                     response.raise_for_status()
                     payload = response.json()
                 except httpx.HTTPStatusError as e:
-                    logger.error(f"OpenAI Whisper error: {e.response.text}")
-                    raise ValidationError(code="transcription_failed", message="OpenAI transcription service failed.")
+                    # Parse only the provider's documented error code/type. Never log or
+                    # return the body, which can contain provider diagnostics or user data.
+                    provider_code = None
+                    provider_type = None
+                    try:
+                        body = e.response.json()
+                        error = body.get("error", {}) if isinstance(body, dict) else {}
+                        if isinstance(error, dict):
+                            provider_code = str(error.get("code") or "").lower()
+                            provider_type = str(error.get("type") or "").lower()
+                    except (ValueError, AttributeError, TypeError):
+                        pass
+
+                    if e.response.status_code == 429:
+                        if provider_code in {"insufficient_quota", "billing_hard_limit_reached", "quota_exceeded"}:
+                            code = "transcription_quota_exceeded"
+                            message = "Transcription is unavailable because the speech provider account has reached its usage limit. Ask an administrator to check provider quota or billing before retrying."
+                            category = "quota"
+                        elif provider_code in {"rate_limit_exceeded", "requests", "tokens"} or provider_type in {"rate_limit_error", "requests", "tokens"}:
+                            code = "transcription_rate_limited"
+                            message = "The speech provider is temporarily rate limiting transcription. Wait briefly, then retry."
+                            category = "rate_limit"
+                        else:
+                            code = "transcription_provider_limited"
+                            message = "The speech provider rejected this transcription due to a usage limit. Check provider quota and rate limits before retrying."
+                            category = "unknown_429"
+                        logger.error("Speech provider returned HTTP 429 (category=%s)", category)
+                        raise ValidationError(code=code, message=message)
+
+                    logger.error("Speech provider returned HTTP status %s", e.response.status_code)
+                    raise ValidationError(code="transcription_failed", message="The speech provider could not process this recording. The recording is saved; check provider status and retry.")
+                except httpx.TimeoutException:
+                    raise ValidationError(code="transcription_timeout", message="Speech provider timed out. The recording is saved and can be retried.")
                 except Exception as e:
-                    logger.error(f"Network error calling OpenAI Whisper: {e}")
+                    logger.error("Speech provider request failed (%s)", type(e).__name__)
                     raise ValidationError(code="transcription_network_error", message="Failed to contact transcription service.")
 
         raw_segments = payload.get("segments", [])
-        if not raw_segments and payload.get("text"):
+        if not raw_segments and isinstance(payload.get("text"), str) and payload["text"].strip():
             # Single segment fallback
             return [Segment(idx=1, start_s=0.0, end_s=payload.get("duration", 5.0), text=payload["text"].strip())]
 

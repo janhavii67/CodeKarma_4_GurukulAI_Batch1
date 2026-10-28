@@ -1,8 +1,14 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Text, Integer, Boolean, ForeignKey, DateTime, JSON
+from sqlalchemy import String, Text, Integer, Boolean, ForeignKey, DateTime, JSON, Table, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
+
+procedure_media_assets = Table(
+    "procedure_media_assets", Base.metadata,
+    Column("procedure_id", String(36), ForeignKey("procedures.id", ondelete="CASCADE"), primary_key=True),
+    Column("media_id", String(36), ForeignKey("media_assets.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class Procedure(Base, TimestampMixin):
@@ -23,6 +29,7 @@ class Procedure(Base, TimestampMixin):
     troubleshooting_guidance: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     knowledge_version_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("knowledge_versions.id", ondelete="SET NULL", name="fk_procedures_knowledge_version_id"), nullable=True, unique=True, index=True)
     source_refs: Mapped[Optional[List[dict]]] = mapped_column(JSON, default=list, nullable=True)
+    media_assets = relationship("MediaAsset", secondary=procedure_media_assets, lazy="selectin")
 
     steps: Mapped[List["ProcedureStep"]] = relationship("ProcedureStep", back_populates="procedure", cascade="all, delete-orphan", order_by="ProcedureStep.step_order")
     runs: Mapped[List["ProcedureRun"]] = relationship("ProcedureRun", back_populates="procedure")

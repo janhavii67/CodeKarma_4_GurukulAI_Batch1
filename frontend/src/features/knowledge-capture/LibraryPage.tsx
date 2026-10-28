@@ -17,7 +17,6 @@ import { useKnowledgeList, useMachines, useCreateKnowledge } from './hooks';
 import { StatusBadge } from './StatusBadge';
 import { Button } from '../../components/ui/Button';
 import { ApiClientError } from '../../lib/api/client';
-import { MedicalTopNav } from './components/MedicalTopNav';
 
 const PAGE_SIZE = 15;
 
@@ -100,7 +99,6 @@ export const LibraryPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
-      <MedicalTopNav />
 
       <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Dynamic Role Perspective Hero Banner */}

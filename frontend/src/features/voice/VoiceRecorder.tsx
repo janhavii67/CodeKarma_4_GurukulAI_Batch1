@@ -3,6 +3,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { uploadVoiceNarration, VoiceUploadResponse } from './voiceApi';
 import { api } from '../../lib/api/client';
+import { createKnowledge } from '../knowledge-capture/knowledgeApi';
 import { Mic, Square, Upload, Radio, Play, Pause, RotateCcw, Cpu } from 'lucide-react';
 
 interface VoiceRecorderProps {
@@ -29,6 +30,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
   const [isUploading, setIsUploading] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [linkedVersionId, setLinkedVersionId] = useState(versionId || '');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -172,15 +174,28 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
         filename = uploadFile.name;
       }
 
+      let targetVersionId = linkedVersionId;
+      let knowledgeItemId: string | undefined;
+      if (!targetVersionId) {
+        if (!title.trim()) {
+          setError('Add a knowledge title before uploading so this narration can be attached to a draft.');
+          return;
+        }
+        const draft = await createKnowledge({ title: title.trim(), machine_id: machineId || null });
+        targetVersionId = draft.version.id;
+        knowledgeItemId = draft.id;
+        setLinkedVersionId(targetVersionId);
+      }
+
       const res = await uploadVoiceNarration(
         payloadBlob,
         title || (mode === 'record' ? 'Live Expert Shop Floor Narration' : uploadFile?.name),
         machineId || undefined,
-        versionId || undefined,
+        targetVersionId,
         filename
       );
 
-      onUploaded(res);
+      onUploaded({ ...res, knowledge_item_id: knowledgeItemId });
       resetRecording();
       setUploadFile(null);
       setTitle('');

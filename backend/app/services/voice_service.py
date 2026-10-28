@@ -11,7 +11,7 @@ from app.models.transcript import Transcript, TranscriptSegment
 from app.models.knowledge import KnowledgeVersion
 from app.integrations.media.ffmpeg import probe_duration
 from app.services.vector_service import compute_dense_embedding, KnowledgeEmbedding, EMBEDDING_DIM
-from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError
+from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError, ConflictError
 from app.core.logging import logger
 
 MAX_DURATION_SECONDS = 300.0  # 5 minutes maximum
@@ -108,6 +108,7 @@ def create_voice_capture_job(
         status="queued",
         progress=0,
         idempotency_key=idempotency_key or f"voice:{media.id}",
+        user_id=user_id,
         created_by=user_id,
     )
     db.add(job)
@@ -145,7 +146,7 @@ def media_idempotency_digest(user_id: str, version_id: Optional[str], content_sh
     return "v2:" + hashlib.sha256(scope.encode("utf-8")).hexdigest()
 
 
-def retry_voice_job(db: Session, job_id: str, user_id: str) -> ProcessingJob:
+def retry_voice_job(db: Session, job_id: str, user_id: str, can_review: bool = False) -> ProcessingJob:
     """
     Retries a failed processing job if under retry limit (attempts < 3).
     """
@@ -153,11 +154,17 @@ def retry_voice_job(db: Session, job_id: str, user_id: str) -> ProcessingJob:
     if not job:
         raise NotFoundError(code="job_not_found", message=f"Processing job '{job_id}' not found.")
 
+    if job.created_by != user_id and not can_review:
+        raise ForbiddenError(code="forbidden", message="You may only retry your own transcription jobs.")
+
     if job.status != "failed":
         raise ValidationError(code="job_not_failed", message=f"Job status is '{job.status}'. Only failed jobs can be retried.")
 
     if job.attempts >= 3:
         raise ValidationError(code="max_retries_exceeded", message="Maximum retry limit (3 attempts) reached for this job.")
+
+    if db.query(Transcript).filter(Transcript.media_id == job.media_id).first():
+        raise ConflictError(code="transcript_exists", message="A transcript already exists for this recording. Review or edit the existing transcript instead of retrying.")
 
     job.status = "queued"
     job.progress = 0
@@ -173,6 +180,7 @@ def update_transcript_segment(
     user_id: str,
     edited_text: Optional[str] = None,
     needs_review: Optional[bool] = None,
+    can_review: bool = False,
 ) -> TranscriptSegment:
     """
     Edits segment text while keeping original_text untouched.
@@ -183,11 +191,8 @@ def update_transcript_segment(
         raise NotFoundError(code="segment_not_found", message=f"Segment '{segment_id}' not found.")
 
     media = segment.transcript.media if segment.transcript else None
-    if media and media.uploaded_by != user_id:
-        from app.models.user import User
-        u = db.get(User, user_id)
-        if not u or u.role_id != "ADMIN":
-            raise ForbiddenError(code="not_author", message="Only the author or admin can edit this transcript segment.")
+    if media and media.uploaded_by != user_id and not can_review:
+        raise ForbiddenError(code="forbidden", message="You may only edit segments from your own recordings or recordings assigned for review.")
 
     if edited_text is not None:
         segment.edited_text = edited_text
@@ -207,7 +212,6 @@ def update_transcript_segment(
         detail={"edited_text": edited_text, "needs_review": needs_review},
         commit=True,
     )
-
     # Re-index updated segment vector in vector store
     new_text = segment.edited_text if segment.edited_text else segment.original_text
     new_vec = compute_dense_embedding(new_text)
@@ -224,7 +228,7 @@ def update_transcript_segment(
         meta["needs_review"] = segment.needs_review
         meta["edited"] = True
         emb.metadata_json = json.dumps(meta)
-        db.commit()
+    db.commit()
 
     # Refresh Assistant RAG knowledge chunks for this transcript
     try:

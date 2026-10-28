@@ -27,6 +27,9 @@ interface DraftStatusBarProps {
   canApproveReview?: boolean;
   onApproveReview?: () => void;
   isApprovingReview?: boolean;
+  onSubmitReview?: () => void;
+  canSubmitReview?: boolean;
+  isSubmittingReview?: boolean;
 }
 
 export const DraftStatusBar: React.FC<DraftStatusBarProps> = ({
@@ -45,8 +48,14 @@ export const DraftStatusBar: React.FC<DraftStatusBarProps> = ({
   canApproveReview = false,
   onApproveReview,
   isApprovingReview = false,
+  onSubmitReview,
+  canSubmitReview = false,
+  isSubmittingReview = false,
 }) => {
   const statusDisplay = status === 'draft' ? 'Draft' : status.replace('_', ' ');
+  const submitHandler = onSubmit || onSubmitReview;
+  const showSubmit = canSubmit || canSubmitReview;
+  const submitting = isSubmitting || isSubmittingReview;
 
   const getStatusMessage = () => {
     switch (status) {
@@ -152,17 +161,16 @@ export const DraftStatusBar: React.FC<DraftStatusBarProps> = ({
             )}
           </button>
         )}
-
         {/* Submit for Review Button */}
-        {canSubmit && onSubmit && (
+        {showSubmit && submitHandler && (
           <button
             id="submit-review-btn"
             type="button"
-            onClick={onSubmit}
-            disabled={isSubmitting || isSaving}
+            onClick={submitHandler}
+            disabled={submitting || isSaving}
             className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#1473E6] hover:bg-[#1060C4] text-white font-semibold text-xs shadow-xs transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? (
+            {submitting ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 <span>Submitting…</span>

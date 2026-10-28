@@ -6,25 +6,29 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, UploadFile, File, Form, BackgroundTasks, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_
+from sqlalchemy import desc
 from app.db.session import get_db
 from app.core.config import settings
+from app.core.logging import logger
 from app.core.permissions import (
     get_current_user,
     require_permission,
     AuthenticatedContext,
     PERM_KNOWLEDGE_CREATE,
     PERM_KNOWLEDGE_APPROVE,
+    csrf_protect,
 )
-from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError
+from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError, ConflictError
 from app.models.media import MediaAsset
 from app.models.transcript import Transcript, TranscriptSegment
 from app.models.knowledge import KnowledgeVersion
 from app.models.processing_job import ProcessingJob
 from app.schemas.voice import (
     VoiceUploadResponse,
+    ProcessingJobResponse,
     MediaAssetResponse,
     TranscriptResponse,
+    TranscriptTextUpdate,
     TranscriptSegmentResponse,
     TranscriptSegmentUpdate,
     VectorSearchRequest,
@@ -33,14 +37,18 @@ from app.schemas.voice import (
     StepDraftResponse,
     StepsListResponse,
     CreateDraftFromVoiceResponse,
-    ProcessingJobResponse,
 )
 from app.services.voice_service import (
     create_voice_capture_job,
+    retry_voice_job,
     update_transcript_segment,
 )
 from app.services.job_runner import execute_voice_processing_job
 from app.services.vector_service import search_vector_knowledge
+from app.services.vector_service import compute_dense_embedding
+from app.services.media_service import MediaService
+from app.models.embedding import KnowledgeEmbedding
+from app.integrations.speech.factory import get_speech_provider
 
 router = APIRouter(prefix="/voice", tags=["Voice to Knowledge & RAG"])
 
@@ -82,6 +90,66 @@ def _sha256_file(file_path: Path) -> str:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _ensure_transcript_access(transcript: Transcript, auth_ctx: AuthenticatedContext, db: Session) -> None:
+    MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, transcript.media)
+
+
+@router.post("/assets/{media_id}/transcribe", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(csrf_protect)])
+def transcribe_machine_audio(
+    media_id: str,
+    background_tasks: BackgroundTasks,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_KNOWLEDGE_CREATE)),
+    db: Session = Depends(get_db),
+):
+    """Queue transcription for a saved recording without replacing its original media file."""
+    media = db.get(MediaAsset, media_id)
+    if not media:
+        raise NotFoundError(code="media_not_found", message="The requested audio recording was not found.")
+    if media.kind != "audio":
+        raise ValidationError(code="unsupported_media_type", message="Only audio assets can be transcribed.")
+    MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, media)
+    if media.uploaded_by != auth_ctx.user.id and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
+        raise ForbiddenError(code="forbidden", message="You may only transcribe your own recordings.")
+
+    # Fail synchronously when credentials/provider configuration are missing.
+    get_speech_provider()
+    existing_transcript = db.query(Transcript).filter(Transcript.media_id == media.id).first()
+    if existing_transcript:
+        raise ConflictError(code="transcript_exists", message="This recording already has a transcript. Edit the existing transcript to preserve its review history.")
+
+    job = db.query(ProcessingJob).filter(ProcessingJob.media_id == media.id).order_by(desc(ProcessingJob.created_at)).first()
+    if job and job.status in ("queued", "processing"):
+        return job
+    if job and job.status == "failed":
+        job = retry_voice_job(
+            db=db,
+            job_id=job.id,
+            user_id=auth_ctx.user.id,
+            can_review=PERM_KNOWLEDGE_APPROVE in auth_ctx.permissions,
+        )
+    elif job:
+        if job.status in ("needs_review", "completed"):
+            raise ConflictError(code="transcript_unavailable", message="The prior transcription job finished without a transcript. Contact an administrator before retrying.")
+        job.status = "queued"
+        job.progress = 0
+        job.error_safe = None
+        db.commit()
+        db.refresh(job)
+    else:
+        job = ProcessingJob(
+            type="voice_to_knowledge", media_id=media.id, version_id=media.version_id,
+            status="queued", progress=0, idempotency_key=f"voice:{media.id}",
+            user_id=auth_ctx.user.id,
+            created_by=auth_ctx.user.id,
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+
+    background_tasks.add_task(execute_voice_processing_job, job.id)
+    return job
 
 
 @router.post("/upload", response_model=VoiceUploadResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -186,7 +254,7 @@ def list_voice_assets(
     db: Session = Depends(get_db),
 ):
     """List expert voice recordings available to the current user."""
-    # Trainees cannot view raw voice draft recordings
+    # Trainees only consume approved knowledge through the assistant/workflow APIs.
     if auth_ctx.user.role_id == "TRAINEE":
         return []
 
@@ -194,27 +262,19 @@ def list_voice_assets(
     if machine_id:
         query = query.filter(MediaAsset.machine_id == machine_id)
 
-    # Reviewers can inspect recordings attached to submissions awaiting approval.
-    if auth_ctx.user.role_id != "ADMIN" and PERM_KNOWLEDGE_APPROVE in auth_ctx.permissions:
-        query = query.outerjoin(KnowledgeVersion, MediaAsset.version_id == KnowledgeVersion.id).filter(
-            or_(MediaAsset.uploaded_by == auth_ctx.user.id, KnowledgeVersion.status == "in_review")
-        ).distinct()
-    elif auth_ctx.user.role_id != "ADMIN":
-        query = query.filter(MediaAsset.uploaded_by == auth_ctx.user.id)
-
-    assets = query.order_by(desc(MediaAsset.created_at)).all()
     media_root = Path(settings.MEDIA_ROOT).resolve()
+    visible = []
+    for media in query.order_by(desc(MediaAsset.created_at)).all():
+        try:
+            MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, media)
+        except ForbiddenError:
+            continue
 
-    valid_assets = []
-    for a in assets:
-        p = Path(a.file_path)
-        if (p.is_absolute() and p.exists()) or \
-           (media_root / a.storage_key).resolve().exists() or \
-           (media_root / Path(a.storage_key).name).resolve().exists() or \
-           (Path("data/media") / Path(a.storage_key).name).resolve().exists():
-            valid_assets.append(a)
-
-    return valid_assets
+        stored_path = Path(media.storage_key)
+        candidates = [stored_path] if stored_path.is_absolute() else [media_root / stored_path, media_root / stored_path.name]
+        if any(candidate.resolve().is_file() for candidate in candidates):
+            visible.append(media)
+    return visible
 
 
 @router.get("/assets/{media_id}", response_model=MediaAssetResponse)
@@ -227,13 +287,7 @@ def get_voice_asset(
     media = db.get(MediaAsset, media_id)
     if not media:
         raise NotFoundError(code="media_not_found", message=f"Media asset '{media_id}' not found.")
-
-    if auth_ctx.user.role_id == "TRAINEE":
-        raise ForbiddenError(code="trainee_draft_forbidden", message="Trainees cannot access unapproved draft procedures.")
-
-    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN" and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
-        raise ForbiddenError(code="not_author", message="You do not have access to this voice recording.")
-
+    MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, media)
     return media
 
 
@@ -252,8 +306,7 @@ def get_media_transcript(
     if auth_ctx.user.role_id == "TRAINEE":
         raise ForbiddenError(code="trainee_draft_forbidden", message="Trainees cannot access unapproved draft procedures.")
 
-    if media.uploaded_by != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN" and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
-        raise ForbiddenError(code="not_author", message="You do not have access to this voice recording.")
+    MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, media)
 
     transcript = (
         db.query(Transcript)
@@ -489,9 +542,9 @@ def get_voice_job(
     job = db.get(ProcessingJob, job_id)
     if not job:
         raise NotFoundError(code="job_not_found", message=f"Processing job '{job_id}' not found.")
-    media = db.get(MediaAsset, job.media_id) if job.media_id else None
-    if auth_ctx.user.role_id != "ADMIN" and (not media or media.uploaded_by != auth_ctx.user.id):
-        raise ForbiddenError(code="not_author", message="You do not have access to this voice processing job.")
+    if not job.media:
+        raise NotFoundError(code="media_not_found", message="The recording for this job was not found.")
+    MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, job.media)
     return job
 
 
@@ -512,18 +565,47 @@ def get_version_transcript(
     )
     if not transcript:
         raise NotFoundError(code="transcript_not_found", message=f"No transcript found for version '{version_id}'.")
-
-    media = db.get(MediaAsset, transcript.media_id) if transcript.media_id else None
-    version = db.get(KnowledgeVersion, version_id)
-    if auth_ctx.user.role_id == "TRAINEE" and (not version or version.status != "published"):
-        raise ForbiddenError(code="trainee_draft_forbidden", message="Trainees cannot access unapproved transcripts.")
-    if auth_ctx.user.role_id != "ADMIN" and (not media or media.uploaded_by != auth_ctx.user.id) and (not version or version.status != "published"):
-        raise ForbiddenError(code="not_author", message="You do not have access to this transcript.")
-
+    _ensure_transcript_access(transcript, auth_ctx, db)
     return transcript
 
 
-@router.patch("/transcripts/{transcript_id}/segments/{segment_id}", response_model=TranscriptSegmentResponse)
+@router.get("/transcripts/{transcript_id}", response_model=TranscriptResponse)
+def get_transcript(transcript_id: str, auth_ctx: AuthenticatedContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    transcript = db.get(Transcript, transcript_id)
+    if not transcript:
+        raise NotFoundError(code="transcript_not_found", message="Transcript not found.")
+    _ensure_transcript_access(transcript, auth_ctx, db)
+    return transcript
+
+
+@router.patch("/transcripts/{transcript_id}", response_model=TranscriptResponse, dependencies=[Depends(csrf_protect)])
+def edit_transcript(transcript_id: str, payload: TranscriptTextUpdate,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_KNOWLEDGE_CREATE)), db: Session = Depends(get_db)):
+    transcript = db.get(Transcript, transcript_id)
+    if not transcript:
+        raise NotFoundError(code="transcript_not_found", message="Transcript not found.")
+    if not payload.full_text.strip():
+        raise ValidationError(code="invalid_transcript", message="Transcript text cannot be empty.")
+    _ensure_transcript_access(transcript, auth_ctx, db)
+    transcript.full_text = payload.full_text.strip()
+    emb = db.query(KnowledgeEmbedding).filter(KnowledgeEmbedding.source_type == "voice_transcript",
+        KnowledgeEmbedding.source_id == transcript.id).first()
+    if emb:
+        emb.chunk_text = transcript.full_text
+        emb.embedding_json = json.dumps(compute_dense_embedding(transcript.full_text))
+    db.commit(); db.refresh(transcript)
+    from app.services.audit_service import AuditService
+    AuditService.log(db, "voice.transcript_edited", "transcript", transcript.id, auth_ctx.user.id,
+                     {"full_text_length": len(transcript.full_text)}, commit=True)
+    try:
+        from app.modules.assistant.services.indexing_service import IndexingService
+        IndexingService.index_transcript(transcript.id, db=db, title=transcript.media.title if transcript.media else None)
+    except Exception as exc:
+        logger.warning("Assistant RAG reindex failed for edited transcript %s: %s", transcript.id, type(exc).__name__)
+    return transcript
+
+
+@router.patch("/transcripts/{transcript_id}/segments/{segment_id}", response_model=TranscriptSegmentResponse, dependencies=[Depends(csrf_protect)])
 def patch_transcript_segment(
     transcript_id: str,
     segment_id: str,
@@ -541,6 +623,7 @@ def patch_transcript_segment(
         user_id=auth_ctx.user.id,
         edited_text=payload.edited_text,
         needs_review=payload.needs_review,
+        can_review=PERM_KNOWLEDGE_APPROVE in auth_ctx.permissions,
     )
     return segment
 

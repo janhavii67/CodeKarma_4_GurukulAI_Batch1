@@ -56,7 +56,7 @@ class RetrievalService:
         Executes SQL full-text / keyword retrieval with eligibility filtering INSIDE the query.
         Returns top-k ranked chunks with scores and citations.
         """
-        clean_q = query_params.query.strip()
+        clean_q = query_params.query.strip().strip('"\'').strip()
         if not clean_q:
             return []
 

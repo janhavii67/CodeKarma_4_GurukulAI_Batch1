@@ -567,6 +567,46 @@ class KnowledgeService:
         return visible_versions
 
     @classmethod
+    def get_version_by_number(
+        cls,
+        db: Session,
+        user: User,
+        permissions: List[str],
+        item_id: str,
+        version_no: int,
+    ) -> KnowledgeVersion:
+        item = KnowledgeRepository.get_item_by_id(db, item_id)
+        if not item:
+            raise NotFoundError(code="not_found", message="The requested knowledge item was not found.")
+        version = KnowledgeRepository.get_version_by_item_and_no(db, item_id, version_no)
+        if not version:
+            raise NotFoundError(code="not_found", message="The requested knowledge version was not found.")
+        cls.ensure_can_view_version(user, permissions, version, item)
+        return version
+
+    @classmethod
+    def compare_versions(
+        cls,
+        db: Session,
+        user: User,
+        permissions: List[str],
+        item_id: str,
+        base_version_no: int,
+        target_version_no: int,
+    ) -> Tuple[KnowledgeVersion, KnowledgeVersion, List[str]]:
+        if base_version_no == target_version_no:
+            raise ValidationError(code="identical_versions", message="Choose two different versions to compare.")
+        base = cls.get_version_by_number(db, user, permissions, item_id, base_version_no)
+        target = cls.get_version_by_number(db, user, permissions, item_id, target_version_no)
+        fields = (
+            "title", "machine_id", "summary", "description", "steps", "content",
+            "operating_conditions", "prerequisites", "safety_warnings",
+            "common_mistakes", "corrective_actions",
+        )
+        changed_fields = [field for field in fields if getattr(base, field) != getattr(target, field)]
+        return base, target, changed_fields
+
+    @classmethod
     def list_knowledge(
         cls,
         db: Session,

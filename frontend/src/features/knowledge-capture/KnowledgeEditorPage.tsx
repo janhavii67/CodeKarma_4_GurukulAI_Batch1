@@ -39,8 +39,9 @@ import { MediaPanel } from './media/MediaPanel';
 import { Button } from '../../components/ui/Button';
 import { ApiClientError } from '../../lib/api/client';
 import type { Step, KnowledgeVersion } from './types';
+import type { KnowledgeVersionComparison } from './types';
+import { fetchVersionComparison } from './knowledgeApi';
 import { isEditableStatus } from './types';
-import { MedicalTopNav } from './components/MedicalTopNav';
 import { MedicalHeroBanner } from './components/MedicalHeroBanner';
 import { DraftStatusBar } from './components/DraftStatusBar';
 
@@ -61,6 +62,12 @@ const VersionSwitcher: React.FC<VersionSwitcherProps> = ({
 }) => {
   const { data: versions, isLoading } = useVersionList(itemId);
   const [open, setOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [baseVersionNo, setBaseVersionNo] = useState('');
+  const [targetVersionNo, setTargetVersionNo] = useState('');
+  const [comparison, setComparison] = useState<KnowledgeVersionComparison | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -76,6 +83,20 @@ const VersionSwitcher: React.FC<VersionSwitcherProps> = ({
   if (isLoading || !versions || versions.length <= 1) return null;
 
   const current = versions.find((v) => v.id === currentVersionId);
+  const runCompare = async () => {
+    if (!baseVersionNo || !targetVersionNo || baseVersionNo === targetVersionNo) return;
+    setCompareLoading(true); setCompareError(''); setComparison(null);
+    try {
+      setComparison(await fetchVersionComparison(itemId, Number(baseVersionNo), Number(targetVersionNo)));
+    } catch (cause) {
+      setCompareError(cause instanceof Error ? cause.message : 'Could not compare these saved versions.');
+    } finally { setCompareLoading(false); }
+  };
+  const compareFields = ['title', 'machine_id', 'summary', 'description', 'content', 'operating_conditions', 'prerequisites', 'safety_warnings', 'common_mistakes', 'corrective_actions', 'steps'] as const;
+  const displayField = (value: unknown) => {
+    if (value == null || value === '') return '—';
+    return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  };
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -119,6 +140,39 @@ const VersionSwitcher: React.FC<VersionSwitcherProps> = ({
           ))}
         </div>
       )}
+
+      <div className="mt-2">
+        <Button type="button" variant="secondary" size="sm" onClick={() => { setCompareOpen(value => !value); setCompareError(''); }} aria-expanded={compareOpen}>
+          {compareOpen ? 'Close comparison' : 'Compare versions'}
+        </Button>
+      </div>
+      {compareOpen && <section aria-label="Compare knowledge versions" className="mt-3 w-[min(90vw,56rem)] rounded-xl border border-[#DCE8F5] bg-white p-4 shadow-sm space-y-3">
+        <p className="text-xs text-slate-600">Compare saved snapshots. Unsaved editor changes are not included.</p>
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <label className="text-xs font-semibold">Earlier version
+            <select aria-label="Earlier version" className="mt-1 block w-full rounded-lg border p-2" value={baseVersionNo} onChange={event => { setBaseVersionNo(event.target.value); setComparison(null); }}>
+              <option value="">Choose version…</option>{versions.map(version => <option key={version.id} value={version.version_no}>v{version.version_no} · {version.status}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-semibold">Later version
+            <select aria-label="Later version" className="mt-1 block w-full rounded-lg border p-2" value={targetVersionNo} onChange={event => { setTargetVersionNo(event.target.value); setComparison(null); }}>
+              <option value="">Choose version…</option>{versions.map(version => <option key={version.id} value={version.version_no}>v{version.version_no} · {version.status}</option>)}
+            </select>
+          </label>
+          <Button type="button" disabled={compareLoading || !baseVersionNo || !targetVersionNo || baseVersionNo === targetVersionNo} onClick={() => void runCompare()}>{compareLoading ? 'Comparing…' : 'Compare'}</Button>
+        </div>
+        {compareError && <p role="alert" className="text-sm text-red-700">{compareError}</p>}
+        {comparison && <div role="region" aria-label={`Comparison of v${comparison.base.version_no} and v${comparison.target.version_no}`} className="space-y-3">
+          <p role="status" className="text-xs text-slate-600">{comparison.changed_fields.length ? `Changed: ${comparison.changed_fields.join(', ')}` : 'No compared content fields changed.'}</p>
+          <div className="grid gap-3 md:grid-cols-2">{compareFields.map(field => {
+            const changed = comparison.changed_fields.includes(field);
+            return <article key={field} className={`rounded-lg border p-3 ${changed ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-slate-50/50'}`}>
+              <h3 className="text-xs font-bold capitalize">{field.replace(/_/g, ' ')}{changed && <span className="ml-2 text-amber-800">Changed</span>}</h3>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs"><div><p className="font-semibold text-slate-500">v{comparison.base.version_no}</p><pre className="mt-1 whitespace-pre-wrap break-words font-sans">{displayField(comparison.base[field])}</pre></div><div><p className="font-semibold text-slate-500">v{comparison.target.version_no}</p><pre className="mt-1 whitespace-pre-wrap break-words font-sans">{displayField(comparison.target[field])}</pre></div></div>
+            </article>;
+          })}</div>
+        </div>}
+      </section>}
     </div>
   );
 };
@@ -213,6 +267,7 @@ export const KnowledgeEditorPage: React.FC = () => {
   const machines = machinesData?.items ?? [];
 
   const isNewRoute = !id || id === 'new';
+  const captureKind = searchParams.get('capture') ?? undefined;
   const versionIdParam = searchParams.get('version_id') ?? undefined;
 
   // New Draft Creation Modal State (if accessing /app/knowledge/new)
@@ -320,6 +375,13 @@ export const KnowledgeEditorPage: React.FC = () => {
     setAcknowledgedAiDraft(false);
   }, [data]);
 
+  useEffect(() => {
+    if (captureKind === 'notes' && data) setShowDetailsSection(true);
+    if (captureKind && data && captureKind !== 'notes') {
+      window.setTimeout(() => document.getElementById('media-evidence')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    }
+  }, [captureKind, data]);
+
   // Handle new creation submission
   const handleCreateNew = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -330,10 +392,10 @@ export const KnowledgeEditorPage: React.FC = () => {
     try {
       const res = await createMutation.mutateAsync({
         title: newTitle.trim(),
-        machine_id: newMachineId || (machines[0]?.id ?? null),
+        machine_id: newMachineId || null,
       });
       setShowCreateModal(false);
-      navigate(`/app/knowledge/${res.id}`);
+      navigate(`/app/knowledge/${res.id}${captureKind ? `?capture=${encodeURIComponent(captureKind)}` : ''}`);
     } catch (err) {
       setCreateError(err instanceof ApiClientError ? err.message : 'Creation failed.');
     }
@@ -353,10 +415,10 @@ export const KnowledgeEditorPage: React.FC = () => {
   // Determine editability
   const version = data?.version;
   const canCreate = hasPermission('knowledge.create');
-  const canSubmitReview = hasPermission('knowledge.submit_review');
   const isAuthor = version?.created_by === user?.id;
   const editableStatus = version ? isEditableStatus(version.status) : false;
   const isEditable = canCreate && isAuthor && editableStatus;
+  const canSubmitReview = hasPermission('knowledge.submit_review') && isAuthor && editableStatus;
   const isFrozen = !!version && !editableStatus;
   const canSubmit = isEditable && isAuthor && canSubmitReview && (version?.status === 'draft' || version?.status === 'changes_requested');
 
@@ -411,6 +473,10 @@ export const KnowledgeEditorPage: React.FC = () => {
 
   const handleSubmitForReview = async () => {
     if (!id || !version || !canSubmit) return;
+    if (!localTitle.trim()) {
+      setSubmitError('Add a title before submitting for review.');
+      return;
+    }
     setSubmitError(null);
     setSubmitSuccess(null);
     try {
@@ -465,15 +531,14 @@ export const KnowledgeEditorPage: React.FC = () => {
   if (isNewRoute) {
     return (
       <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
-        <MedicalTopNav />
         <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
           <MedicalHeroBanner onCreateClick={() => setShowCreateModal(true)} />
           
           <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-[#DCE8F5] shadow-sm p-6 sm:p-8 space-y-6">
             <div className="border-b border-[#DCE8F5] pb-4">
-              <h2 className="text-xl font-bold text-[#12345A]">Create Standard Operating Procedure</h2>
+              <h2 className="text-xl font-bold text-[#12345A]">Start a knowledge draft</h2>
               <p className="text-xs text-[#536780] mt-1">
-                Initialize an authoritative Standard Operating Procedure draft for precision machinery.
+                Give this practical knowledge a title and link it to the relevant machine.
               </p>
             </div>
 
@@ -487,7 +552,7 @@ export const KnowledgeEditorPage: React.FC = () => {
             <form onSubmit={handleCreateNew} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-[#536780] mb-1.5">
-                  Procedure Title *
+                  Knowledge Title *
                 </label>
                 <input
                   type="text"
@@ -501,14 +566,14 @@ export const KnowledgeEditorPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-[#536780] mb-1.5">
-                  Select Machine Asset *
+                  Select Machine Asset (optional)
                 </label>
                 <select
                   value={newMachineId}
                   onChange={(e) => setNewMachineId(e.target.value)}
                   className="w-full bg-white border border-[#DCE8F5] rounded-lg px-3.5 py-2.5 text-sm text-[#12345A] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none"
                 >
-                  <option value="">Select manufacturing machine…</option>
+                  <option value="">Select equipment…</option>
                   {machines.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name} ({m.code})
@@ -516,7 +581,7 @@ export const KnowledgeEditorPage: React.FC = () => {
                   ))}
                 </select>
                 <p className="text-[11px] text-[#536780] mt-1">
-                  Associates this standard procedure with a registered CNC machine or industrial workstation.
+                  Link this knowledge to registered equipment when relevant.
                 </p>
               </div>
 
@@ -553,7 +618,6 @@ export const KnowledgeEditorPage: React.FC = () => {
       String((error as any)?.code).toLowerCase() === 'not_found';
     return (
       <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
-        <MedicalTopNav />
         <div className="max-w-md mx-auto py-24 text-center space-y-4 px-4">
           <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 text-amber-500 flex items-center justify-center mx-auto">
             <AlertTriangle className="w-6 h-6" />
@@ -585,7 +649,6 @@ export const KnowledgeEditorPage: React.FC = () => {
   if (isLoading || !data) {
     return (
       <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans" aria-busy="true" aria-label="Loading knowledge item">
-        <MedicalTopNav />
         <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
           <div className="h-44 rounded-2xl bg-white border border-[#DCE8F5] animate-pulse" />
           <div className="h-14 rounded-xl bg-white border border-[#DCE8F5] animate-pulse" />
@@ -603,13 +666,12 @@ export const KnowledgeEditorPage: React.FC = () => {
   }
 
   const v = data.version;
-  const machineName = data.machine ? `${data.machine.name} (${data.machine.code})` : 'Precision Workstation';
+  const machineName = data.machine ? `${data.machine.name} (${data.machine.code})` : 'No equipment linked';
   const originDisplay = v.origin ? `${v.origin.replace('_', ' ')} Draft` : 'Expert Draft';
 
   return (
     <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
       {/* 1. TOP NAVIGATION */}
-      <MedicalTopNav />
 
       {/* Main Container */}
       <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -645,6 +707,7 @@ export const KnowledgeEditorPage: React.FC = () => {
           onApproveReview={() => handleReviewDecision('APPROVED')}
           isApprovingReview={reviewActionLoading}
         />
+        {submitError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{submitError}</div>}
 
         {v.status === 'in_review' && ['ai_draft', 'ai_draft_edited'].includes(v.origin || '') && (
           <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
@@ -1015,7 +1078,7 @@ export const KnowledgeEditorPage: React.FC = () => {
                   onClick={() => setShowDetailsSection(!showDetailsSection)}
                   className="w-full flex items-center justify-between text-xs font-semibold text-[#536780] hover:text-[#12345A] py-1"
                 >
-                  <span>Operating Conditions &amp; Safety</span>
+                  <span>{captureKind === 'notes' ? 'Practical Knowledge Notes' : 'Additional Information'}</span>
                   {showDetailsSection ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
 
@@ -1103,14 +1166,15 @@ export const KnowledgeEditorPage: React.FC = () => {
 
                     <div>
                       <label className="block text-[10px] uppercase font-semibold text-[#536780] mb-1">
-                        Full Description
+                        {captureKind === 'notes' ? 'Practical Knowledge Notes' : 'Full Description'}
                       </label>
                       {isEditable ? (
                         <textarea
                           value={localDescription}
                           onChange={handleDescriptionChange}
-                          placeholder="Comprehensive procedure background, pre-operational checks…"
-                          rows={2}
+                          placeholder="Describe the practical know-how, what to watch for, and useful operating context…"
+                          rows={captureKind === 'notes' ? 4 : 2}
+                          autoFocus={captureKind === 'notes'}
                           className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2 text-xs text-[#12345A] focus:border-[#1473E6] focus:ring-1 focus:ring-[#1473E6] outline-none"
                         />
                       ) : (

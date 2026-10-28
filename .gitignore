@@ -60,3 +60,8 @@ htmlcov/
 Thumbs.db
 *.swp
 *.swo
+
+# Keep frontend runtime API client out of the generic Python lib/ ignore rule.
+!frontend/src/lib/
+!frontend/src/lib/api/
+!frontend/src/lib/api/client.ts

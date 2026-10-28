@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { VoiceRecorder } from './VoiceRecorder';
 import { JobStatusCard } from './JobStatusCard';
 import { TranscriptEditor } from './TranscriptEditor';
@@ -46,6 +47,7 @@ export const VoiceToKnowledgePage: React.FC = () => {
   }>({});
   const [voiceAssets, setVoiceAssets] = useState<MediaAsset[]>([]);
   const [isLoadingReview, setIsLoadingReview] = useState(false);
+  const [activeKnowledgeItemId, setActiveKnowledgeItemId] = useState<string | null>(null);
 
   // Load existing voice assets for the library
   const loadAssets = () => {
@@ -135,6 +137,7 @@ export const VoiceToKnowledgePage: React.FC = () => {
   });
 
   const handleUploadComplete = (res: VoiceUploadResponse) => {
+    if (res.knowledge_item_id) setActiveKnowledgeItemId(res.knowledge_item_id);
     setActiveJobId(res.job.id);
     setActiveMediaId(res.media.id);
     setActiveVersionId(res.media.version_id || null);
@@ -197,6 +200,12 @@ export const VoiceToKnowledgePage: React.FC = () => {
           job={polledJob}
           onRetried={(newJob) => setActiveJobId(newJob.id)}
         />
+      )}
+
+      {activeKnowledgeItemId && (
+        <Link to={`/app/knowledge/${activeKnowledgeItemId}`} className="inline-flex items-center rounded-lg border border-[#BCD7F5] bg-white px-4 py-2 text-xs font-semibold text-[#1473E6] hover:bg-[#EFF7FF]">
+          Open the linked knowledge draft
+        </Link>
       )}
 
       {/* Navigation Tabs */}

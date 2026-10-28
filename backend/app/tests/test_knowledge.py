@@ -439,6 +439,56 @@ def test_revisions_flow(client: TestClient, db_session: Session):
     assert item.current_published_version_id == v1.id
 
 
+def test_version_lookup_and_compare_return_saved_snapshots_and_enforce_visibility(client: TestClient, db_session: Session):
+    from app.db.base import utc_now
+
+    author = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+    item = KnowledgeItem(title="Revision comparison", author_id=author.id, is_demo=False)
+    db_session.add(item); db_session.flush()
+    v1 = KnowledgeVersion(
+        item_id=item.id, version_no=1, status=STATUS_PUBLISHED,
+        title="Inspection v1", machine_id=None, summary="Check the spindle.",
+        description="First description", safety_warnings="Stop power first.",
+        content="Shared inspection instructions.",
+        steps=[{"order": 1, "title": "Inspect", "instruction": "Look for visible wear."}],
+        origin=ORIGIN_EXPERT, created_by=author.id, published_at=utc_now(),
+    )
+    db_session.add(v1); db_session.flush(); item.current_published_version_id = v1.id
+    v2 = KnowledgeVersion(
+        item_id=item.id, version_no=2, status=STATUS_DRAFT,
+        title="Inspection v2", machine_id=None, summary="Inspect spindle and chuck.",
+        description="Second description", safety_warnings="Isolate power and verify zero energy.",
+        content="Shared inspection instructions.",
+        steps=[
+            {"order": 1, "title": "Inspect", "instruction": "Look for visible wear."},
+            {"order": 2, "title": "Measure", "instruction": "Record runout."},
+        ],
+        origin=ORIGIN_EXPERT, created_by=author.id,
+    )
+    db_session.add(v2); db_session.commit()
+
+    _login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    version_lookup = client.get(f"/api/v1/knowledge/{item.id}/versions/2")
+    comparison = client.get(f"/api/v1/knowledge/{item.id}/compare?base_version=1&target_version=2")
+    same_version = client.get(f"/api/v1/knowledge/{item.id}/compare?base_version=1&target_version=1")
+
+    assert version_lookup.status_code == 200
+    assert version_lookup.json()["title"] == "Inspection v2"
+    assert comparison.status_code == 200
+    payload = comparison.json()
+    assert payload["base"]["version_no"] == 1 and payload["target"]["version_no"] == 2
+    assert payload["base"]["steps"] != payload["target"]["steps"]
+    assert set(payload["changed_fields"]) == {"title", "summary", "description", "safety_warnings", "steps"}
+    assert same_version.status_code == 422
+    assert same_version.json()["error"]["code"] == "identical_versions"
+
+    _login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+    private_compare = client.get(f"/api/v1/knowledge/{item.id}/compare?base_version=1&target_version=2")
+    missing = client.get(f"/api/v1/knowledge/{item.id}/versions/99")
+    assert private_compare.status_code == 403
+    assert missing.status_code == 404
+
+
 def test_concurrency_revision_creation(threadsafe_env):
     ts_client, ts_db = threadsafe_env
     expert_a = ts_db.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()

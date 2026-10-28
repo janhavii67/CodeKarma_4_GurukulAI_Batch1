@@ -1,8 +1,20 @@
-export type MediaKind = 'audio' | 'video' | 'image' | 'document';
+export type MediaKind = 'audio' | 'video' | 'image' | 'document' | 'notes' | 'transcript';
 
 export interface MediaAsset {
   id: string;
-  version_id: string;
+  version_id?: string | null;
+  machine_id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  tags?: string | null;
+  content?: string | null;
+  verification_status?: string | null;
+  author_name?: string | null;
+  transcript_id?: string | null;
+  media_id?: string | null;
+  transcript_job_id?: string | null;
+  transcript_status?: string | null;
+  transcript_error?: string | null;
   kind: MediaKind | string;
   original_name: string;
   mime: string;

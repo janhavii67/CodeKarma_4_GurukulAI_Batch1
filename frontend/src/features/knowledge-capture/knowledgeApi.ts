@@ -4,6 +4,7 @@ import type {
   KnowledgeListResponse,
   KnowledgeVersion,
   KnowledgeVersionSummary,
+  KnowledgeVersionComparison,
   KnowledgeCreateRequest,
   KnowledgeUpdateRequest,
   KnowledgeListParams,
@@ -64,12 +65,25 @@ export async function updateKnowledge(
   return api.patch<KnowledgeItemDetail>(`/knowledge/${itemId}`, payload);
 }
 
+export async function submitKnowledgeForReview(itemId: string): Promise<KnowledgeItemDetail> {
+  return api.post<KnowledgeItemDetail>(`/knowledge/${itemId}/submit`);
+}
+
 // ─── Versions ─────────────────────────────────────────────────────────────────
 
 export async function fetchVersionList(
   itemId: string
 ): Promise<KnowledgeVersionSummary[]> {
   return api.get<KnowledgeVersionSummary[]>(`/knowledge/${itemId}/versions`);
+}
+
+export async function fetchVersionComparison(
+  itemId: string,
+  baseVersion: number,
+  targetVersion: number
+): Promise<KnowledgeVersionComparison> {
+  const query = new URLSearchParams({ base_version: String(baseVersion), target_version: String(targetVersion) });
+  return api.get<KnowledgeVersionComparison>(`/knowledge/${itemId}/compare?${query}`);
 }
 
 export async function createRevision(

@@ -51,9 +51,17 @@ export interface KnowledgeVersion {
   id: string;
   item_id: string;
   version_no: number;
+  title?: string | null;
+  machine_id?: string | null;
   status: VersionStatus;
   summary: string | null;
   description: string | null;
+  content?: string | null;
+  operating_conditions?: string | null;
+  prerequisites?: string | null;
+  safety_warnings?: string | null;
+  common_mistakes?: string | null;
+  corrective_actions?: string | null;
   steps: Step[];
   origin: VersionOrigin;
   revision_reason: string | null;
@@ -80,6 +88,12 @@ export interface KnowledgeVersionSummary {
   created_by: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface KnowledgeVersionComparison {
+  base: KnowledgeVersion;
+  target: KnowledgeVersion;
+  changed_fields: string[];
 }
 
 // ─── Knowledge Item ───────────────────────────────────────────────────────────

@@ -30,6 +30,10 @@ class TranscriptResponse(BaseModel):
     segments: List[TranscriptSegmentResponse] = []
 
 
+class TranscriptTextUpdate(BaseModel):
+    full_text: str = Field(..., min_length=1, max_length=200_000)
+
+
 class MediaAssetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

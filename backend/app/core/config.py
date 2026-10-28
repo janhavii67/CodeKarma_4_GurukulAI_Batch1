@@ -80,6 +80,14 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
     STT_PROVIDER: str = "gemini"
     OPENAI_API_KEY: str = ""
+    OPENAI_TRANSCRIPTION_MODEL: str = "whisper-1"
+    LOCAL_WHISPER_MODEL: str = "base"
+    LOCAL_WHISPER_DEVICE: str = "cpu"
+    LOCAL_WHISPER_COMPUTE_TYPE: str = "int8"
+    LOCAL_WHISPER_CPU_THREADS: int = 4
+    # Short expert recordings are prone to language auto-detection errors.
+    # Set to "auto" when recordings may contain multiple languages.
+    LOCAL_WHISPER_LANGUAGE: str = "en"
 
     @property
     def gemini_api_keys(self) -> List[str]:

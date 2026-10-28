@@ -1,5 +1,7 @@
 import time
 import uuid
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,8 +10,50 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import AppError, PayloadTooLargeError
 from app.core.logging import logger, setup_logging
+from app.db.session import SessionLocal
+from app.services.job_runner import fail_stale_voice_jobs
 
 setup_logging(debug=settings.DEBUG)
+
+
+def _recover_interrupted_voice_jobs() -> None:
+    """Recover background jobs abandoned by a previous backend process."""
+    if settings.ENVIRONMENT == "test":
+        return
+    db = SessionLocal()
+    try:
+        recovered = fail_stale_voice_jobs(db)
+        if recovered:
+            logger.warning("Recovered %s stale voice processing job(s).", recovered)
+    except Exception as exc:
+        db.rollback()
+        logger.error("Could not recover stale voice jobs (%s).", type(exc).__name__)
+    finally:
+        db.close()
+
+
+async def _stale_voice_job_recovery_loop(interval_seconds: float = 30) -> None:
+    """Recover jobs that become abandoned after startup while the API stays up."""
+    while True:
+        await asyncio.sleep(interval_seconds)
+        await asyncio.to_thread(_recover_interrupted_voice_jobs)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    _recover_interrupted_voice_jobs()
+    recovery_task = None
+    if settings.ENVIRONMENT != "test":
+        recovery_task = asyncio.create_task(_stale_voice_job_recovery_loop())
+    try:
+        yield
+    finally:
+        if recovery_task:
+            recovery_task.cancel()
+            try:
+                await recovery_task
+            except asyncio.CancelledError:
+                pass
 
 app = FastAPI(
     title="Gurukul AI API",
@@ -18,6 +62,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/api/v1/openapi.json",
+    lifespan=lifespan,
 )
 
 # CORS Middleware (Credentials must be allowed for HttpOnly cookies)

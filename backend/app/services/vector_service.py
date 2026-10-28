@@ -90,6 +90,14 @@ def index_voice_transcript(
     Returns the count of indexed chunks.
     """
     indexed_count = 0
+    segment_ids = [segment.id for segment in transcript.segments]
+    source_ids = [transcript.id, *segment_ids]
+    if source_ids:
+        db.query(KnowledgeEmbedding).filter(
+            KnowledgeEmbedding.media_id == media.id,
+            KnowledgeEmbedding.source_type.in_(("voice_transcript", "voice_segment")),
+            KnowledgeEmbedding.source_id.in_(source_ids),
+        ).delete(synchronize_session=False)
 
     # 1. Index full transcript document
     if transcript.full_text:
@@ -108,6 +116,12 @@ def index_voice_transcript(
             media_id=media.id,
             version_id=version_id or transcript.version_id,
             machine_id=media.machine_id,
+            chunk_index=0,
+            chunk_type="voice_transcript",
+            content_text=transcript.full_text,
+            embedding_vector=full_vec,
+            embedding_dim=len(full_vec),
+            model_name=f"dense-multi-hash-{EMBEDDING_DIM}",
             chunk_text=transcript.full_text,
             embedding_json=json.dumps(full_vec),
             embedding_model=f"dense-multi-hash-{EMBEDDING_DIM}",
@@ -138,6 +152,12 @@ def index_voice_transcript(
             media_id=media.id,
             version_id=version_id or transcript.version_id,
             machine_id=media.machine_id,
+            chunk_index=seg.idx,
+            chunk_type="voice_segment",
+            content_text=text_to_embed,
+            embedding_vector=seg_vec,
+            embedding_dim=len(seg_vec),
+            model_name=f"dense-multi-hash-{EMBEDDING_DIM}",
             chunk_text=text_to_embed,
             embedding_json=json.dumps(seg_vec),
             embedding_model=f"dense-multi-hash-{EMBEDDING_DIM}",

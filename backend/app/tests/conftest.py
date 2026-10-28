@@ -15,6 +15,10 @@ for p in [root_dir, backend_dir]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from app.core.config import settings
+# TestClient runs the FastAPI lifespan; keep its recovery hooks out of the
+# configured developer database. The test fixtures provide their own databases.
+settings.ENVIRONMENT = "test"
 from app.main import app
 from app.db.base import Base
 from app.db.session import get_db

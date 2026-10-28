@@ -161,7 +161,25 @@ def _message_evidence_is_current(message: ChatMessage, user_id: str, db: Session
 
 
 def _retrieval_query_text(db: Session, conv_id: str, current_message_id: str, current_text: str) -> str:
-    """Add recent operator questions to resolve short follow-ups without trusting prior AI text."""
+    """
+    Resolve search query text.
+    If current_text is a standalone question (> 5 words and no follow-up anaphora),
+    search with current_text directly so old unrelated questions in the same session
+    never dilute or poison the search.
+    Only add the prior question if current_text is a short follow-up or referential query.
+    """
+    clean_text = current_text.strip().strip('"\'').strip()
+    words = clean_text.lower().split()
+
+    # Referential / follow-up cues that indicate the question depends on earlier context
+    follow_up_cues = {"it", "its", "this", "that", "these", "those", "them", "step", "same", "again", "also"}
+    is_referential = any(cue in words for cue in follow_up_cues)
+    is_short = len(words) < 5
+
+    # Standalone question check: sufficiently detailed and doesn't rely on pronouns
+    if not is_referential and not is_short:
+        return clean_text
+
     prior_questions = (
         db.query(ChatMessage.content)
         .filter(
@@ -173,9 +191,20 @@ def _retrieval_query_text(db: Session, conv_id: str, current_message_id: str, cu
         .limit(2)
         .all()
     )
-    context = [text.strip() for (text,) in reversed(prior_questions) if text and text.strip()]
-    context.append(current_text.strip())
-    return " ".join(context)
+
+    context = []
+    seen = set()
+    for (text,) in reversed(prior_questions):
+        t_clean = (text or "").strip().strip('"\'').strip()
+        t_clean = re.sub(r"\[Attachment:[^\]]*\]", "", t_clean).strip()
+        if t_clean and t_clean not in seen and t_clean != clean_text:
+            seen.add(t_clean)
+            context.append(t_clean)
+
+    if context:
+        context.append(clean_text)
+        return " ".join(context)
+    return clean_text
 
 
 def _keep_tolerance_supporting_chunks(chunks: list, question: str) -> list:

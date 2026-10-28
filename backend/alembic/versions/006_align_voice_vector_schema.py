@@ -16,12 +16,20 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Safely drop existing tables in dependency order if they exist
-    for tbl in ["knowledge_embeddings", "transcript_segments", "transcripts", "processing_jobs"]:
-        try:
-            op.drop_table(tbl)
-        except Exception:
-            pass
+    # The original implementation dropped these tables to align their schema,
+    # which erased transcripts, processing history, and embeddings on upgrade.
+    # The platform expansion migration (004) creates all four tables together;
+    # preserve that data and let the later compatibility migrations add fields.
+    table_names = {"knowledge_embeddings", "transcript_segments", "transcripts", "processing_jobs"}
+    existing = table_names.intersection(sa.inspect(op.get_bind()).get_table_names())
+    if existing:
+        if existing != table_names:
+            missing = sorted(table_names - existing)
+            raise RuntimeError(
+                "Partial voice schema found; refusing to recreate and risk data loss. "
+                f"Missing tables: {', '.join(missing)}"
+            )
+        return
 
     # 1. processing_jobs aligned with ProcessingJob model
     op.create_table(

@@ -51,6 +51,7 @@ from app.models.media import (
     KIND_VIDEO,
     KIND_IMAGE,
     KIND_DOCUMENT,
+    KIND_NOTES,
     ALL_KINDS,
 )
 from app.models.processing_job import ProcessingJob
@@ -154,6 +155,7 @@ __all__ = [
     "KIND_VIDEO",
     "KIND_IMAGE",
     "KIND_DOCUMENT",
+    "KIND_NOTES",
     "ALL_KINDS",
     "ProcessingJob",
     "Transcript",

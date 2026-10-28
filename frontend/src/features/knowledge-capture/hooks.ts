@@ -15,6 +15,7 @@ import {
   fetchVersionList,
   updateKnowledge,
   submitKnowledge,
+  submitKnowledgeForReview,
 } from './knowledgeApi';
 
 // ─── Query Keys ───────────────────────────────────────────────────────────────
@@ -143,3 +144,13 @@ export function useSubmitKnowledge(itemId: string) {
   });
 }
 
+export function useSubmitKnowledgeForReview(itemId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => submitKnowledgeForReview(itemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: knowledgeKeys.lists() });
+      qc.invalidateQueries({ queryKey: knowledgeKeys.details() });
+    },
+  });
+}
