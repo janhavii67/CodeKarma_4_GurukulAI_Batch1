@@ -71,12 +71,17 @@ describe('Machine deletion flow', () => {
     expect(screen.queryByRole('heading', { name: 'MRI' })).not.toBeInTheDocument();
   });
 
-  it('shows only MRI, CT-Scan, ECG, and Xray while retaining other catalog records in the API response', async () => {
-    const supported = ['MRI', 'CT-Scan', 'ECG', 'Xray'].map((name) => ({
+  it('shows only MRI, CT-Scan, Xray, and ECG while retaining other catalog records in the API response', async () => {
+    const supported = [
+      { name: 'MRI', code: 'MRI-001' },
+      { name: 'CT-Scan', code: 'CITYSCAN-001' },
+      { name: 'Xray', code: 'XRAY-001' },
+      { name: 'ECG', code: 'ECG-001' },
+    ].map(({ name, code }) => ({
       ...machine,
       id: `supported-${name}`,
       name,
-      code: `${name}-001`,
+      code,
     }));
     apiMock.get.mockImplementation((path: string) => path === '/machines/categories'
       ? Promise.resolve([])
@@ -84,7 +89,7 @@ describe('Machine deletion flow', () => {
 
     renderMachinesPage();
 
-    for (const name of ['MRI', 'CT-Scan', 'ECG', 'Xray']) {
+    for (const name of ['MRI', 'CT-Scan', 'Xray', 'ECG']) {
       expect(await screen.findByRole('heading', { name })).toBeInTheDocument();
     }
     expect(screen.queryByRole('heading', { name: 'Demo Machine A (Lathe)' })).not.toBeInTheDocument();

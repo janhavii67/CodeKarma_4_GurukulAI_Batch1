@@ -17,11 +17,11 @@ import {
 import { ApiClientError, getApiUrl } from '../../lib/api/client';
 import type { MediaAsset } from '../knowledge-capture/media/types';
 import {
-  MACHINE_DIARY_MACHINE_LABELS,
   fetchMachineDiaryAssets,
   fetchMachineDiaryLibrary,
   type MachineDiaryMachine,
 } from './machineDiaryApi';
+import { getSupportedMachineLabel, getSupportedMachineOptions } from '../machines/supportedMachines';
 import './machineDiary.css';
 
 const bookPalettes = [
@@ -59,10 +59,7 @@ export const MachineDiaryLibraryPage: React.FC = () => {
 
   useEffect(() => { loadMachines(); }, []);
 
-  const machineOptions = useMemo(() => MACHINE_DIARY_MACHINE_LABELS.map(label => {
-    const machine = machines.find(candidate => candidate.name === label);
-    return { label, machine };
-  }), [machines]);
+  const machineOptions = useMemo(() => getSupportedMachineOptions(machines), [machines]);
   const diaryMachines = useMemo(
     () => machineOptions.flatMap(option => option.machine ? [option.machine] : []),
     [machineOptions],
@@ -72,7 +69,7 @@ export const MachineDiaryLibraryPage: React.FC = () => {
     const query = search.trim().toLocaleLowerCase();
     return diaryMachines.filter(machine => {
       const machineCategory = machine.category_name || machine.category || '';
-      const searchFields = [machine.name, machine.id, machine.code, machine.model_number,
+      const searchFields = [getSupportedMachineLabel(machine), machine.name, machine.id, machine.code, machine.model_number,
         machine.serial_number, machine.manufacturer, machineCategory, machine.location];
       return (!query || searchFields.some(value => value?.toLocaleLowerCase().includes(query)))
         && (!machineFilter || machine.id === machineFilter);
@@ -103,8 +100,9 @@ export const MachineDiaryLibraryPage: React.FC = () => {
           <label className="sr-only" htmlFor="diary-machine-filter">Filter by machine</label>
           <select id="diary-machine-filter" className="diary-control px-3.5 text-sm" aria-label="Filter by machine" value={machineFilter} onChange={event => setMachineFilter(event.target.value)}>
             <option value="">Choose a machine…</option>
-            {machineOptions.map(({ label, machine }) => <option key={label} value={machine?.id || `unavailable-${label}`} disabled={!machine}>{label}</option>)}
+            {machineOptions.map(({ label, machine }) => <option key={label} value={machine?.id || ''} disabled={!machine}>{label}</option>)}
           </select>
+          {machineOptions.some(option => !option.machine) && <p className="sm:col-span-2 px-1 text-xs text-amber-700">Some supported machines are not registered yet and cannot be opened until a machine manager adds them.</p>}
         </section>
 
         {loading && <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="status" aria-busy="true" aria-label="Loading machine diaries">
@@ -134,12 +132,13 @@ export const MachineDiaryLibraryPage: React.FC = () => {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {visibleMachines.map((machine, index) => {
               const [accent, mid, dark] = bookPalettes[index % 2];
-              return <button key={machine.id} type="button" className="diary-book-button group" onClick={() => navigate(`/app/knowledge/machine/${encodeURIComponent(machine.id)}`)} aria-label={`Open knowledge diary for ${machine.name}`}>
+              const machineLabel = getSupportedMachineLabel(machine) || machine.name;
+              return <button key={machine.id} type="button" className="diary-book-button group" onClick={() => navigate(`/app/knowledge/machine/${encodeURIComponent(machine.id)}`)} aria-label={`Open knowledge diary for ${machineLabel}`}>
                 <div className="diary-book" style={{ '--book-a': accent, '--book-b': mid, '--book-c': dark } as React.CSSProperties}>
                   <span className="diary-book-spine" aria-hidden="true" /><span className="diary-book-pages" aria-hidden="true" />
                   <div className="diary-book-cover"><div className="diary-book-content">
                     <div className="flex items-start justify-between gap-3"><span className="diary-book-mark"><Cpu size={21} /></span><span className="rounded-full border border-white/30 bg-white/10 px-2.5 py-1 text-[.65rem] font-semibold uppercase tracking-[.12em] text-white">{machine.status || 'Registered'}</span></div>
-                    <div className="mt-6"><p className="text-[.62rem] font-bold uppercase tracking-[.2em] text-white/60">Machine diary</p><h3 className="diary-book-title mt-2">{machine.name}</h3><p className="diary-book-meta mt-2 font-mono">{machine.code || machine.model_number || machine.id}</p></div>
+                    <div className="mt-6"><p className="text-[.62rem] font-bold uppercase tracking-[.2em] text-white/60">Machine diary</p><h3 className="diary-book-title mt-2">{machineLabel}</h3><p className="diary-book-meta mt-2 font-mono">{machine.code || machine.model_number || machine.id}</p></div>
                     <div className="mt-auto pt-4"><div className="diary-book-divider border-t" /><div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2">
                       <span className="diary-book-count flex items-center gap-1.5"><Video size={13} /> {machine.counts.video} <span>videos</span></span>
                       <span className="diary-book-count flex items-center gap-1.5"><ImageIcon size={13} /> {machine.counts.image} <span>photos</span></span>
@@ -242,7 +241,7 @@ export const MachineDiaryPage: React.FC = () => {
   return <main className="diary-page diary-opening" aria-labelledby="machine-diary-title">
     <div className="diary-page-inner">
       <nav aria-label="Breadcrumb" className="mb-7 flex items-center gap-2 text-xs text-[#536779]">
-        <Link to="/app/knowledge" className="rounded px-1 py-1 hover:text-[#1976C9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1976C9]">Knowledge Library</Link><span aria-hidden="true">/</span><span className="truncate text-[#173B5E]">{machine?.name || 'Machine diary'}</span>
+        <Link to="/app/knowledge" className="rounded px-1 py-1 hover:text-[#1976C9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1976C9]">Knowledge Library</Link><span aria-hidden="true">/</span><span className="truncate text-[#173B5E]">{machine ? getSupportedMachineLabel(machine) || machine.name : 'Machine diary'}</span>
       </nav>
 
       {loading && <div role="status" aria-live="polite" className="space-y-5"><div className="h-8 w-64 animate-pulse rounded bg-[#E2E8F0]" /><div className="h-5 w-96 max-w-full animate-pulse rounded bg-[#E2E8F0]" /><div className="h-72 animate-pulse rounded-2xl border border-[#E2E8F0] bg-white" /><span className="text-sm text-[#536779]">Loading this machine diary…</span></div>}
@@ -251,7 +250,7 @@ export const MachineDiaryPage: React.FC = () => {
 
       {!loading && !error && machine && <>
         <header className="flex flex-col gap-5 border-b border-[#E2E8F0] pb-7 lg:flex-row lg:items-end lg:justify-between">
-          <div><div className="diary-eyebrow flex items-center gap-2"><BookOpen size={15} /> Machine field diary</div><h1 id="machine-diary-title" className="diary-heading mt-3">{machine.name}</h1>
+          <div><div className="diary-eyebrow flex items-center gap-2"><BookOpen size={15} /> Machine field diary</div><h1 id="machine-diary-title" className="diary-heading mt-3">{getSupportedMachineLabel(machine) || machine.name}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#536779]">
               <span className="font-mono text-[#173B5E]">{machine.code || machine.model_number || machine.id}</span>
               {(machine.category_name || machine.category) && <span>{machine.category_name || machine.category}</span>}

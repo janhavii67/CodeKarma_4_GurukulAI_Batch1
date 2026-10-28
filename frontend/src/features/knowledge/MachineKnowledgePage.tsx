@@ -9,7 +9,7 @@ import { MediaAsset } from '../knowledge-capture/media/types';
 import { getApiUrl } from '../../lib/api/client';
 import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
-import { MACHINE_DIARY_MACHINE_LABELS } from './machineDiaryApi';
+import { getSupportedMachineOptions } from '../machines/supportedMachines';
 
 type Kind = 'video' | 'image' | 'audio' | 'document' | 'notes';
 const accepts: Record<Exclude<Kind, 'notes'>, string> = {
@@ -55,9 +55,8 @@ export const MachineKnowledgePage: React.FC = () => {
   const [editTags, setEditTags] = useState('');
   const [metadataSaving, setMetadataSaving] = useState(false);
   const [transcriptStatus, setTranscriptStatus] = useState('');
-  const diaryMachines = machines.filter(machine =>
-    (MACHINE_DIARY_MACHINE_LABELS as readonly string[]).includes(machine.name),
-  );
+  const supportedMachineOptions = getSupportedMachineOptions(machines);
+  const diaryMachines = supportedMachineOptions.flatMap(option => option.machine ? [option.machine] : []);
   const inputRef = useRef<HTMLInputElement>(null);
   const startedAt = useRef<number>(0);
   const elapsedBeforeSegment = useRef<number>(0);
@@ -305,7 +304,7 @@ export const MachineKnowledgePage: React.FC = () => {
       <div className="flex flex-wrap gap-2">{(['video','audio','notes','image','document'] as Kind[]).map(k => <button key={k} onClick={() => changeKind(k)} className={`px-4 py-2 rounded-full text-sm capitalize ${kind===k?'bg-blue-600 text-white':'bg-slate-100 text-slate-700'}`}>{k==='image'?'Photos':k==='document'?'Documents':k}</button>)}</div>
       <label className="block text-sm font-semibold">Which machine or equipment is this knowledge related to?
         <input aria-label="Search registered machines" value={machineSearch} onChange={e=>setMachineSearch(e.target.value)} placeholder="Search registered machines…" className="block w-full mt-2 border rounded-lg p-3" />
-        <select aria-label="Machine" value={machineId} onChange={e => changeMachine(e.target.value)} className="block w-full mt-2 border rounded-lg p-3 bg-white"><option value="">Select a registered machine…</option>{diaryMachines.filter(m=>`${m.name} ${m.code||''} ${m.category||''}`.toLowerCase().includes(machineSearch.toLowerCase())).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+        <select aria-label="Machine" value={machineId} onChange={e => changeMachine(e.target.value)} className="block w-full mt-2 border rounded-lg p-3 bg-white"><option value="">Select a registered machine…</option>{supportedMachineOptions.filter(option => !machineSearch.trim() || `${option.label} ${option.machine?.name || ''} ${option.machine?.code || ''} ${option.machine?.category || ''}`.toLowerCase().includes(machineSearch.toLowerCase())).map(({ label, machine }) => <option key={label} value={machine?.id || ''} disabled={!machine}>{label}</option>)}</select>
       </label>
       <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Knowledge title" className="w-full border rounded-lg p-3" />
       <input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Optional description or observation" className="w-full border rounded-lg p-3" />

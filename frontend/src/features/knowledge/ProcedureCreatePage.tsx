@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { fetchMachines } from '../knowledge-capture/knowledgeApi';
 import { MachineListResponse } from '../knowledge-capture/types';
 import { MediaAsset } from '../knowledge-capture/media/types';
+import { getSupportedMachineOptions, getUnavailableSupportedMachineLabels } from '../machines/supportedMachines';
 
 interface ProcedureDraft {
   id: string;
@@ -34,6 +35,8 @@ export const ProcedureCreatePage: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<ProcedureDraft | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const machineOptions = getSupportedMachineOptions(machines);
+  const unavailableMachines = getUnavailableSupportedMachineLabels(machines);
 
   const loadDrafts = useCallback(async () => {
     setDraftsLoading(true);
@@ -57,7 +60,7 @@ export const ProcedureCreatePage: React.FC = () => {
     if (busy) return;
     setError(''); setStatus('');
     const stepList = steps.split('\n').map(step => step.trim()).filter(Boolean).map((instruction, index) => ({ title: `Step ${index + 1}`, instruction }));
-    if (!machineId || !title.trim() || !description.trim() || !stepList.length) {
+    if (!machineOptions.some(option => option.machine?.id === machineId) || !title.trim() || !description.trim() || !stepList.length) {
       setError('Choose a machine and provide a title, summary, and at least one procedure step.');
       return;
     }
@@ -94,9 +97,10 @@ export const ProcedureCreatePage: React.FC = () => {
     <section className="bg-white border rounded-2xl p-5 space-y-4" aria-label="Create procedure">
       <label className="block text-sm font-semibold">Machine
         <select className="mt-2 block w-full border rounded-lg p-3 bg-white" value={machineId} onChange={event => setMachineId(event.target.value)}>
-          <option value="">Select a registered machine…</option>{machines.map(machine => <option key={machine.id} value={machine.id}>{machine.name}{machine.code ? ` · ${machine.code}` : ''}</option>)}
+          <option value="">Select a registered machine…</option>{machineOptions.map(({ label, machine }) => <option key={label} value={machine?.id || ''} disabled={!machine}>{label}</option>)}
         </select>
       </label>
+      {unavailableMachines.length > 0 && <p className="text-xs text-amber-700">{unavailableMachines.join(', ')} {unavailableMachines.length === 1 ? 'is' : 'are'} not registered yet and cannot be selected. Existing machine records and procedures are unchanged.</p>}
       <input className="w-full border rounded-lg p-3" placeholder="Procedure title" value={title} onChange={event => setTitle(event.target.value)}/>
       <textarea className="w-full border rounded-lg p-3" placeholder="Summary" rows={3} value={description} onChange={event => setDescription(event.target.value)}/>
       <textarea className="w-full border rounded-lg p-3" placeholder="Prerequisites (optional)" value={prerequisites} onChange={event => setPrerequisites(event.target.value)}/>

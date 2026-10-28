@@ -48,7 +48,7 @@ describe('Machine diary library', () => {
     const xray = { ...machine, id: 'machine-xray', name: 'Xray', code: 'XRAY-001' };
     const ecg = { ...machine, id: 'machine-ecg', name: 'ECG', code: 'ECG-001' };
     mockGet.mockImplementation((path: string) => {
-      if (path === '/machine-knowledge/library') return Promise.resolve([machine, ctScan, xray, ecg, { ...machine, id: 'other-machine', name: 'CNC Mill' }]);
+      if (path === '/machine-knowledge/library') return Promise.resolve([machine, ctScan, xray, ecg, { ...machine, id: 'other-machine', name: 'CNC Mill', code: 'CNC-001' }]);
       return Promise.resolve([]);
     });
 
@@ -61,7 +61,7 @@ describe('Machine diary library', () => {
     expect(screen.queryByText(/procedures?|drafts?/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Registered Machines Diaries')).not.toBeInTheDocument();
     expect(screen.queryByText('Accessible Knowledge Records')).not.toBeInTheDocument();
-    const machineCards = screen.getAllByRole('button', { name: /^Open knowledge diary for / });
+    const machineCards = await screen.findAllByRole('button', { name: /^Open knowledge diary for / });
     expect(machineCards).toHaveLength(4);
     const cardColors = machineCards.map(card => card.querySelector<HTMLElement>('.diary-book')?.style.getPropertyValue('--book-a'));
     expect(cardColors).toEqual(['#1976D2', '#047857', '#1976D2', '#047857']);

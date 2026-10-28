@@ -73,11 +73,24 @@ describe('Guided Workflow', () => {
     for (const label of ['MRI', 'CT-Scan', 'Xray', 'ECG']) {
       expect(await screen.findByRole('button', { name: new RegExp(label) })).toBeInTheDocument();
     }
+    expect(screen.getAllByRole('button', { name: /Open workflow/ })).toHaveLength(4);
     expect(screen.queryByRole('button', { name: /CNC Machine/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /MRI MRI-001/ }));
     expect(await screen.findByText('No approved procedure is available for MRI')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Go to Create Procedure/ })).toHaveAttribute('href', '/app/procedures/new');
     expect(apiMock.post).not.toHaveBeenCalled();
+  });
+
+  it('shows CT-Scan while selecting the real registered CT machine ID for procedure loading', async () => {
+    apiMock.get.mockImplementation((path: string) => {
+      if (path === '/procedures?machine_id=ct') return Promise.resolve([]);
+      return Promise.reject(new Error(`Unexpected GET ${path}`));
+    });
+    render(<MemoryRouter><GuidedWorkflowsPage /></MemoryRouter>);
+
+    await userEvent.click(await screen.findByRole('button', { name: /CT-Scan CITYSCAN-001/ }));
+    await waitFor(() => expect(apiMock.get).toHaveBeenCalledWith('/procedures?machine_id=ct'));
+    expect(await screen.findByText('No approved procedure is available for CT-Scan')).toBeInTheDocument();
   });
 
   it('loads the selected machine procedure and enforces step confirmations before advancing', async () => {

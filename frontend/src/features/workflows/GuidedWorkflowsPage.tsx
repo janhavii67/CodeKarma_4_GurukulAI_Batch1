@@ -19,7 +19,7 @@ import {
 import { api, getApiUrl } from '../../lib/api/client';
 import { fetchMachines } from '../knowledge-capture/knowledgeApi';
 import type { Machine } from '../knowledge-capture/types';
-import { MACHINE_DIARY_MACHINE_LABELS } from '../knowledge/machineDiaryApi';
+import { getSupportedMachineLabel, getSupportedMachineOptions } from '../machines/supportedMachines';
 
 type Stage = 1 | 2 | 3;
 
@@ -115,8 +115,7 @@ export function GuidedWorkflowsPage() {
     fetchMachines({ page_size: 100 })
       .then((result) => {
         if (!mounted) return;
-        const supportedNames = new Set<string>(MACHINE_DIARY_MACHINE_LABELS);
-        setMachines(result.items.filter((machine) => supportedNames.has(machine.name)));
+        setMachines(result.items);
       })
       .catch((error: unknown) => {
         if (mounted) setMachineError(explainError(error));
@@ -126,6 +125,11 @@ export function GuidedWorkflowsPage() {
       });
     return () => { mounted = false; };
   }, []);
+
+  const machineOptions = useMemo(() => getSupportedMachineOptions(machines), [machines]);
+  const selectedMachineLabel = selectedMachine
+    ? getSupportedMachineLabel(selectedMachine) || selectedMachine.name
+    : 'Selected machine';
 
   const stepExecutions = useMemo(() => {
     const byStepId = new Map<string, RunStep>();
@@ -282,9 +286,8 @@ export function GuidedWorkflowsPage() {
             <h2 id="machine-heading" className="text-xl font-bold text-[#173B5E]">Select the machine</h2>
             <p className={`mt-1 text-sm ${theme.muted}`}>Choose the registered equipment to load its approved procedure.</p>
           </div>
-          {machinesLoading ? <div className={`${theme.panel} flex items-center gap-3 p-6 text-sm ${theme.muted}`}><LoaderCircle className="animate-spin text-[#1976C9]" size={20} />Loading registered machines…</div> : machines.length === 0 ? <div className={`${theme.panel} p-6 text-sm ${theme.muted}`}>No supported registered machines are currently available.</div> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {MACHINE_DIARY_MACHINE_LABELS.map((label, index) => {
-              const machine = machines.find((item) => item.name === label);
+          {machinesLoading ? <div className={`${theme.panel} flex items-center gap-3 p-6 text-sm ${theme.muted}`}><LoaderCircle className="animate-spin text-[#1976C9]" size={20} />Loading registered machines…</div> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {machineOptions.map(({ label, machine }, index) => {
               return <button key={label} type="button" disabled={!machine || loadingMission} onClick={() => machine && void selectMachine(machine)} className={`${theme.panel} group min-h-44 p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#1976C9]/50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-55`}>
                 <span className={`grid h-12 w-12 place-items-center rounded-xl ${index % 2 === 0 ? 'bg-[#EFF4FF] text-[#1976C9]' : 'bg-[#EAF8F4] text-[#15966A]'}`}><Wrench size={23} /></span>
                 <span className="mt-5 block text-lg font-bold text-[#173B5E]">{label}</span>
@@ -300,7 +303,7 @@ export function GuidedWorkflowsPage() {
           <div className="flex flex-col gap-4 rounded-2xl border border-[#C8D6E4] bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-[#1976C9]">Stage 2 · Guided Mission</p>
-              <h2 id="mission-heading" className="mt-1 text-xl font-bold text-[#173B5E]">{selectedMachine?.name || 'Selected machine'}</h2>
+              <h2 id="mission-heading" className="mt-1 text-xl font-bold text-[#173B5E]">{selectedMachineLabel}</h2>
               {procedure && <p className={`mt-1 text-sm ${theme.muted}`}>{procedure.title} · Approved version {procedure.version}</p>}
             </div>
             {procedure && <div className="min-w-44 sm:text-right">
@@ -312,7 +315,7 @@ export function GuidedWorkflowsPage() {
           {loadingMission && <div className={`${theme.panel} flex items-center gap-3 p-8 text-sm ${theme.muted}`}><LoaderCircle className="animate-spin text-[#1976C9]" size={20} />Loading the approved machine procedure…</div>}
           {!loadingMission && !missionError && selectedMachine && !procedure && <div className={`${theme.panel} p-7 sm:p-9`}>
             <div className="grid h-12 w-12 place-items-center rounded-xl bg-[#EFF4FF] text-[#1976C9]"><ClipboardCheck size={24} /></div>
-            <h3 className="mt-4 text-lg font-bold text-[#173B5E]">No approved procedure is available for {selectedMachine.name}</h3>
+            <h3 className="mt-4 text-lg font-bold text-[#173B5E]">No approved procedure is available for {selectedMachineLabel}</h3>
             <p className={`mt-2 max-w-2xl text-sm leading-6 ${theme.muted}`}>Guided steps appear here after an expert creates and approves a procedure for this machine. This workflow does not create or invent operating instructions.</p>
             <Link to="/app/procedures/new" className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3]"><FileText size={16} />Go to Create Procedure</Link>
           </div>}
@@ -401,7 +404,7 @@ export function GuidedWorkflowsPage() {
               <p className={`mt-2 text-sm leading-6 ${theme.muted}`}>{serverConfirmedComplete ? 'The backend has recorded every checkpoint as complete.' : 'The procedure is not marked complete by the server. Review the remaining checks before finishing.'}</p>
             </div>
             <div className="space-y-5 p-6 sm:p-9">
-              <dl className="grid gap-4 sm:grid-cols-2"><div className="rounded-xl bg-[#F5F8FC] p-4"><dt className="text-xs font-semibold uppercase tracking-wide text-[#536779]">Machine</dt><dd className="mt-1 font-bold text-[#173B5E]">{selectedMachine.name}</dd></div><div className="rounded-xl bg-[#F5F8FC] p-4"><dt className="text-xs font-semibold uppercase tracking-wide text-[#536779]">Approved procedure</dt><dd className="mt-1 font-bold text-[#173B5E]">{procedure.title} · v{procedure.version}</dd></div></dl>
+              <dl className="grid gap-4 sm:grid-cols-2"><div className="rounded-xl bg-[#F5F8FC] p-4"><dt className="text-xs font-semibold uppercase tracking-wide text-[#536779]">Machine</dt><dd className="mt-1 font-bold text-[#173B5E]">{selectedMachineLabel}</dd></div><div className="rounded-xl bg-[#F5F8FC] p-4"><dt className="text-xs font-semibold uppercase tracking-wide text-[#536779]">Approved procedure</dt><dd className="mt-1 font-bold text-[#173B5E]">{procedure.title} · v{procedure.version}</dd></div></dl>
               <div><div className="flex items-center justify-between text-sm"><span className="font-semibold text-[#173B5E]">Recorded checkpoints</span><span className="font-bold text-[#173B5E]">{completedCount} / {stepCount}</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-[#EAF0F6]"><div className={`h-full rounded-full transition-all ${serverConfirmedComplete ? 'bg-[#10B981]' : 'bg-[#1976C9]'}`} style={{ width: `${stepCount ? (completedCount / stepCount) * 100 : 0}%` }} /></div></div>
               <ul className="space-y-2">{procedure.steps.map((step) => { const done = Boolean(stepExecutions.get(step.id)?.is_completed); return <li key={step.id} className="flex items-start gap-3 rounded-lg border border-[#E8EEF5] p-3 text-sm"><span className={done ? 'mt-0.5 text-emerald-600' : 'mt-0.5 text-amber-600'}>{done ? <CheckCircle2 size={17} /> : <Circle size={17} />}</span><span className="flex-1 text-[#344B60]">{step.step_order}. {step.title}</span><span className={`text-[11px] font-bold uppercase ${done ? 'text-emerald-700' : 'text-amber-700'}`}>{done ? 'Completed' : 'Remaining'}</span></li>; })}</ul>
               <div className="flex flex-wrap justify-end gap-3 border-t border-[#E8EEF5] pt-5"><button type="button" onClick={() => setStage(2)} className="rounded-lg border border-[#DCE6F0] bg-white px-4 py-2.5 text-sm font-semibold text-[#173B5E] transition hover:bg-[#F5F8FC]">Return to procedure</button><button type="button" onClick={startOver} disabled={!serverConfirmedComplete} className="rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3] disabled:cursor-not-allowed disabled:opacity-45">Finish workflow</button></div>

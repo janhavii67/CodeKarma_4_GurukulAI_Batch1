@@ -8,6 +8,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useAuth } from '../../hooks/useAuth';
 import { api, ApiClientError } from '../../lib/api/client';
+import { getSupportedMachineLabel, getSupportedMachineOptions } from './supportedMachines';
 import {
   Wrench,
   MapPin,
@@ -83,8 +84,6 @@ const INITIAL_FORM: CreateMachineFormData = {
   is_demo: false,
 };
 
-const SUPPORTED_MACHINE_NAMES = new Set(['mri', 'ct-scan', 'ecg', 'xray']);
-
 export const MachinesPage: React.FC = () => {
   const { hasPermission } = useAuth();
   const canManageMachines = hasPermission('machine.manage');
@@ -119,9 +118,8 @@ export const MachinesPage: React.FC = () => {
 
   // This page presents only the four requested medical machines. The complete
   // backend catalog remains intact for historical knowledge and other modules.
-  const visibleMachines = machines.filter((machine) =>
-    SUPPORTED_MACHINE_NAMES.has(machine.name.trim().toLowerCase()),
-  );
+  const visibleMachines = getSupportedMachineOptions(machines)
+    .flatMap(option => option.machine ? [option.machine] : []);
 
   // Load categories
   const fetchCategories = () => {
@@ -303,7 +301,7 @@ export const MachinesPage: React.FC = () => {
             </Badge>
           </div>
           <p className="text-xs text-[#5D7188] max-w-2xl">
-            Machine records for MRI, CT-Scan, ECG, and Xray, with their existing equipment details and tool mappings.
+            Machine records for MRI, CT-Scan, Xray, and ECG, with their existing equipment details and tool mappings.
           </p>
         </div>
 
@@ -408,7 +406,7 @@ export const MachinesPage: React.FC = () => {
           description={
             searchTerm || selectedCategory
               ? 'Try adjusting your search criteria or resetting the category filter.'
-              : 'MRI, CT-Scan, ECG, and Xray are the supported machines shown here. Other registered machines and their records remain available to other modules.'
+              : 'MRI, CT-Scan, Xray, and ECG are the supported machines shown here. Other registered machines and their records remain available to other modules.'
           }
           action={
             searchTerm || selectedCategory ? (
@@ -435,7 +433,7 @@ export const MachinesPage: React.FC = () => {
           {visibleMachines.map((m) => (
             <Card
               key={m.id}
-              title={m.name}
+              title={getSupportedMachineLabel(m) || m.name}
               subtitle={`${m.manufacturer || 'Medical Diagnostics'} · Code ${m.code || m.model_number || 'N/A'}`}
               badge={
                 <Badge

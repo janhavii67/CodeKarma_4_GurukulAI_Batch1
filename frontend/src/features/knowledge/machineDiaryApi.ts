@@ -1,7 +1,9 @@
 import { api } from '../../lib/api/client';
 import type { MediaAsset } from '../knowledge-capture/media/types';
+import { SUPPORTED_MACHINES } from '../machines/supportedMachines';
 
-export const MACHINE_DIARY_MACHINE_LABELS = ['MRI', 'CT-Scan', 'Xray', 'ECG'] as const;
+// Kept as a compatibility export for other machine diary consumers.
+export const MACHINE_DIARY_MACHINE_LABELS = SUPPORTED_MACHINES.map(machine => machine.label);
 
 export interface MachineDiaryCounts {
   video: number;
