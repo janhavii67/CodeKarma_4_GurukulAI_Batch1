@@ -24,18 +24,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const userRef = React.useRef<User | null>(null);
+  userRef.current = user;
+
   const refreshUser = useCallback(async () => {
     try {
-      setIsLoading(true);
+      // Only set isLoading to true on the initial session check when user is not yet known.
+      // Background revalidations (window focus / visibility change) should not set isLoading to true,
+      // preventing protected components from unmounting and losing unsaved input.
+      if (!userRef.current) {
+        setIsLoading(true);
+      }
       setError(null);
       const res = await api.get<AuthResponse>('/auth/me');
       setUser(res.user);
       setPermissions(res.permissions);
     } catch (err) {
-      setUser(null);
-      setPermissions([]);
       if (err instanceof ApiClientError && err.status === 401) {
-        // Normal unauthenticated state on first load
+        // Only clear the session on genuine 401 Unauthorized
+        setUser(null);
+        setPermissions([]);
       } else if (err instanceof Error) {
         setError(err.message);
       }

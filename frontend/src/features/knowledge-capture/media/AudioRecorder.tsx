@@ -404,6 +404,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
             </p>
             <div className="flex gap-2 justify-end pt-2">
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setConfirmDiscardOpen(false)}
@@ -411,6 +412,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
                 Keep recording
               </Button>
               <Button
+                type="button"
                 variant="danger"
                 size="sm"
                 onClick={handleConfirmDiscard}

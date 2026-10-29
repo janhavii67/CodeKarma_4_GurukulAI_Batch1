@@ -60,6 +60,7 @@ interface ProcedureRun {
   id: string;
   procedure_id: string;
   status: 'IN_PROGRESS' | 'COMPLETED' | 'ABORTED' | string;
+  current_step_order?: number;
   started_at: string;
   completed_at?: string | null;
   step_executions: RunStep[];
@@ -164,7 +165,19 @@ export function GuidedWorkflowsPage() {
       const activeRun = existingRun || await api.post<ProcedureRun>(`/procedures/${selectedProcedure.id}/start`, {});
       setRun(activeRun);
       const incomplete = selectedProcedure.steps.findIndex((step) => !activeRun.step_executions.find((execution) => execution.step_id === step.id)?.is_completed);
-      setActiveIndex(incomplete < 0 ? Math.max(0, selectedProcedure.steps.length - 1) : incomplete);
+      const targetIndex = incomplete < 0 ? Math.max(0, selectedProcedure.steps.length - 1) : incomplete;
+      setActiveIndex(targetIndex);
+      const targetStep = selectedProcedure.steps[targetIndex];
+      if (targetStep && activeRun.current_step_order !== targetStep.step_order) {
+        try {
+          const synced = await api.patch<ProcedureRun>(`/procedures/runs/${activeRun.id}/current-step`, {
+            step_order: targetStep.step_order,
+          });
+          setRun(synced);
+        } catch {
+          // Keep activeRun on network issue
+        }
+      }
 
       try {
         const assets = await api.get<ProcedureReference[]>(`/procedures/${selectedProcedure.id}/assets`);
@@ -181,10 +194,22 @@ export function GuidedWorkflowsPage() {
     }
   };
 
-  const moveToStep = (index: number) => {
-    if (!procedure || index < 0 || index >= procedure.steps.length || index > furthestAvailableIndex) return;
+  const moveToStep = async (index: number) => {
+    if (!procedure || !run || index < 0 || index >= procedure.steps.length || index > furthestAvailableIndex) return;
+    const targetStep = procedure.steps[index];
     setActiveIndex(index);
     resetStepChecks();
+    setMissionError('');
+    if (run.current_step_order !== targetStep.step_order) {
+      try {
+        const updated = await api.patch<ProcedureRun>(`/procedures/runs/${run.id}/current-step`, {
+          step_order: targetStep.step_order,
+        });
+        setRun(updated);
+      } catch {
+        // Fallback: local activeIndex is updated; markCurrentStepComplete will sync if needed
+      }
+    }
   };
 
   const markCurrentStepComplete = async () => {
@@ -192,6 +217,12 @@ export function GuidedWorkflowsPage() {
     setSavingStep(true);
     setMissionError('');
     try {
+      if (run.current_step_order !== currentStep.step_order) {
+        const synced = await api.patch<ProcedureRun>(`/procedures/runs/${run.id}/current-step`, {
+          step_order: currentStep.step_order,
+        });
+        setRun(synced);
+      }
       const updated = await api.post<ProcedureRun>(
         `/procedures/runs/${run.id}/step/${currentStep.id}`,
         { is_completed: true, operator_notes: operatorNotes.trim() || undefined },
@@ -369,7 +400,7 @@ export function GuidedWorkflowsPage() {
 
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#E8EEF5] pt-4">
                     <button type="button" disabled={activeIndex === 0 || savingStep} onClick={() => moveToStep(activeIndex - 1)} className="inline-flex items-center gap-2 rounded-lg border border-[#DCE6F0] bg-white px-4 py-2.5 text-sm font-semibold text-[#173B5E] transition hover:bg-[#F5F8FC] disabled:opacity-40"><ArrowLeft size={16} />Previous Step</button>
-                    {activeIndex < stepCount - 1 ? <button type="button" disabled={!currentStepComplete || savingStep} onClick={() => moveToStep(activeIndex + 1)} className="inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3] disabled:cursor-not-allowed disabled:opacity-45">Next Step<ArrowRight size={16} /></button> : <button type="button" disabled={!serverConfirmedComplete || savingStep} onClick={() => setStage(3)} className="inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3] disabled:cursor-not-allowed disabled:opacity-45">Review &amp; Complete<ArrowRight size={16} /></button>}
+                    {activeIndex < stepCount - 1 ? <button type="button" disabled={!currentStepComplete || savingStep} onClick={() => moveToStep(activeIndex + 1)} className="inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3] disabled:cursor-not-allowed disabled:bg-[#DCE6F0] disabled:text-[#64748B] disabled:opacity-100">Next Step<ArrowRight size={16} /></button> : <button type="button" disabled={!serverConfirmedComplete || savingStep} onClick={() => setStage(3)} className="inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3] disabled:cursor-not-allowed disabled:bg-[#DCE6F0] disabled:text-[#64748B] disabled:opacity-100">Review &amp; Complete<ArrowRight size={16} /></button>}
                   </div>
                 </div>
               </article>

@@ -65,3 +65,7 @@ Thumbs.db
 !frontend/src/lib/
 !frontend/src/lib/api/
 !frontend/src/lib/api/client.ts
+
+# Temporary QA logs and scratch artifacts
+.qa_temp/
+

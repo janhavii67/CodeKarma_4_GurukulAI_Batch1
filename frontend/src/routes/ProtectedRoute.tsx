@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { UserRole } from '../types/auth';
@@ -20,7 +20,15 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const { user, isAuthenticated, isLoading, hasRole, hasPermission } = useAuth();
   const location = useLocation();
 
-  if (isLoading) {
+  // Only block with the full-screen spinner on the very first auth check, i.e.
+  // when no user is yet known. Background revalidations (triggered by window
+  // focus, native file-picker closing, visibility change) also flip isLoading to
+  // true while the session is re-checked, but the user is already authenticated.
+  // Rendering <LoadingSpinner> during those background checks unmounts the entire
+  // child page tree and destroys all unsaved draft state.
+  // Root cause of Bug 1 (media upload resets the form) and Bug 2 (Finish Procedure
+  // resets the editor): fixed by only blocking render when user is not yet known.
+  if (isLoading && !user) {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center">
         <LoadingSpinner size="lg" message="Authenticating session..." />

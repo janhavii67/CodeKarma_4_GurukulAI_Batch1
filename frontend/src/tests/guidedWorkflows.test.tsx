@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { GuidedWorkflowsPage } from '../features/workflows/GuidedWorkflowsPage';
 
-const apiMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const apiMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn() }));
 const machineQueryMock = vi.hoisted(() => ({ useMachines: vi.fn() }));
 vi.mock('../lib/api/client', () => ({
   api: apiMock,
@@ -54,6 +54,10 @@ function setupApi(initialRun = run()) {
     if (path === '/procedures/procedure-mri/start') return Promise.resolve(initialRun);
     return Promise.reject(new Error(`Unexpected POST ${path}`));
   });
+  apiMock.patch.mockImplementation((path: string, body: unknown) => {
+    const payload = body as { step_order: number };
+    return Promise.resolve(run({ current_step_order: payload.step_order }));
+  });
 }
 
 async function chooseMri(user = userEvent.setup()) {
@@ -66,6 +70,7 @@ describe('Guided Workflow', () => {
   beforeEach(() => {
     apiMock.get.mockReset();
     apiMock.post.mockReset();
+    apiMock.patch.mockReset();
     machineQueryMock.useMachines.mockReset().mockReturnValue({ data: { items: machines }, isLoading: false, isError: false });
   });
 
