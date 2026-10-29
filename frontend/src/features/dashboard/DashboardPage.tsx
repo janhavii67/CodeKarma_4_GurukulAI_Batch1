@@ -58,11 +58,7 @@ export const DashboardPage: React.FC = () => {
     <div className="space-y-7 max-w-[1440px] mx-auto pb-8">
       {isExpert ? (
         <StitchExpertDashboard
-          user={user}
-          stats={stats}
-          loading={loading}
           hasPermission={hasPermission}
-          hasRole={hasRole}
         />
       ) : (
         <>

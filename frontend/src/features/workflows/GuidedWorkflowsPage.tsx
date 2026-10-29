@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -17,9 +17,9 @@ import {
   Wrench,
 } from 'lucide-react';
 import { api, getApiUrl } from '../../lib/api/client';
-import { fetchMachines } from '../knowledge-capture/knowledgeApi';
+import { useMachines } from '../knowledge-capture/hooks';
 import type { Machine } from '../knowledge-capture/types';
-import { getSupportedMachineLabel, getSupportedMachineOptions } from '../machines/supportedMachines';
+import { selectableMachines } from '../machines/registeredMachines';
 
 type Stage = 1 | 2 | 3;
 
@@ -92,9 +92,9 @@ function isVerified(status?: string | null): boolean {
 
 export function GuidedWorkflowsPage() {
   const [stage, setStage] = useState<Stage>(1);
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [machinesLoading, setMachinesLoading] = useState(true);
-  const [machineError, setMachineError] = useState('');
+  const { data: machinesData, isLoading: machinesLoading, error: machineCatalogError } = useMachines();
+  const machines = selectableMachines(machinesData?.items ?? []) as Machine[];
+  const machineError = machineCatalogError instanceof Error ? machineCatalogError.message : '';
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
   const [procedure, setProcedure] = useState<Procedure | null>(null);
   const [run, setRun] = useState<ProcedureRun | null>(null);
@@ -109,26 +109,8 @@ export function GuidedWorkflowsPage() {
   const [safetyAcknowledged, setSafetyAcknowledged] = useState(false);
   const [operatorNotes, setOperatorNotes] = useState('');
 
-  useEffect(() => {
-    let mounted = true;
-    setMachinesLoading(true);
-    fetchMachines({ page_size: 100 })
-      .then((result) => {
-        if (!mounted) return;
-        setMachines(result.items);
-      })
-      .catch((error: unknown) => {
-        if (mounted) setMachineError(explainError(error));
-      })
-      .finally(() => {
-        if (mounted) setMachinesLoading(false);
-      });
-    return () => { mounted = false; };
-  }, []);
-
-  const machineOptions = useMemo(() => getSupportedMachineOptions(machines), [machines]);
   const selectedMachineLabel = selectedMachine
-    ? getSupportedMachineLabel(selectedMachine) || selectedMachine.name
+    ? selectedMachine.name
     : 'Selected machine';
 
   const stepExecutions = useMemo(() => {
@@ -286,13 +268,13 @@ export function GuidedWorkflowsPage() {
             <h2 id="machine-heading" className="text-xl font-bold text-[#173B5E]">Select the machine</h2>
             <p className={`mt-1 text-sm ${theme.muted}`}>Choose the registered equipment to load its approved procedure.</p>
           </div>
-          {machinesLoading ? <div className={`${theme.panel} flex items-center gap-3 p-6 text-sm ${theme.muted}`}><LoaderCircle className="animate-spin text-[#1976C9]" size={20} />Loading registered machines…</div> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {machineOptions.map(({ label, machine }, index) => {
-              return <button key={label} type="button" disabled={!machine || loadingMission} onClick={() => machine && void selectMachine(machine)} className={`${theme.panel} group min-h-44 p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#1976C9]/50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-55`}>
+          {machinesLoading ? <div className={`${theme.panel} flex items-center gap-3 p-6 text-sm ${theme.muted}`}><LoaderCircle className="animate-spin text-[#1976C9]" size={20} />Loading registered machines…</div> : machines.length === 0 ? <div className={`${theme.panel} p-6`}><h3 className="font-semibold text-[#173B5E]">No active equipment is registered</h3><p className={`mt-1 text-sm ${theme.muted}`}>Register or activate equipment in the Machines section to begin a guided workflow.</p><Link to="/app/machines" className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3]"><Wrench size={16} />Open Machines</Link></div> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {machines.map((machine, index) => {
+              return <button key={machine.id} type="button" disabled={loadingMission} onClick={() => void selectMachine(machine)} className={`${theme.panel} group min-h-44 p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#1976C9]/50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-55`}>
                 <span className={`grid h-12 w-12 place-items-center rounded-xl ${index % 2 === 0 ? 'bg-[#EFF4FF] text-[#1976C9]' : 'bg-[#EAF8F4] text-[#15966A]'}`}><Wrench size={23} /></span>
-                <span className="mt-5 block text-lg font-bold text-[#173B5E]">{label}</span>
-                <span className={`mt-1 block text-xs ${theme.muted}`}>{machine ? machine.code : 'Not registered'}</span>
-                {loadingMission && selectedMachine?.id === machine?.id && <span className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-[#1976C9]"><LoaderCircle size={14} className="animate-spin" />Loading procedure</span>}
+                <span className="mt-5 block text-lg font-bold text-[#173B5E]">{machine.name}</span>
+                <span className={`mt-1 block text-xs ${theme.muted}`}>{machine.code || machine.model_number || 'Registered equipment'}</span>
+                {loadingMission && selectedMachine?.id === machine.id && <span className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-[#1976C9]"><LoaderCircle size={14} className="animate-spin" />Loading procedure</span>}
                 <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[#1976C9]">Open workflow <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" /></span>
               </button>;
             })}

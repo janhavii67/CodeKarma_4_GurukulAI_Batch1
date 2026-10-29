@@ -62,7 +62,11 @@ def list_machine_knowledge_library(
     auth_ctx: AuthenticatedContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    machines_query = db.query(Machine).options(joinedload(Machine.category_obj))
+    machines_query = (
+        db.query(Machine)
+        .options(joinedload(Machine.category_obj))
+        .filter(Machine.is_active.is_(True))
+    )
     if machine_id:
         machines_query = machines_query.filter(Machine.id == machine_id)
     machines = machines_query.order_by(Machine.name.asc(), Machine.id.asc()).all()

@@ -38,7 +38,7 @@ import { MediaPanel } from './media/MediaPanel';
 import { Button } from '../../components/ui/Button';
 import { ApiClientError } from '../../lib/api/client';
 import type { Step, KnowledgeVersion } from './types';
-import { getSupportedMachineOptions, getUnavailableSupportedMachineLabels } from '../machines/supportedMachines';
+import { machineOptionLabel, selectableMachines } from '../machines/registeredMachines';
 import type { KnowledgeVersionComparison } from './types';
 import { fetchVersionComparison } from './knowledgeApi';
 import { isEditableStatus } from './types';
@@ -264,8 +264,7 @@ export const KnowledgeEditorPage: React.FC = () => {
   const queryClient = useQueryClient();
   const { user, hasPermission } = useAuth();
   const { data: machinesData } = useMachines();
-  const machineOptions = getSupportedMachineOptions(machinesData?.items ?? []);
-  const unavailableMachines = getUnavailableSupportedMachineLabels(machinesData?.items ?? []);
+  const machineOptions = selectableMachines(machinesData?.items ?? []);
 
   const isNewRoute = !id || id === 'new';
   const captureKind = searchParams.get('capture') ?? undefined;
@@ -575,13 +574,12 @@ export const KnowledgeEditorPage: React.FC = () => {
                   className="w-full bg-white border border-[#DCE8F5] rounded-lg px-3.5 py-2.5 text-sm text-[#12345A] focus:border-[#1473E6] focus:ring-2 focus:ring-[#1473E6]/20 outline-none"
                 >
                   <option value="">Select equipment…</option>
-                  {machineOptions.map(({ label, machine }) => (
-                    <option key={label} value={machine?.id || ''} disabled={!machine}>
-                      {label}
+                  {machineOptions.map((machine) => (
+                    <option key={machine.id} value={machine.id}>
+                      {machineOptionLabel(machine)}
                     </option>
                   ))}
                 </select>
-                {unavailableMachines.length > 0 && <p className="mt-1 text-[11px] text-amber-700">{unavailableMachines.join(', ')} {unavailableMachines.length === 1 ? 'is' : 'are'} not registered and cannot be selected.</p>}
                 <p className="text-[11px] text-[#536780] mt-1">
                   Link this knowledge to registered equipment when relevant.
                 </p>
@@ -1329,13 +1327,12 @@ export const KnowledgeEditorPage: React.FC = () => {
                   className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2.5 text-xs text-[#12345A] focus:border-[#1473E6] outline-none"
                 >
                   <option value="">Select machine…</option>
-                  {machineOptions.map(({ label, machine }) => (
-                    <option key={label} value={machine?.id || ''} disabled={!machine}>
-                      {label}
+                  {machineOptions.map((machine) => (
+                    <option key={machine.id} value={machine.id}>
+                      {machineOptionLabel(machine)}
                     </option>
                   ))}
                 </select>
-                {unavailableMachines.length > 0 && <p className="mt-1 text-[11px] text-amber-700">{unavailableMachines.join(', ')} {unavailableMachines.length === 1 ? 'is' : 'are'} not registered and cannot be selected.</p>}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">

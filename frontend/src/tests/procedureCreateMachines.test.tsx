@@ -5,10 +5,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { ProcedureCreatePage } from '../features/knowledge/ProcedureCreatePage';
 
 const apiMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn() }));
-const machineApiMock = vi.hoisted(() => ({ fetchMachines: vi.fn() }));
+const machineQueryMock = vi.hoisted(() => ({ useMachines: vi.fn() }));
 
 vi.mock('../lib/api/client', () => ({ api: apiMock }));
-vi.mock('../features/knowledge-capture/knowledgeApi', () => machineApiMock);
+vi.mock('../features/knowledge-capture/hooks', () => ({ useMachines: machineQueryMock.useMachines }));
 
 const machines = [
   { id: 'mri-real-id', name: 'MRI', code: 'MRI-001', category: 'medical', is_demo: false, created_at: '', updated_at: '' },
@@ -16,6 +16,7 @@ const machines = [
   { id: 'xray-real-id', name: 'Xray', code: 'XRAY-001', category: 'medical', is_demo: false, created_at: '', updated_at: '' },
   { id: 'ecg-real-id', name: 'ECG', code: 'ECG-001', category: 'medical', is_demo: false, created_at: '', updated_at: '' },
   { id: 'cnc-real-id', name: 'CNC Mill', code: 'CNC-001', category: 'industrial', is_demo: false, created_at: '', updated_at: '' },
+  { id: 'inactive-id', name: 'Inactive CT', code: 'CT-OFF-001', status: 'MAINTENANCE', is_demo: false, created_at: '', updated_at: '' },
 ];
 
 function renderProcedureCreatePage() {
@@ -25,20 +26,21 @@ function renderProcedureCreatePage() {
 describe('Create Procedure machine selection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    machineApiMock.fetchMachines.mockResolvedValue({ items: machines, total: machines.length, page: 1, page_size: 100 });
+    machineQueryMock.useMachines.mockReturnValue({ data: { items: machines }, isLoading: false, isError: false });
     apiMock.get.mockImplementation((path: string) => path === '/procedures/mine/drafts' ? Promise.resolve([]) : Promise.resolve([]));
     apiMock.post.mockResolvedValue({ id: 'new-procedure' });
   });
 
-  it('offers only the four supported machine labels and saves the real selected machine ID', async () => {
+  it('offers every active registered machine and saves the real selected machine ID', async () => {
     const user = userEvent.setup();
     renderProcedureCreatePage();
 
     const machineSelect = await screen.findByRole('combobox', { name: 'Machine' });
     expect(within(machineSelect).getAllByRole('option').map(option => option.textContent)).toEqual([
-      'Select a registered machine…', 'MRI', 'CT-Scan', 'Xray', 'ECG',
+      'Select a registered machine…', 'CNC Mill · CNC-001', 'CT-Scan · CITYSCAN-001',
+      'ECG · ECG-001', 'MRI · MRI-001', 'Xray · XRAY-001',
     ]);
-    expect(within(machineSelect).queryByRole('option', { name: 'CNC Mill' })).not.toBeInTheDocument();
+    expect(machineSelect.querySelector('option[value="inactive-id"]')).toBeNull();
 
     await user.selectOptions(machineSelect, 'cityscan-real-id');
     await user.type(screen.getByPlaceholderText('Procedure title'), 'CT-Scan inspection');
@@ -52,18 +54,21 @@ describe('Create Procedure machine selection', () => {
     })));
   });
 
-  it('shows missing supported machines as disabled and explains that they must be registered', async () => {
-    machineApiMock.fetchMachines.mockResolvedValue({
-      items: [machines[0], machines[4]], total: 2, page: 1, page_size: 100,
-    });
+  it('does not invent options when only a subset of equipment is registered', async () => {
+    machineQueryMock.useMachines.mockReturnValue({ data: { items: [machines[0]] }, isLoading: false, isError: false });
     renderProcedureCreatePage();
 
     const machineSelect = await screen.findByRole('combobox', { name: 'Machine' });
     const options = within(machineSelect).getAllByRole('option');
-    expect(options.map(option => option.textContent)).toEqual([
-      'Select a registered machine…', 'MRI', 'CT-Scan', 'Xray', 'ECG',
-    ]);
-    expect(options[2]).toBeDisabled();
-    expect(screen.getByText(/CT-Scan, Xray, ECG are not registered yet/)).toBeInTheDocument();
+    expect(options.map(option => option.textContent)).toEqual(['Select a registered machine…', 'MRI · MRI-001']);
+  });
+
+  it('shows an actionable empty state and prevents creating an unassociated procedure', async () => {
+    machineQueryMock.useMachines.mockReturnValue({ data: { items: [] }, isLoading: false, isError: false });
+    renderProcedureCreatePage();
+
+    expect(await screen.findByText(/No active equipment is registered/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Register equipment' })).toHaveAttribute('href', '/app/machines');
+    expect(screen.getByRole('button', { name: 'Save procedure' })).toBeDisabled();
   });
 });

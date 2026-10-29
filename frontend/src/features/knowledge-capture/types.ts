@@ -4,10 +4,26 @@ export interface Machine {
   id: string;
   name: string;
   code: string;
-  category: string;
+  model_number?: string | null;
+  serial_number?: string | null;
+  manufacturer?: string | null;
+  category?: string | null;
+  category_id?: string | null;
+  category_name?: string | null;
+  location?: string | null;
+  status?: string | null;
+  is_active?: boolean;
+  specifications?: string | null;
   is_demo: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface MachineCategory {
+  id: string;
+  name: string;
+  description?: string | null;
+  is_active?: boolean;
 }
 
 export interface MachineListResponse {

@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -8,7 +9,8 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useAuth } from '../../hooks/useAuth';
 import { api, ApiClientError } from '../../lib/api/client';
-import { getSupportedMachineLabel, getSupportedMachineOptions } from './supportedMachines';
+import { machineKeys, useMachineCategories, useMachines } from '../knowledge-capture/hooks';
+import { machineDiaryKeys } from '../knowledge/machineDiaryApi';
 import {
   Wrench,
   MapPin,
@@ -45,6 +47,7 @@ interface Machine {
   category_name?: string;
   location?: string;
   status: string;
+  is_active?: boolean;
   specifications?: string;
   is_demo?: boolean;
   tools: Tool[];
@@ -52,17 +55,11 @@ interface Machine {
   updated_at?: string;
 }
 
-interface MachineCategory {
-  id: string;
-  name: string;
-  description?: string;
-}
-
 interface CreateMachineFormData {
   name: string;
   code: string;
   model_number: string;
-  category: string;
+  category_id: string;
   manufacturer: string;
   serial_number: string;
   location: string;
@@ -75,7 +72,7 @@ const INITIAL_FORM: CreateMachineFormData = {
   name: '',
   code: '',
   model_number: '',
-  category: '',
+  category_id: '',
   manufacturer: '',
   serial_number: '',
   location: '',
@@ -87,14 +84,21 @@ const INITIAL_FORM: CreateMachineFormData = {
 export const MachinesPage: React.FC = () => {
   const { hasPermission } = useAuth();
   const canManageMachines = hasPermission('machine.manage');
+  const queryClient = useQueryClient();
+  const machineQuery = useMachines();
+  const categoriesQuery = useMachineCategories();
+  const machines = (machineQuery.data?.items ?? []) as Machine[];
+  const categories = categoriesQuery.data ?? [];
+  const loading = machineQuery.isLoading;
+  const error = machineQuery.error instanceof Error
+    ? machineQuery.error.message
+    : categoriesQuery.error instanceof Error ? categoriesQuery.error.message : null;
 
   // List states
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [categories, setCategories] = useState<MachineCategory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [showInactiveMachines, setShowInactiveMachines] = useState(false);
 
   // Create Modal states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -116,67 +120,27 @@ export const MachinesPage: React.FC = () => {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
-  // This page presents only the four requested medical machines. The complete
-  // backend catalog remains intact for historical knowledge and other modules.
-  const visibleMachines = getSupportedMachineOptions(machines)
-    .flatMap(option => option.machine ? [option.machine] : []);
-
-  // Load categories
-  const fetchCategories = () => {
-    api
-      .get<MachineCategory[]>('/machines/categories')
-      .then((data) => {
-        setCategories(Array.isArray(data) ? data : []);
-      })
-      .catch((err) => {
-        console.warn('Could not load categories:', err);
-      });
-  };
-
-  // Load machines
-  const fetchMachines = (query?: string, category?: string) => {
-    setLoading(true);
-    setError(null);
-
-    const params = new URLSearchParams();
-    if (query?.trim()) params.append('q', query.trim());
-    if (category?.trim()) params.append('category', category.trim());
-
-    const endpoint = `/machines${params.toString() ? `?${params.toString()}` : ''}`;
-
-    api
-      .get<{ items: Machine[] } | Machine[]>(endpoint)
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setMachines(data);
-        } else if (data && Array.isArray((data as any).items)) {
-          setMachines((data as any).items);
-        } else {
-          setMachines([]);
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        const msg = err instanceof ApiClientError ? err.message : 'Failed to retrieve machine catalog.';
-        setError(msg);
-        setMachines([]);
-        setLoading(false);
-      });
-  };
-
-  useEffect(() => {
-    fetchCategories();
-    fetchMachines();
-  }, []);
+  const visibleMachines = useMemo(() => {
+    const query = appliedSearch.trim().toLocaleLowerCase();
+    const category = categories.find(item => item.id === selectedCategory);
+    return machines.filter(machine => {
+      const matchesInventory = showInactiveMachines || machine.is_active !== false;
+      const matchesSearch = !query || [machine.name, machine.code, machine.model_number, machine.serial_number, machine.manufacturer]
+        .some(value => value?.toLocaleLowerCase().includes(query));
+      const matchesCategory = !selectedCategory || machine.category_id === selectedCategory
+        || machine.category === selectedCategory || machine.category === category?.name
+        || machine.category_name === category?.name;
+      return matchesInventory && matchesSearch && matchesCategory;
+    });
+  }, [machines, appliedSearch, categories, selectedCategory, showInactiveMachines]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchMachines(searchTerm, selectedCategory);
+    setAppliedSearch(searchTerm);
   };
 
-  const handleCategoryChange = (catName: string) => {
-    setSelectedCategory(catName);
-    fetchMachines(searchTerm, catName);
+  const handleCategoryChange = (categoryId: string) => {
+    setSelectedCategory(categoryId);
   };
 
   // Detail view fetch
@@ -230,7 +194,7 @@ export const MachinesPage: React.FC = () => {
         name: formData.name.trim(),
         code: formData.code.trim() || undefined,
         model_number: formData.model_number.trim() || undefined,
-        category: formData.category.trim() || undefined,
+        category_id: formData.category_id || undefined,
         manufacturer: formData.manufacturer.trim() || undefined,
         serial_number: formData.serial_number.trim() || undefined,
         location: formData.location.trim() || undefined,
@@ -240,9 +204,12 @@ export const MachinesPage: React.FC = () => {
       };
 
       const created = await api.post<Machine>('/machines', payload);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: machineKeys.all }),
+        queryClient.invalidateQueries({ queryKey: machineDiaryKeys.all }),
+      ]);
       setCreateSuccess(`Machine "${created.name}" registered successfully.`);
       setFormData(INITIAL_FORM);
-      fetchMachines(searchTerm, selectedCategory);
       setTimeout(() => {
         setIsCreateOpen(false);
         setCreateSuccess(null);
@@ -271,15 +238,21 @@ export const MachinesPage: React.FC = () => {
     setDeleteSuccess(null);
     try {
       await api.delete<void>(`/machines/${encodeURIComponent(target.id)}`);
-      setMachines((current) => current.filter((machine) => machine.id !== target.id));
-      setDeleteSuccess(`Machine “${target.name}” was deleted.`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: machineKeys.all }),
+        queryClient.invalidateQueries({ queryKey: machineDiaryKeys.all }),
+      ]);
+      setDeleteSuccess(`Machine “${target.name}” was deleted. Its knowledge is hidden from My Knowledge; content, review history, and files were retained.`);
       setDeleteTarget(null);
     } catch (cause) {
       if (cause instanceof ApiClientError) {
         setDeleteError(cause.message);
       } else {
         setDeleteError('The server response could not be confirmed. Refresh the equipment catalog before retrying.');
-        fetchMachines(searchTerm, selectedCategory);
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: machineKeys.all }),
+          queryClient.invalidateQueries({ queryKey: machineDiaryKeys.all }),
+        ]);
       }
     } finally {
       setDeleteSubmitting(false);
@@ -301,7 +274,7 @@ export const MachinesPage: React.FC = () => {
             </Badge>
           </div>
           <p className="text-xs text-[#5D7188] max-w-2xl">
-            Machine records for MRI, CT-Scan, Xray, and ECG, with their existing equipment details and tool mappings.
+            Manage the registered medical equipment catalog, with equipment details, categories, and tool mappings.
           </p>
         </div>
 
@@ -309,7 +282,7 @@ export const MachinesPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => fetchMachines(searchTerm, selectedCategory)}
+            onClick={() => { void machineQuery.refetch(); void categoriesQuery.refetch(); }}
             icon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />}
           >
             Refresh
@@ -346,6 +319,15 @@ export const MachinesPage: React.FC = () => {
         </form>
 
         <div className="flex items-center gap-2">
+          <label className="inline-flex items-center gap-2 whitespace-nowrap text-xs text-[#5D7188]">
+            <input
+              type="checkbox"
+              checked={showInactiveMachines}
+              onChange={(event) => setShowInactiveMachines(event.target.checked)}
+              aria-label="Show inactive equipment"
+            />
+            Include archived
+          </label>
           <select
             value={selectedCategory}
             aria-label="Filter equipment by category"
@@ -354,7 +336,7 @@ export const MachinesPage: React.FC = () => {
           >
             <option value="">All Categories ({categories.length})</option>
             {categories.map((c) => (
-              <option key={c.id} value={c.name}>
+              <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
@@ -366,8 +348,8 @@ export const MachinesPage: React.FC = () => {
               size="sm"
               onClick={() => {
                 setSearchTerm('');
+                setAppliedSearch('');
                 setSelectedCategory('');
-                fetchMachines('', '');
               }}
             >
               Clear
@@ -381,7 +363,7 @@ export const MachinesPage: React.FC = () => {
         <Alert variant="error" title="Failed to Load Equipment">
           {error}
           <div className="mt-2">
-            <Button size="sm" variant="secondary" onClick={() => fetchMachines(searchTerm, selectedCategory)}>
+            <Button size="sm" variant="secondary" onClick={() => { void machineQuery.refetch(); void categoriesQuery.refetch(); }}>
               Retry Request
             </Button>
           </div>
@@ -402,21 +384,21 @@ export const MachinesPage: React.FC = () => {
       ) : visibleMachines.length === 0 ? (
         <EmptyState
           icon={<Cpu className="w-6 h-6 text-[#1976D2]" />}
-          title={searchTerm || selectedCategory ? 'No Matching Equipment Found' : 'No Supported Medical Machines Found'}
+          title={appliedSearch || selectedCategory ? 'No Matching Equipment Found' : showInactiveMachines ? 'No Registered Equipment Found' : 'No Active Equipment Found'}
           description={
-            searchTerm || selectedCategory
+            appliedSearch || selectedCategory
               ? 'Try adjusting your search criteria or resetting the category filter.'
-              : 'MRI, CT-Scan, Xray, and ECG are the supported machines shown here. Other registered machines and their records remain available to other modules.'
+              : 'Register medical equipment to add it to the shared application catalog.'
           }
           action={
-            searchTerm || selectedCategory ? (
+            appliedSearch || selectedCategory ? (
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => {
                   setSearchTerm('');
+                  setAppliedSearch('');
                   setSelectedCategory('');
-                  fetchMachines('', '');
                 }}
               >
                 Reset Search Filters
@@ -433,7 +415,7 @@ export const MachinesPage: React.FC = () => {
           {visibleMachines.map((m) => (
             <Card
               key={m.id}
-              title={getSupportedMachineLabel(m) || m.name}
+              title={m.name}
               subtitle={`${m.manufacturer || 'Medical Diagnostics'} · Code ${m.code || m.model_number || 'N/A'}`}
               badge={
                 <Badge
@@ -719,7 +701,7 @@ export const MachinesPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-bold text-base text-[#17324D]">Register New Equipment</h3>
-                  <p className="text-xs text-[#5D7188]">Add an industrial laboratory machine asset to the catalog</p>
+              <p className="text-xs text-[#5D7188]">Add medical equipment to the shared catalog and its machine diary</p>
                 </div>
               </div>
               <button
@@ -777,13 +759,15 @@ export const MachinesPage: React.FC = () => {
                     Category
                   </label>
                   <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    aria-label="Equipment category"
+                    value={formData.category_id}
+                    onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                    disabled={categoriesQuery.isLoading || categoriesQuery.isError}
                     className="w-full text-xs bg-[#F3F8FE] border border-[#DCE6F0] rounded-lg px-3 py-2.5 text-[#17324D] focus:outline-none focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2]"
                   >
-                    <option value="">Select Category (or General)</option>
+                    <option value="">Other Medical Equipment</option>
                     {categories.map((c) => (
-                      <option key={c.id} value={c.name}>
+                      <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
                     ))}
@@ -861,7 +845,7 @@ export const MachinesPage: React.FC = () => {
                   variant="secondary"
                   size="sm"
                   onClick={() => setIsCreateOpen(false)}
-                  disabled={createSubmitting}
+                  disabled={createSubmitting || categoriesQuery.isLoading || categoriesQuery.isError || categories.length === 0}
                 >
                   Cancel
                 </Button>
@@ -897,7 +881,7 @@ export const MachinesPage: React.FC = () => {
             </div>
 
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 mb-5 leading-relaxed">
-              A machine can be deleted only when no knowledge, procedures, media, tools, or history still reference it. Related records and files are never deleted by this action.
+              The machine will be removed. Its knowledge entries will be hidden from My Knowledge while their content, review history, and files are retained. Procedures and other linked records remain, but lose this machine association.
             </div>
 
             {deleteError && <p role="alert" className="mb-4 text-sm text-rose-700">{deleteError}</p>}

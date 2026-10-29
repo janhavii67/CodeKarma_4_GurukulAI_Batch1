@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
-from app.models.machine import Machine
+from app.models.machine import Machine, MachineCategory
 
 
 class MachineRepository:
@@ -20,6 +20,14 @@ class MachineRepository:
         name: str,
         code: str,
         category: str,
+        category_id: Optional[str] = None,
+        model_number: Optional[str] = None,
+        serial_number: Optional[str] = None,
+        manufacturer: Optional[str] = None,
+        location: Optional[str] = None,
+        status: str = "ACTIVE",
+        is_active: bool = True,
+        specifications: Optional[str] = None,
         is_demo: bool = False,
         commit: bool = True,
     ) -> Machine:
@@ -27,6 +35,14 @@ class MachineRepository:
             name=name.strip(),
             code=code.strip(),
             category=category.strip(),
+            category_id=category_id,
+            model_number=(model_number or code).strip() or None,
+            serial_number=serial_number.strip() if serial_number else None,
+            manufacturer=manufacturer.strip() if manufacturer else None,
+            location=location.strip() if location else None,
+            status=(status or "ACTIVE").strip().upper(),
+            is_active=is_active,
+            specifications=specifications.strip() if specifications else None,
             is_demo=is_demo,
         )
         db.add(machine)
@@ -56,7 +72,15 @@ class MachineRepository:
             )
 
         if category:
-            stmt = stmt.where(Machine.category == category.strip())
+            value = category.strip()
+            stmt = stmt.outerjoin(MachineCategory, Machine.category_id == MachineCategory.id).where(
+                or_(
+                    Machine.category == value,
+                    Machine.category_id == value,
+                    MachineCategory.id == value,
+                    MachineCategory.name == value,
+                )
+            )
 
         # Total count
         count_stmt = select(func.count()).select_from(stmt.subquery())

@@ -19,9 +19,10 @@ import type { MediaAsset } from '../knowledge-capture/media/types';
 import {
   fetchMachineDiaryAssets,
   fetchMachineDiaryLibrary,
+  useMachineDiaryLibrary,
   type MachineDiaryMachine,
 } from './machineDiaryApi';
-import { getSupportedMachineLabel, getSupportedMachineOptions } from '../machines/supportedMachines';
+import { isMachineActive } from '../machines/registeredMachines';
 import './machineDiary.css';
 
 const bookPalettes = [
@@ -34,42 +35,24 @@ const displayedKnowledgeCount = (machine: MachineDiaryMachine) =>
 
 export const MachineDiaryLibraryPage: React.FC = () => {
   const navigate = useNavigate();
-  const [machines, setMachines] = useState<MachineDiaryMachine[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [sessionExpired, setSessionExpired] = useState(false);
+  const machineLibraryQuery = useMachineDiaryLibrary();
+  const machines = machineLibraryQuery.data ?? [];
+  const loading = machineLibraryQuery.isLoading;
+  const cause = machineLibraryQuery.error;
+  const error = cause instanceof Error ? cause.message : '';
+  const sessionExpired = cause instanceof ApiClientError && cause.status === 401;
   const [search, setSearch] = useState('');
   const [machineFilter, setMachineFilter] = useState('');
 
-  const loadMachines = () => {
-    setLoading(true);
-    setError('');
-    setSessionExpired(false);
-    fetchMachineDiaryLibrary()
-      .then(setMachines)
-      .catch((cause: unknown) => {
-        const expired = cause instanceof ApiClientError && cause.status === 401;
-        setSessionExpired(expired);
-        setError(expired
-          ? 'Your sign-in session has expired. Sign in again to view machine knowledge.'
-          : cause instanceof Error ? cause.message : 'Could not load the machine library.');
-      })
-      .finally(() => setLoading(false));
-  };
+  const loadMachines = () => { void machineLibraryQuery.refetch(); };
 
-  useEffect(() => { loadMachines(); }, []);
-
-  const machineOptions = useMemo(() => getSupportedMachineOptions(machines), [machines]);
-  const diaryMachines = useMemo(
-    () => machineOptions.flatMap(option => option.machine ? [option.machine] : []),
-    [machineOptions],
-  );
+  const diaryMachines = machines;
 
   const visibleMachines = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return diaryMachines.filter(machine => {
       const machineCategory = machine.category_name || machine.category || '';
-      const searchFields = [getSupportedMachineLabel(machine), machine.name, machine.id, machine.code, machine.model_number,
+      const searchFields = [machine.name, machine.id, machine.code, machine.model_number,
         machine.serial_number, machine.manufacturer, machineCategory, machine.location];
       return (!query || searchFields.some(value => value?.toLocaleLowerCase().includes(query)))
         && (!machineFilter || machine.id === machineFilter);
@@ -100,9 +83,8 @@ export const MachineDiaryLibraryPage: React.FC = () => {
           <label className="sr-only" htmlFor="diary-machine-filter">Filter by machine</label>
           <select id="diary-machine-filter" className="diary-control px-3.5 text-sm" aria-label="Filter by machine" value={machineFilter} onChange={event => setMachineFilter(event.target.value)}>
             <option value="">Choose a machine…</option>
-            {machineOptions.map(({ label, machine }) => <option key={label} value={machine?.id || ''} disabled={!machine}>{label}</option>)}
+            {machines.map(machine => <option key={machine.id} value={machine.id}>{machine.name}</option>)}
           </select>
-          {machineOptions.some(option => !option.machine) && <p className="sm:col-span-2 px-1 text-xs text-amber-700">Some supported machines are not registered yet and cannot be opened until a machine manager adds them.</p>}
         </section>
 
         {loading && <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="status" aria-busy="true" aria-label="Loading machine diaries">
@@ -110,8 +92,8 @@ export const MachineDiaryLibraryPage: React.FC = () => {
           {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-[19rem] animate-pulse rounded-2xl border border-[#E2E8F0] bg-white" />)}
         </div>}
 
-        {error && <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-800" role="alert">
-          <p className="font-semibold">The machine library could not be loaded.</p><p className="mt-1 text-sm text-rose-700">{error}</p>
+        {machineLibraryQuery.isError && <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-800" role="alert">
+          <p className="font-semibold">The machine library could not be loaded.</p><p className="mt-1 text-sm text-rose-700">{sessionExpired ? 'Your sign-in session has expired. Sign in again to view machine knowledge.' : error || 'Could not load the machine library.'}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {sessionExpired && <Link to="/login" className="inline-flex items-center rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium hover:bg-rose-100">Sign in</Link>}
             <button type="button" onClick={loadMachines} className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"><RefreshCw size={15} /> Try again</button>
@@ -132,7 +114,7 @@ export const MachineDiaryLibraryPage: React.FC = () => {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {visibleMachines.map((machine, index) => {
               const [accent, mid, dark] = bookPalettes[index % 2];
-              const machineLabel = getSupportedMachineLabel(machine) || machine.name;
+              const machineLabel = machine.name;
               return <button key={machine.id} type="button" className="diary-book-button group" onClick={() => navigate(`/app/knowledge/machine/${encodeURIComponent(machine.id)}`)} aria-label={`Open knowledge diary for ${machineLabel}`}>
                 <div className="diary-book" style={{ '--book-a': accent, '--book-b': mid, '--book-c': dark } as React.CSSProperties}>
                   <span className="diary-book-spine" aria-hidden="true" /><span className="diary-book-pages" aria-hidden="true" />
@@ -241,7 +223,7 @@ export const MachineDiaryPage: React.FC = () => {
   return <main className="diary-page diary-opening" aria-labelledby="machine-diary-title">
     <div className="diary-page-inner">
       <nav aria-label="Breadcrumb" className="mb-7 flex items-center gap-2 text-xs text-[#536779]">
-        <Link to="/app/knowledge" className="rounded px-1 py-1 hover:text-[#1976C9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1976C9]">Knowledge Library</Link><span aria-hidden="true">/</span><span className="truncate text-[#173B5E]">{machine ? getSupportedMachineLabel(machine) || machine.name : 'Machine diary'}</span>
+        <Link to="/app/knowledge" className="rounded px-1 py-1 hover:text-[#1976C9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1976C9]">Knowledge Library</Link><span aria-hidden="true">/</span><span className="truncate text-[#173B5E]">{machine ? machine.name : 'Machine diary'}</span>
       </nav>
 
       {loading && <div role="status" aria-live="polite" className="space-y-5"><div className="h-8 w-64 animate-pulse rounded bg-[#E2E8F0]" /><div className="h-5 w-96 max-w-full animate-pulse rounded bg-[#E2E8F0]" /><div className="h-72 animate-pulse rounded-2xl border border-[#E2E8F0] bg-white" /><span className="text-sm text-[#536779]">Loading this machine diary…</span></div>}
@@ -250,7 +232,7 @@ export const MachineDiaryPage: React.FC = () => {
 
       {!loading && !error && machine && <>
         <header className="flex flex-col gap-5 border-b border-[#E2E8F0] pb-7 lg:flex-row lg:items-end lg:justify-between">
-          <div><div className="diary-eyebrow flex items-center gap-2"><BookOpen size={15} /> Machine field diary</div><h1 id="machine-diary-title" className="diary-heading mt-3">{getSupportedMachineLabel(machine) || machine.name}</h1>
+          <div><div className="diary-eyebrow flex items-center gap-2"><BookOpen size={15} /> Machine field diary</div><h1 id="machine-diary-title" className="diary-heading mt-3">{machine.name}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#536779]">
               <span className="font-mono text-[#173B5E]">{machine.code || machine.model_number || machine.id}</span>
               {(machine.category_name || machine.category) && <span>{machine.category_name || machine.category}</span>}
@@ -258,7 +240,7 @@ export const MachineDiaryPage: React.FC = () => {
               {machine.location && <span className="inline-flex items-center gap-1"><MapPin size={14} />{machine.location}</span>}
             </div>
           </div>
-          <Link to={captureHref} className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-xl border border-[#1976C9] bg-[#1976C9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#125EA3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976C9] lg:self-auto"><ClipboardList size={16} /> Add to this diary</Link>
+          {isMachineActive(machine) ? <Link to={captureHref} className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-xl border border-[#1976C9] bg-[#1976C9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#125EA3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976C9] lg:self-auto"><ClipboardList size={16} /> Add to this diary</Link> : <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">This machine is inactive. Existing records remain available; new capture is disabled.</p>}
         </header>
 
         <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Knowledge counts">
@@ -277,7 +259,7 @@ export const MachineDiaryPage: React.FC = () => {
         {visibleEntries.length === 0 ? <div className="mt-7 rounded-2xl border border-[#E2E8F0] bg-white px-6 py-14 text-center">
           <BookOpen className="mx-auto text-[#1976C9]" size={31} /><h2 className="mt-4 text-lg font-semibold text-[#173B5E]">{allEntries.length === 0 ? 'This diary is ready for its first entry' : search.trim() ? 'No entries match your search' : `No ${diaryTabs.find(tab => tab.id === filter)?.label.toLowerCase() || 'entries'} in this diary yet`}</h2>
           <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#536779]">{allEntries.length === 0 ? 'Capture a video, photo, document, or field note and it will be stored with this machine.' : search.trim() ? 'Try another search or choose a different section.' : 'Capture a new entry and it will be stored with this machine.'}</p>
-          {allEntries.length === 0 && <Link to={captureHref} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125EA3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976C9]"><ClipboardList size={16} /> Capture the first entry</Link>}
+          {allEntries.length === 0 && isMachineActive(machine) && <Link to={captureHref} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125EA3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976C9]"><ClipboardList size={16} /> Capture the first entry</Link>}
         </div> : <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Machine knowledge entries">
           {visibleEntries.map(asset => <article key={`${asset.kind}-${asset.id}`} className="diary-asset">
             <button type="button" className="diary-asset-preview w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-blue-200" onClick={() => setSelected(asset)} aria-label={`Preview ${asset.title || asset.original_name}`}>

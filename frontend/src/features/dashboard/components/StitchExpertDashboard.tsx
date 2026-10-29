@@ -1,19 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { User } from '../../../types/auth';
-import { DashboardStats } from '../../../types/dashboard';
 
 interface StitchExpertDashboardProps {
-  user: User | null;
-  stats: DashboardStats | null;
-  loading: boolean;
   hasPermission: (perm: string) => boolean;
-  hasRole: (role: any) => boolean;
 }
 
 export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
-  stats,
-  loading,
   hasPermission,
 }) => {
   const canCreate = hasPermission('knowledge.create');
@@ -192,73 +184,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
         </div>
       </section>
 
-      {/* ─── 3. MY KNOWLEDGE OVERVIEW ─── */}
-      <section className="w-full">
-        <div className="bg-white rounded-2xl p-6 lg:p-7 border border-[#E2E8F0] shadow-xs space-y-4">
-          <div className="flex flex-col gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-[#EFF4FF] text-[#1976C9] flex items-center justify-center">
-                <span className="material-symbols-outlined text-[20px]">inventory_2</span>
-              </div>
-              <h3 className="text-base font-bold text-[#173B5E]">My Knowledge Overview</h3>
-            </div>
-            <Link
-              to="/app/knowledge"
-              className="self-start text-xs font-bold text-[#1976C9] hover:underline flex items-center gap-1 sm:self-auto"
-            >
-              <span>View My Knowledge ({stats?.user_sops_created ?? '—'}) →</span>
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="min-w-0 p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
-                <span className="text-xs font-bold text-[#173B5E]">Verified</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-extrabold text-[#173B5E] font-mono">
-                  {loading ? '--' : stats?.user_sops_approved ?? '—'}
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#10B981] bg-[#ECFDF5] px-2 py-0.5 rounded-md border border-[#10B981]/20">
-                  Audited
-                </span>
-              </div>
-            </div>
-
-            <div className="min-w-0 p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]" />
-                <span className="text-xs font-bold text-[#173B5E]">Pending Review</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-extrabold text-[#173B5E] font-mono">
-                  {loading ? '--' : stats?.user_sops_pending ?? '—'}
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#B45309] bg-[#FEF3C7] px-2 py-0.5 rounded-md border border-[#F59E0B]/20">
-                  In Review
-                </span>
-              </div>
-            </div>
-
-            <div className="min-w-0 p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#1976C9]" />
-                <span className="text-xs font-bold text-[#173B5E]">To Capture</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-extrabold text-[#173B5E] font-mono">
-                  {loading ? '--' : stats?.user_sops_draft ?? '—'}
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#1976C9] bg-[#EFF4FF] px-2 py-0.5 rounded-md border border-[#1976C9]/20">
-                  Scheduled
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-      {/* ─── 4. STANDARDIZED INDUSTRIAL COMPLIANCE FOOTER (AS9100 / ISO 9001 / OSHA) ─── */}
+      {/* ─── 3. STANDARDIZED INDUSTRIAL COMPLIANCE FOOTER (AS9100 / ISO 9001 / OSHA) ─── */}
       <footer className="bg-white rounded-2xl border border-[#E2E8F0] p-6 lg:p-8 shadow-xs space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Column 1: Brand & Certification */}

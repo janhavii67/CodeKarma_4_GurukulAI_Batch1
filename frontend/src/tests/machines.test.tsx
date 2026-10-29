@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MachinesPage } from '../features/machines/MachinesPage';
 import { ApiClientError } from '../lib/api/client';
@@ -43,22 +44,35 @@ const otherMachines = ['Demo Machine A (Lathe)', 'HAAS VF-2 Vertical Machining C
   name,
   code: `HIDDEN-${index}`,
 }));
+let catalog: typeof machine[];
+const categories = [
+  { id: 'mri-systems', name: 'MRI Systems', is_active: true },
+  { id: 'ultrasound-systems', name: 'Ultrasound Systems', is_active: true },
+  { id: 'other-medical-equipment', name: 'Other Medical Equipment', is_active: true },
+];
 
 function renderMachinesPage() {
-  return render(<MemoryRouter><MachinesPage /></MemoryRouter>);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={queryClient}><MemoryRouter><MachinesPage /></MemoryRouter></QueryClientProvider>);
 }
 
 describe('Machine deletion flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    apiMock.get.mockImplementation((path: string) => path === '/machines/categories'
-      ? Promise.resolve([])
-      : Promise.resolve({ items: [machine], total: 1, page: 1, page_size: 20 }));
+    catalog = [machine];
+    apiMock.get.mockImplementation((path: string) => {
+      if (path === '/machines/categories') return Promise.resolve(categories);
+      if (path.startsWith('/machines')) return Promise.resolve({ items: catalog, total: catalog.length, page: 1, page_size: 100 });
+      return Promise.resolve(catalog.find(item => path === `/machines/${item.id}`));
+    });
+    apiMock.delete.mockImplementation(async (path: string) => {
+      const id = path.split('/').pop();
+      catalog = catalog.filter(item => item.id !== id);
+    });
   });
 
   it('sends the machine database ID and removes it from the list only after success', async () => {
     const user = userEvent.setup();
-    apiMock.delete.mockResolvedValue(undefined);
     renderMachinesPage();
 
     expect(await screen.findByRole('heading', { name: 'MRI' })).toBeInTheDocument();
@@ -67,34 +81,51 @@ describe('Machine deletion flow', () => {
     await user.click(screen.getByRole('button', { name: 'Delete machine' }));
 
     await waitFor(() => expect(apiMock.delete).toHaveBeenCalledWith('/machines/machine-mri-uuid'));
-    expect(await screen.findByRole('status')).toHaveTextContent('Machine “MRI” was deleted.');
+    expect(await screen.findByRole('status')).toHaveTextContent('Machine “MRI” was deleted. Its knowledge is hidden from My Knowledge; content, review history, and files were retained.');
     expect(screen.queryByRole('heading', { name: 'MRI' })).not.toBeInTheDocument();
   });
 
-  it('shows only MRI, CT-Scan, Xray, and ECG while retaining other catalog records in the API response', async () => {
-    const supported = [
-      { name: 'MRI', code: 'MRI-001' },
-      { name: 'CT-Scan', code: 'CITYSCAN-001' },
-      { name: 'Xray', code: 'XRAY-001' },
-      { name: 'ECG', code: 'ECG-001' },
-    ].map(({ name, code }) => ({
-      ...machine,
-      id: `supported-${name}`,
-      name,
-      code,
-    }));
+  it('shows active equipment by default and keeps archived records available on demand', async () => {
+    catalog = [machine, ...otherMachines.map(item => ({ ...item, is_active: false }))];
     apiMock.get.mockImplementation((path: string) => path === '/machines/categories'
-      ? Promise.resolve([])
-      : Promise.resolve({ items: [...supported, ...otherMachines], total: 6, page: 1, page_size: 20 }));
+      ? Promise.resolve(categories)
+      : Promise.resolve({ items: catalog, total: catalog.length, page: 1, page_size: 100 }));
 
     renderMachinesPage();
 
-    for (const name of ['MRI', 'CT-Scan', 'Xray', 'ECG']) {
-      expect(await screen.findByRole('heading', { name })).toBeInTheDocument();
-    }
-    expect(screen.queryByRole('heading', { name: 'Demo Machine A (Lathe)' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'HAAS VF-2 Vertical Machining Center' })).not.toBeInTheDocument();
-    expect(apiMock.get).toHaveBeenCalledWith('/machines');
+    expect(await screen.findByRole('heading', { name: machine.name })).toBeInTheDocument();
+    for (const item of otherMachines) expect(screen.queryByRole('heading', { name: item.name })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Show inactive equipment' }));
+    for (const item of otherMachines) expect(await screen.findByRole('heading', { name: item.name })).toBeInTheDocument();
+    expect(apiMock.get).toHaveBeenCalledWith('/machines?page=1&page_size=100');
+  });
+
+  it('persists category and equipment metadata, then refreshes the shared catalog after registration', async () => {
+    const user = userEvent.setup();
+    const created = {
+      ...machine, id: 'ultrasound-id', name: 'Ultrasound', code: 'US-001', model_number: 'US-9000',
+      category_id: 'ultrasound-systems', category_name: 'Ultrasound Systems', manufacturer: 'Medical Systems Ltd',
+    };
+    apiMock.post.mockImplementation(async (path: string, payload: Record<string, unknown>) => {
+      expect(path).toBe('/machines');
+      expect(payload.category_id).toBe('ultrasound-systems');
+      expect(payload.manufacturer).toBe('Medical Systems Ltd');
+      catalog = [...catalog, created];
+      return created;
+    });
+    renderMachinesPage();
+    await user.click(await screen.findByRole('button', { name: 'Register Equipment' }));
+    await screen.findByText('Register New Equipment');
+    await user.type(screen.getByLabelText(/Equipment Name/), 'Ultrasound');
+    await user.type(screen.getByLabelText(/Asset Code/), 'US-001');
+    await user.type(screen.getByLabelText(/Model Number/), 'US-9000');
+    await user.selectOptions(screen.getByLabelText('Equipment category'), 'ultrasound-systems');
+    await user.type(screen.getByLabelText(/Manufacturer/), 'Medical Systems Ltd');
+    await user.click(screen.getByRole('button', { name: 'Register Asset' }));
+
+    expect(await screen.findByText('Machine "Ultrasound" registered successfully.')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Ultrasound' })).toBeInTheDocument();
+    expect(apiMock.post).toHaveBeenCalledTimes(1);
   });
 
   it('shows a backend dependency error and keeps the machine visible', async () => {
@@ -108,7 +139,7 @@ describe('Machine deletion flow', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Machine is referenced by knowledge records.');
     expect(screen.getByRole('heading', { name: 'MRI' })).toBeInTheDocument();
-    expect(screen.queryByText('Machine “MRI” was deleted.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Machine “MRI” was deleted. Its knowledge is hidden from My Knowledge; content, review history, and files were retained.')).not.toBeInTheDocument();
   });
 
   it('keeps confirmation actions disabled during a pending delete request', async () => {

@@ -154,22 +154,23 @@ describe('Redesigned Operational Dashboard Tests', () => {
       '/app/knowledge-assets?kind=image'
     );
 
-    // The expert Home keeps its capture, overview, and hero sections only.
+    // The expert Home keeps its capture and hero sections only.
     expect(screen.queryByText(/Review & Verify Knowledge/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Knowledge Assistant/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/My Knowledge Overview/i)).toBeInTheDocument();
+    expect(screen.queryByText(/My Knowledge Overview/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/View My Knowledge \(/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Verified')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pending Review')).not.toBeInTheDocument();
+    expect(screen.queryByText('To Capture')).not.toBeInTheDocument();
     expect(screen.queryByText(/Continue a Draft/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Recently Shared/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Resume Draft/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Pending peer evaluations/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/View History/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No Knowledge Entries Recorded/i)).not.toBeInTheDocument();
-    expect(container.querySelectorAll('section')).toHaveLength(3);
+    expect(container.querySelectorAll('section')).toHaveLength(2);
     expect(Array.from(container.querySelectorAll('div')).some((element) =>
       element.className.includes('max-w-6xl'),
-    )).toBe(true);
-    expect(Array.from(container.querySelectorAll('div')).some((element) =>
-      element.className.includes('sm:grid-cols-2') && element.className.includes('lg:grid-cols-3'),
     )).toBe(true);
     expect(screen.getByText(/Start Capturing →/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Start Capturing/i })).toHaveAttribute(
@@ -322,8 +323,9 @@ describe('Redesigned Operational Dashboard Tests', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('My Knowledge Overview')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Start Capturing/i })).toBeInTheDocument();
     });
+    expect(screen.queryByText('My Knowledge Overview')).not.toBeInTheDocument();
     expect(screen.queryByText(/Review & Verify Knowledge/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Continue a Draft/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Recently Shared/i)).not.toBeInTheDocument();

@@ -5,12 +5,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { GuidedWorkflowsPage } from '../features/workflows/GuidedWorkflowsPage';
 
 const apiMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
-const machineApiMock = vi.hoisted(() => ({ fetchMachines: vi.fn() }));
+const machineQueryMock = vi.hoisted(() => ({ useMachines: vi.fn() }));
 vi.mock('../lib/api/client', () => ({
   api: apiMock,
   getApiUrl: (path: string) => `http://api.test/api/v1${path}`,
 }));
-vi.mock('../features/knowledge-capture/knowledgeApi', () => machineApiMock);
+vi.mock('../features/knowledge-capture/hooks', () => ({ useMachines: machineQueryMock.useMachines }));
 
 const machines = [
   { id: 'mri', name: 'MRI', code: 'MRI-001', category: 'medical', is_demo: false, created_at: '', updated_at: '' },
@@ -18,6 +18,8 @@ const machines = [
   { id: 'xray', name: 'Xray', code: 'XRAY-001', category: 'medical', is_demo: false, created_at: '', updated_at: '' },
   { id: 'ecg', name: 'ECG', code: 'ECG-001', category: 'medical', is_demo: false, created_at: '', updated_at: '' },
   { id: 'cnc', name: 'CNC Machine', code: 'CNC-001', category: 'industrial', is_demo: false, created_at: '', updated_at: '' },
+  { id: 'ultrasound', name: 'Ultrasound', code: 'US-001', category: 'medical', is_demo: false, created_at: '', updated_at: '' },
+  { id: 'inactive', name: 'Inactive unit', code: 'OFF-001', status: 'MAINTENANCE', category: 'medical', is_demo: false, created_at: '', updated_at: '' },
 ];
 
 const procedure = {
@@ -64,17 +66,17 @@ describe('Guided Workflow', () => {
   beforeEach(() => {
     apiMock.get.mockReset();
     apiMock.post.mockReset();
-    machineApiMock.fetchMachines.mockReset().mockResolvedValue({ items: machines, total: machines.length, page: 1, page_size: 100 });
+    machineQueryMock.useMachines.mockReset().mockReturnValue({ data: { items: machines }, isLoading: false, isError: false });
   });
 
-  it('offers only the four supported machine choices and links to procedure creation when none are approved', async () => {
+  it('offers all active registered machines and links to procedure creation when none are approved', async () => {
     apiMock.get.mockResolvedValue([]);
     render(<MemoryRouter><GuidedWorkflowsPage /></MemoryRouter>);
-    for (const label of ['MRI', 'CT-Scan', 'Xray', 'ECG']) {
+    for (const label of ['MRI', 'CT-Scan', 'Xray', 'ECG', 'CNC Machine', 'Ultrasound']) {
       expect(await screen.findByRole('button', { name: new RegExp(label) })).toBeInTheDocument();
     }
-    expect(screen.getAllByRole('button', { name: /Open workflow/ })).toHaveLength(4);
-    expect(screen.queryByRole('button', { name: /CNC Machine/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Open workflow/ })).toHaveLength(6);
+    expect(screen.queryByRole('button', { name: /Inactive unit/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /MRI MRI-001/ }));
     expect(await screen.findByText('No approved procedure is available for MRI')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Go to Create Procedure/ })).toHaveAttribute('href', '/app/procedures/new');

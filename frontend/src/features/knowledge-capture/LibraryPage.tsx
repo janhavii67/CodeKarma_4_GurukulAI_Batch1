@@ -17,7 +17,7 @@ import { useKnowledgeList, useMachines, useCreateKnowledge } from './hooks';
 import { StatusBadge } from './StatusBadge';
 import { Button } from '../../components/ui/Button';
 import { ApiClientError } from '../../lib/api/client';
-import { getSupportedMachineOptions } from '../machines/supportedMachines';
+import { machineOptionLabel, selectableMachines } from '../machines/registeredMachines';
 
 const PAGE_SIZE = 15;
 
@@ -40,7 +40,7 @@ export const LibraryPage: React.FC = () => {
 
   const { data: machinesData } = useMachines();
   const machines = machinesData?.items ?? [];
-  const procedureMachineOptions = getSupportedMachineOptions(machines);
+  const procedureMachineOptions = selectableMachines(machines);
 
   const params = {
     page,
@@ -558,9 +558,9 @@ export const LibraryPage: React.FC = () => {
                     className="w-full px-3 py-2 bg-white border border-[#DCE8F5] rounded-lg text-sm text-[#12345A] focus:outline-none focus:ring-2 focus:ring-[#1473E6]/20 focus:border-[#1473E6]"
                   >
                     <option value="">No machine (General procedure)</option>
-                    {procedureMachineOptions.map(({ label, machine }) => (
-                      <option key={label} value={machine?.id || ''} disabled={!machine}>
-                        {label}
+                    {procedureMachineOptions.map((machine) => (
+                      <option key={machine.id} value={machine.id}>
+                        {machineOptionLabel(machine)}
                       </option>
                     ))}
                   </select>

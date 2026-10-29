@@ -1,25 +1,20 @@
 import pytest
-from fastapi.testclient import TestClient
-from app.main import app
 from app.core.config import settings
 
-client = TestClient(app)
-
-
-def login(email: str, password: str):
+def login(client, email: str, password: str):
     return client.post("/api/v1/auth/login", json={"email": email, "password": password})
 
 
-def get_csrf_headers():
+def get_csrf_headers(client):
     res = client.get("/api/v1/auth/csrf")
     token = res.json()["csrf_token"]
     return {"X-CSRF-Token": token}
 
 
-def test_item_creation_sets_mirror_and_v1():
+def test_item_creation_sets_mirror_and_v1(client):
     """Verify creating a knowledge article sets both the item mirror and v1 version snapshots."""
-    login(settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
-    headers = get_csrf_headers()
+    login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    headers = get_csrf_headers(client)
 
     payload = {
         "title": "CNC Coolant Refractometer Calibration",
@@ -41,15 +36,15 @@ def test_item_creation_sets_mirror_and_v1():
     assert data["current_revision"]["title"] == "CNC Coolant Refractometer Calibration"
 
 
-def test_patch_title_leaves_trainee_view_unchanged():
+def test_patch_title_leaves_trainee_view_unchanged(client):
     """
     Critical Snapshot Isolation Test:
     PATCHing a title on an article with a published version modifies the editable version snapshot,
     leaving the published version snapshot (and therefore the Trainee's view) completely unchanged until published.
     """
     # 1. Expert A creates an article
-    login(settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
-    headers_a = get_csrf_headers()
+    login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    headers_a = get_csrf_headers(client)
 
     create_res = client.post(
         "/api/v1/knowledge",
@@ -69,8 +64,8 @@ def test_patch_title_leaves_trainee_view_unchanged():
     assert sub_res.status_code == 200
 
     # 3. Peer Expert B approves to publish v1
-    login(settings.EXPERT_B_EMAIL, settings.EXPERT_B_PASSWORD)
-    headers_b = get_csrf_headers()
+    login(client, settings.EXPERT_B_EMAIL, settings.EXPERT_B_PASSWORD)
+    headers_b = get_csrf_headers(client)
     appr_res = client.post(
         f"/api/v1/reviews/{art_id}/decision",
         json={"decision": "APPROVED", "comments": "Peer approved baseline v1."},
@@ -79,14 +74,14 @@ def test_patch_title_leaves_trainee_view_unchanged():
     assert appr_res.status_code == 200
 
     # 4. Trainee views the published article
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     trainee_view_1 = client.get(f"/api/v1/knowledge/{art_id}")
     assert trainee_view_1.status_code == 200
     assert trainee_view_1.json()["title"] == "Published Baseline Title"
 
     # 5. Expert A edits draft revision with a new title via PATCH
-    login(settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
-    headers_a = get_csrf_headers()
+    login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    headers_a = get_csrf_headers(client)
 
     # Note: Article status is APPROVED in Module 01 lifecycle until new revision or edit
     # If editing existing draft:
@@ -101,17 +96,17 @@ def test_patch_title_leaves_trainee_view_unchanged():
         assert patch_res.json()["error"]["code"] == "cannot_edit_approved"
 
     # 6. Verify Trainee STILL sees original published title
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     trainee_view_2 = client.get(f"/api/v1/knowledge/{art_id}")
     assert trainee_view_2.status_code == 200
     assert trainee_view_2.json()["title"] == "Published Baseline Title"
 
 
-def test_persona_visibility_conformance():
+def test_persona_visibility_conformance(client):
     """Verify Trainee cannot view unapproved drafts, while Author and Reviewer can."""
     # 1. Author creates draft
-    login(settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
-    headers_a = get_csrf_headers()
+    login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    headers_a = get_csrf_headers(client)
 
     draft_res = client.post(
         "/api/v1/knowledge",
@@ -131,7 +126,7 @@ def test_persona_visibility_conformance():
     assert author_view.json()["title"] == "Secret Draft Under Construction"
 
     # 3. Trainee CANNOT view draft -> 403 Forbidden
-    login(settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
+    login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     trainee_view = client.get(f"/api/v1/knowledge/{draft_id}")
     assert trainee_view.status_code == 403
     assert trainee_view.json()["error"]["code"] == "unauthorized_draft_access"

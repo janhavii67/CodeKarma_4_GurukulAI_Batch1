@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { uploadVoiceNarration, VoiceUploadResponse } from './voiceApi';
-import { api } from '../../lib/api/client';
 import { createKnowledge } from '../knowledge-capture/knowledgeApi';
+import { useMachines } from '../knowledge-capture/hooks';
+import { selectableMachines } from '../machines/registeredMachines';
 import { Mic, Square, Upload, Radio, Play, Pause, RotateCcw, Cpu } from 'lucide-react';
 
 interface VoiceRecorderProps {
@@ -11,17 +12,12 @@ interface VoiceRecorderProps {
   onUploaded: (res: VoiceUploadResponse) => void;
 }
 
-interface MachineOption {
-  id: string;
-  name: string;
-  model_number: string;
-}
-
 export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploaded }) => {
   const [mode, setMode] = useState<'record' | 'upload'>('record');
   const [title, setTitle] = useState('');
   const [machineId, setMachineId] = useState('');
-  const [machines, setMachines] = useState<MachineOption[]>([]);
+  const machineQuery = useMachines();
+  const machines = selectableMachines(machineQuery.data?.items ?? []);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -36,24 +32,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    // Load machines list
-    api.get<any>('/machines')
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setMachines(data);
-        } else if (data && Array.isArray(data.items)) {
-          setMachines(data.items);
-        } else {
-          setMachines([]);
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to load machines:', err);
-        setMachines([]);
-      });
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -267,12 +245,15 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
           </label>
           <div className="relative">
             <select
+              aria-label="Associated equipment asset"
               value={machineId}
               onChange={(e) => setMachineId(e.target.value)}
-              disabled={isRecording || isUploading}
+              disabled={isRecording || isUploading || machineQuery.isLoading || machineQuery.isError}
               className="w-full bg-[#F3F8FE] border border-[#DCE6F0] rounded-xl px-3 py-2.5 text-xs text-[#17324D] focus:bg-white focus:outline-none focus:border-[#1976D2]"
             >
               <option value="">Select Equipment (Optional)...</option>
+              {machineQuery.isLoading && <option value="__loading" disabled>Loading registered equipment…</option>}
+              {!machineQuery.isLoading && !machineQuery.isError && machines.length === 0 && <option value="__empty" disabled>No active equipment registered</option>}
               {(Array.isArray(machines) ? machines : []).map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name} ({m.model_number})
@@ -280,6 +261,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ versionId, onUploa
               ))}
             </select>
           </div>
+          {machineQuery.isError && <p role="alert" className="mt-1 text-xs text-rose-700">Registered equipment could not be loaded. Retry the page or continue without a machine association.</p>}
         </div>
       </div>
 

@@ -9,14 +9,16 @@ import type {
 import {
   createKnowledge,
   createRevision,
+  fetchAllMachines,
   fetchKnowledgeDetail,
   fetchKnowledgeList,
-  fetchMachines,
+  fetchMachineCategories,
   fetchVersionList,
   updateKnowledge,
   submitKnowledge,
   submitKnowledgeForReview,
 } from './knowledgeApi';
+import type { MachineCategory } from './types';
 
 // ─── Query Keys ───────────────────────────────────────────────────────────────
 
@@ -34,6 +36,7 @@ export const machineKeys = {
   all: ['machines'] as const,
   lists: () => [...machineKeys.all, 'list'] as const,
   list: (q?: string) => [...machineKeys.lists(), q ?? ''] as const,
+  categories: () => [...machineKeys.all, 'categories'] as const,
 };
 
 // ─── Machine Hooks ────────────────────────────────────────────────────────────
@@ -41,8 +44,16 @@ export const machineKeys = {
 export function useMachines(q?: string) {
   return useQuery({
     queryKey: machineKeys.list(q),
-    queryFn: () => fetchMachines({ q, page_size: 100 }),
-    staleTime: 60_000 * 5, // 5 min — machines change rarely
+    queryFn: () => fetchAllMachines(q),
+    staleTime: 60_000,
+  });
+}
+
+export function useMachineCategories() {
+  return useQuery<MachineCategory[]>({
+    queryKey: machineKeys.categories(),
+    queryFn: fetchMachineCategories,
+    staleTime: 60_000 * 10,
   });
 }
 

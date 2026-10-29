@@ -2,10 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api/client';
 import { Button } from '../../components/ui/Button';
-import { fetchMachines } from '../knowledge-capture/knowledgeApi';
-import { MachineListResponse } from '../knowledge-capture/types';
+import { useMachines } from '../knowledge-capture/hooks';
+import { Machine } from '../knowledge-capture/types';
 import { MediaAsset } from '../knowledge-capture/media/types';
-import { getSupportedMachineOptions, getUnavailableSupportedMachineLabels } from '../machines/supportedMachines';
+import { machineOptionLabel, selectableMachines } from '../machines/registeredMachines';
 
 interface ProcedureDraft {
   id: string;
@@ -18,7 +18,8 @@ interface ProcedureDraft {
 }
 
 export const ProcedureCreatePage: React.FC = () => {
-  const [machines, setMachines] = useState<MachineListResponse['items']>([]);
+  const machineQuery = useMachines();
+  const machines = selectableMachines(machineQuery.data?.items ?? []) as Machine[];
   const [machineId, setMachineId] = useState('');
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [assetIds, setAssetIds] = useState<string[]>([]);
@@ -35,8 +36,6 @@ export const ProcedureCreatePage: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<ProcedureDraft | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
-  const machineOptions = getSupportedMachineOptions(machines);
-  const unavailableMachines = getUnavailableSupportedMachineLabels(machines);
 
   const loadDrafts = useCallback(async () => {
     setDraftsLoading(true);
@@ -46,7 +45,6 @@ export const ProcedureCreatePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchMachines({ page_size: 100 }).then(result => setMachines(result.items)).catch(() => setError('Could not load registered machines.'));
     void loadDrafts();
   }, [loadDrafts]);
 
@@ -60,7 +58,7 @@ export const ProcedureCreatePage: React.FC = () => {
     if (busy) return;
     setError(''); setStatus('');
     const stepList = steps.split('\n').map(step => step.trim()).filter(Boolean).map((instruction, index) => ({ title: `Step ${index + 1}`, instruction }));
-    if (!machineOptions.some(option => option.machine?.id === machineId) || !title.trim() || !description.trim() || !stepList.length) {
+    if (!machines.some(machine => machine.id === machineId) || !title.trim() || !description.trim() || !stepList.length) {
       setError('Choose a machine and provide a title, summary, and at least one procedure step.');
       return;
     }
@@ -78,7 +76,7 @@ export const ProcedureCreatePage: React.FC = () => {
     if (!deleteTarget || deleting) return;
     setDeleting(true); setDeleteError('');
     try {
-      await api.delete(deleteTarget.id);
+      await api.delete(`/procedures/${encodeURIComponent(deleteTarget.id)}`);
       setDrafts(current => current.filter(draft => draft.id !== deleteTarget.id));
       setStatus(`Draft “${deleteTarget.title}” deleted. Its linked knowledge assets remain in the machine library.`);
       setDeleteTarget(null);
@@ -97,10 +95,12 @@ export const ProcedureCreatePage: React.FC = () => {
     <section className="bg-white border rounded-2xl p-5 space-y-4" aria-label="Create procedure">
       <label className="block text-sm font-semibold">Machine
         <select className="mt-2 block w-full border rounded-lg p-3 bg-white" value={machineId} onChange={event => setMachineId(event.target.value)}>
-          <option value="">Select a registered machine…</option>{machineOptions.map(({ label, machine }) => <option key={label} value={machine?.id || ''} disabled={!machine}>{label}</option>)}
+          <option value="">Select a registered machine…</option>{machines.map(machine => <option key={machine.id} value={machine.id}>{machineOptionLabel(machine)}</option>)}
         </select>
       </label>
-      {unavailableMachines.length > 0 && <p className="text-xs text-amber-700">{unavailableMachines.join(', ')} {unavailableMachines.length === 1 ? 'is' : 'are'} not registered yet and cannot be selected. Existing machine records and procedures are unchanged.</p>}
+      {machineQuery.isLoading && <p role="status" className="text-xs text-slate-500">Loading registered equipment…</p>}
+      {machineQuery.isError && <p role="alert" className="text-xs text-red-700">Could not load registered machines. Retry the page before creating a procedure.</p>}
+      {!machineQuery.isLoading && !machineQuery.isError && machines.length === 0 && <p role="status" className="text-xs text-slate-600">No active equipment is registered. <Link className="font-semibold text-blue-700 underline" to="/app/machines">Register equipment</Link> before creating a procedure.</p>}
       <input className="w-full border rounded-lg p-3" placeholder="Procedure title" value={title} onChange={event => setTitle(event.target.value)}/>
       <textarea className="w-full border rounded-lg p-3" placeholder="Summary" rows={3} value={description} onChange={event => setDescription(event.target.value)}/>
       <textarea className="w-full border rounded-lg p-3" placeholder="Prerequisites (optional)" value={prerequisites} onChange={event => setPrerequisites(event.target.value)}/>
@@ -113,7 +113,7 @@ export const ProcedureCreatePage: React.FC = () => {
       </fieldset>}
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {status && <p role="status" className="text-sm text-emerald-700">{status}</p>}
-      <Button type="button" disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save procedure'}</Button>
+      <Button type="button" disabled={busy || machineQuery.isLoading || machineQuery.isError || machines.length === 0} onClick={() => void save()}>{busy ? 'Saving…' : 'Save procedure'}</Button>
     </section>
 
     <section className="space-y-3" aria-labelledby="draft-procedures-heading">

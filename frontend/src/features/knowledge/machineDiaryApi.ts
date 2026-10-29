@@ -1,9 +1,6 @@
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api/client';
 import type { MediaAsset } from '../knowledge-capture/media/types';
-import { SUPPORTED_MACHINES } from '../machines/supportedMachines';
-
-// Kept as a compatibility export for other machine diary consumers.
-export const MACHINE_DIARY_MACHINE_LABELS = SUPPORTED_MACHINES.map(machine => machine.label);
 
 export interface MachineDiaryCounts {
   video: number;
@@ -30,9 +27,22 @@ export interface MachineDiaryMachine {
   counts: MachineDiaryCounts;
 }
 
+export const machineDiaryKeys = {
+  all: ['machine-diary'] as const,
+  library: () => [...machineDiaryKeys.all, 'library'] as const,
+};
+
 export function fetchMachineDiaryLibrary(machineId?: string): Promise<MachineDiaryMachine[]> {
   const query = machineId ? `?machine_id=${encodeURIComponent(machineId)}` : '';
   return api.get<MachineDiaryMachine[]>(`/machine-knowledge/library${query}`);
+}
+
+export function useMachineDiaryLibrary() {
+  return useQuery({
+    queryKey: machineDiaryKeys.library(),
+    queryFn: () => fetchMachineDiaryLibrary(),
+    staleTime: 60_000,
+  });
 }
 
 export function fetchMachineDiaryAssets(machineId: string): Promise<MediaAsset[]> {

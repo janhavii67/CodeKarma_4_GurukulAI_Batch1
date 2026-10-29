@@ -625,7 +625,7 @@ class KnowledgeService:
         is_trainee = PERM_KNOWLEDGE_CREATE not in permissions
 
         # Fetch candidate items
-        stmt = select(KnowledgeItem)
+        stmt = select(KnowledgeItem).where(KnowledgeItem.is_archived.is_(False))
 
         if machine_id:
             stmt = stmt.where(KnowledgeItem.machine_id == machine_id)
@@ -643,6 +643,9 @@ class KnowledgeService:
 
         # Resolve representative version and filter visibility
         visible_rows = []
+        inactive_machine_ids = set(
+            db.execute(select(Machine.id).where(Machine.is_active.is_(False))).scalars().all()
+        )
         for it in all_candidate_items:
             # Find representative version
             rep_version = None
@@ -686,6 +689,12 @@ class KnowledgeService:
                         rep_version = rev_ver
 
             if not rep_version:
+                continue
+
+            # Keep historical diaries for archived equipment out of the
+            # ordinary My Knowledge catalog. The records remain stored.
+            associated_machine_id = it.machine_id or rep_version.machine_id
+            if associated_machine_id in inactive_machine_ids:
                 continue
 
             # Apply status filter on the representative version

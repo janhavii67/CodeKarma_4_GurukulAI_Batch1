@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MachineDiaryLibraryPage, MachineDiaryPage } from '../features/knowledge/MachineDiaryLibraryPage';
 
 vi.mock('../lib/api/client', () => ({
@@ -34,58 +35,62 @@ const asset = (id: string, kind: string, title: string, extra: Record<string, un
 });
 
 function renderRouter(path: string) {
-  return render(<MemoryRouter initialEntries={[path]}><Routes>
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/app/knowledge" element={<MachineDiaryLibraryPage />} />
     <Route path="/app/knowledge/machine/:machineId" element={<MachineDiaryPage />} />
-  </Routes></MemoryRouter>);
+  </Routes></MemoryRouter></QueryClientProvider>);
 }
 
 describe('Machine diary library', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('uses only the four requested machine dropdown options and filters their real records', async () => {
+  it('shows each registered machine in the selector and opens its ID-scoped diary', async () => {
     const ctScan = { ...machine, id: 'machine-cityscan', name: 'CT-Scan', code: 'CITYSCAN-001' };
     const xray = { ...machine, id: 'machine-xray', name: 'Xray', code: 'XRAY-001' };
     const ecg = { ...machine, id: 'machine-ecg', name: 'ECG', code: 'ECG-001' };
+    const ultrasound = { ...machine, id: 'machine-ultrasound', name: 'Ultrasound', code: 'US-001' };
     mockGet.mockImplementation((path: string) => {
-      if (path === '/machine-knowledge/library') return Promise.resolve([machine, ctScan, xray, ecg, { ...machine, id: 'other-machine', name: 'CNC Mill', code: 'CNC-001' }]);
+      if (path === '/machine-knowledge/library') return Promise.resolve([machine, ctScan, xray, ecg, { ...machine, id: 'other-machine', name: 'CNC Mill', code: 'CNC-001' }, ultrasound]);
       return Promise.resolve([]);
     });
 
     renderRouter('/app/knowledge');
     const selector = await screen.findByRole('combobox', { name: 'Filter by machine' });
+    await screen.findByRole('option', { name: 'MRI' });
     expect(within(selector).getAllByRole('option').map(option => option.textContent)).toEqual([
-      'Choose a machine…', 'MRI', 'CT-Scan', 'Xray', 'ECG',
+      'Choose a machine…', 'MRI', 'CT-Scan', 'Xray', 'ECG', 'CNC Mill', 'Ultrasound',
     ]);
     expect(screen.queryByText('Procedures & drafts')).not.toBeInTheDocument();
     expect(screen.queryByText(/procedures?|drafts?/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Registered Machines Diaries')).not.toBeInTheDocument();
     expect(screen.queryByText('Accessible Knowledge Records')).not.toBeInTheDocument();
     const machineCards = await screen.findAllByRole('button', { name: /^Open knowledge diary for / });
-    expect(machineCards).toHaveLength(4);
+    expect(machineCards).toHaveLength(6);
     const cardColors = machineCards.map(card => card.querySelector<HTMLElement>('.diary-book')?.style.getPropertyValue('--book-a'));
-    expect(cardColors).toEqual(['#1976D2', '#047857', '#1976D2', '#047857']);
+    expect(cardColors).toEqual(['#1976D2', '#047857', '#1976D2', '#047857', '#1976D2', '#047857']);
 
     for (const [id, name] of [
       ['machine-mri', 'MRI'],
       ['machine-cityscan', 'CT-Scan'],
       ['machine-xray', 'Xray'],
       ['machine-ecg', 'ECG'],
+      ['other-machine', 'CNC Mill'],
+      ['machine-ultrasound', 'Ultrasound'],
     ]) {
       fireEvent.change(selector, { target: { value: id } });
       expect(screen.getByRole('button', { name: `Open knowledge diary for ${name}` })).toBeInTheDocument();
       expect(screen.getAllByRole('button', { name: /^Open knowledge diary for / })).toHaveLength(1);
     }
-    expect(screen.queryByRole('button', { name: 'Open knowledge diary for CNC Mill' })).not.toBeInTheDocument();
   });
 
-  it('does not map the four requested labels onto unrelated registered machines', async () => {
-    mockGet.mockImplementation((path: string) => path === '/machine-knowledge/library' ? Promise.resolve([{ ...machine, id: 'unrelated', name: 'CNC Mill', code: 'CNC-01' }]) : Promise.resolve([]));
+  it('does not invent diary options when no equipment is registered', async () => {
+    mockGet.mockImplementation((path: string) => path === '/machine-knowledge/library' ? Promise.resolve([]) : Promise.resolve([]));
     renderRouter('/app/knowledge');
     const selector = await screen.findByRole('combobox', { name: 'Filter by machine' });
     const options = within(selector).getAllByRole('option');
-    expect(options.slice(1).map(option => option.textContent)).toEqual(['MRI', 'CT-Scan', 'Xray', 'ECG']);
-    expect(options.slice(1).every(option => (option as HTMLOptionElement).disabled)).toBe(true);
+    expect(options.map(option => option.textContent)).toEqual(['Choose a machine…']);
+    expect(await screen.findByText('No registered machines yet')).toBeInTheDocument();
   });
 
   it('shows API failures with retry instead of presenting them as an empty library', async () => {

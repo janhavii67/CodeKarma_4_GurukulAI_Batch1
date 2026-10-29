@@ -5,8 +5,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { ProcedureCreatePage } from '../features/knowledge/ProcedureCreatePage';
 
 const apiMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn() }));
+const machineQueryMock = vi.hoisted(() => ({ useMachines: vi.fn() }));
 vi.mock('../lib/api/client', () => ({ api: apiMock }));
-vi.mock('../features/knowledge-capture/knowledgeApi', () => ({ fetchMachines: vi.fn().mockResolvedValue({ items: [] }) }));
+vi.mock('../features/knowledge-capture/hooks', () => ({ useMachines: machineQueryMock.useMachines }));
 
 const draft = { id: 'draft-1', title: 'CNC setup draft', description: 'Setup checklist', machine_id: 'machine-cnc', machine_name: 'CNC Machine', status: 'DRAFT', steps: [{ id: 'step-1', title: 'Step 1', instruction: 'Check chuck.' }] };
 
@@ -14,6 +15,11 @@ describe('procedure draft deletion', () => {
   beforeEach(() => {
     apiMock.get.mockReset(); apiMock.post.mockReset(); apiMock.delete.mockReset();
     apiMock.get.mockResolvedValue([draft]);
+    machineQueryMock.useMachines.mockReturnValue({
+      data: { items: [{ id: 'machine-cnc', name: 'CNC Machine', code: 'CNC-001', status: 'ACTIVE' }] },
+      isLoading: false,
+      isError: false,
+    });
   });
 
   it('requires confirmation and retains the draft and form state when deletion fails', async () => {
@@ -36,7 +42,7 @@ describe('procedure draft deletion', () => {
     expect(screen.getByPlaceholderText('Procedure title')).toHaveValue('Unsaved next procedure');
 
     await user.click(screen.getByRole('button', { name: 'Delete procedure' }));
-    await waitFor(() => expect(apiMock.delete).toHaveBeenCalledWith('draft-1'));
+    await waitFor(() => expect(apiMock.delete).toHaveBeenCalledWith('/procedures/draft-1'));
     expect(await screen.findByRole('status')).toHaveTextContent('deleted.');
     expect(screen.queryByText('CNC setup draft')).not.toBeInTheDocument();
   });
