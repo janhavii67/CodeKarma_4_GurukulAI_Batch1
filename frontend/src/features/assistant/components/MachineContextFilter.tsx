@@ -25,7 +25,12 @@ export const MachineContextFilter: React.FC<MachineContextFilterProps> = ({
   disabled = false,
 }) => {
   const { data, isLoading: loading, isError } = useMachines();
-  const machines = selectableMachines(data?.items ?? []) as MachineOption[];
+  // Memoized so the effect below only reports a new list when the query data changes;
+  // a fresh array every render would loop through the parent's state update.
+  const machines = React.useMemo(
+    () => selectableMachines(data?.items ?? []) as MachineOption[],
+    [data],
+  );
 
   React.useEffect(() => {
     if (machines && machines.length > 0) {
