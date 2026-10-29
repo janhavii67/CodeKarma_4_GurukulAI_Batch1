@@ -234,6 +234,17 @@ def retry_voice_job(db: Session, job_id: str, user_id: str, can_review: bool = F
     if job.attempts >= 3:
         raise ValidationError(code="max_retries_exceeded", message="Maximum retry limit (3 attempts) reached for this job.")
 
+    media = db.get(MediaAsset, job.media_id) if job.media_id else None
+    if not media:
+        raise ValidationError(code="media_file_missing", message="The recording record for this processing job was not found.")
+    if media.file_path:
+        stored_path = Path(media.file_path)
+        # Absolute file paths identify uploads whose file location was explicitly
+        # persisted. Legacy storage-key-only rows remain retryable; the worker
+        # resolves those through the configured storage root.
+        if stored_path.is_absolute() and not stored_path.exists():
+            raise ValidationError(code="media_file_missing", message="The original recording file is no longer available. Restore it before retrying.")
+
     has_transcript = has_saved_transcript(db, job.media_id)
     resume_structuring = has_transcript and can_resume_structuring(db, job)
     if has_transcript and not resume_structuring:

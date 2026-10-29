@@ -1,5 +1,6 @@
 import asyncio
 import json
+import wave
 from datetime import timedelta
 from pathlib import Path
 from typing import Optional
@@ -27,6 +28,22 @@ STALE_JOB_AFTER = timedelta(minutes=2)
 STALE_JOB_MESSAGE = (
     "Transcription was interrupted before completion. The recording is still saved; retry when the backend is available."
 )
+
+
+def _is_audio_silent(audio_path: Path) -> bool:
+    """Return whether a normalized PCM WAV contains only zero-valued samples."""
+    try:
+        with wave.open(str(audio_path), "rb") as wav_file:
+            if wav_file.getnframes() == 0:
+                return True
+            if wav_file.getsampwidth() != 2:
+                return False
+            while frames := wav_file.readframes(65536):
+                if any(frames):
+                    return False
+        return True
+    except (EOFError, OSError, wave.Error):
+        return False
 
 
 def fail_stale_voice_jobs(db: Session, stale_before=None) -> int:
@@ -150,6 +167,16 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
                 return
 
             stage = "audio normalization"
+            try:
+                source_duration = probe_duration(audio_file_path)
+            except ValidationError:
+                source_duration = media.duration_seconds or 0
+            if source_duration < 0.5:
+                job.status = "failed"
+                job.error_safe = "The recording is too short or empty to transcribe. Record at least half a second of audio and retry."
+                db.commit()
+                return
+
             input_path = audio_file_path
             wav_path = input_path.with_suffix(".16k.wav")
             normalized_path = wav_path
@@ -158,6 +185,12 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
             if not media.duration_seconds or media.duration_seconds <= 0:
                 media.duration_seconds = probe_duration(wav_path)
                 db.commit()
+
+            if _is_audio_silent(wav_path):
+                job.status = "failed"
+                job.error_safe = "No audible sound detected in narration. Please verify microphone input."
+                db.commit()
+                return
 
             job.progress = 35
             db.commit()
@@ -351,7 +384,9 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
             job = db.get(ProcessingJob, job_id)
             if job:
                 job.status = "failed"
-                if stage == "AI structuring":
+                if stage == "speech transcription" and isinstance(e, (TimeoutError, asyncio.TimeoutError)):
+                    job.error_safe = "Speech transcription timed out. Check the speech provider connection and retry."
+                elif stage == "AI structuring":
                     job.error_safe = (
                         "The transcript is saved, but automatic procedure structuring could not complete. "
                         "Review the transcript manually and check the configured language-model provider and credentials."
