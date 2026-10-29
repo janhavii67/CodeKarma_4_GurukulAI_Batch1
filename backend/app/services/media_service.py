@@ -22,6 +22,7 @@ from app.core.permissions import (
     PERM_KNOWLEDGE_CREATE,
     PERM_KNOWLEDGE_APPROVE,
     PERM_KNOWLEDGE_VIEW_PUBLISHED,
+    PERM_PROCEDURE_EXECUTE,
 )
 from app.integrations.storage import StorageService, get_storage_service
 from app.models.knowledge import (
@@ -39,11 +40,12 @@ from app.models.media import (
 )
 from app.models.user import User
 from app.models.machine import Machine
-from app.models.procedure import procedure_media_assets
+from app.models.procedure import Procedure, procedure_media_assets
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.repositories.media_repository import MediaRepository
 from app.services.audit_service import AuditService
 from app.services.knowledge_service import KnowledgeService
+from app.services.procedure_service import is_workflow_currently_published
 
 
 # Canonical MIME mappings and signatures
@@ -228,9 +230,9 @@ class MediaService:
         """Enforce visibility rules for media assets.
 
         - Version-attached assets: governed by the knowledge version's publication status.
-        - Machine library assets (machine_id set, no version_id): visible to anyone who can
-          view published knowledge. These are authoritative reference documents attached to a
-          machine (e.g. manuals, PDFs) and should be readable by Operators and Trainees.
+        - Machine library assets (machine_id set, no version_id): private to the uploader
+          and approvers until they are attached to a published knowledge version, except
+          that operators may view them while a currently published procedure uses them.
         - Orphan assets (no version_id, no machine_id): private to the uploader and approvers.
         """
         if asset.version_id:
@@ -242,13 +244,22 @@ class MediaService:
                 raise NotFoundError(code="not_found", message="The requested media asset was not found.")
             KnowledgeService.ensure_can_view_version(user, permissions, version, item)
         elif asset.machine_id:
-            # Machine library asset — visible to anyone who can view published knowledge
-            if (PERM_KNOWLEDGE_VIEW_PUBLISHED not in permissions
-                    and PERM_KNOWLEDGE_CREATE not in permissions
-                    and PERM_KNOWLEDGE_APPROVE not in permissions):
-                raise ForbiddenError(code="forbidden", message="You do not have permission to view this machine knowledge asset.")
+            if (asset.uploaded_by != user.id and PERM_KNOWLEDGE_APPROVE not in permissions
+                    and not cls._is_used_by_published_procedure(db, permissions, asset)):
+                raise ForbiddenError(code="forbidden", message="You may only access your own machine knowledge assets or assets assigned for review.")
         elif asset.uploaded_by != user.id and PERM_KNOWLEDGE_APPROVE not in permissions:
             raise ForbiddenError(code="forbidden", message="You may only access your own machine knowledge assets or assets assigned for review.")
+
+    @staticmethod
+    def _is_used_by_published_procedure(db: Session, permissions: List[str], asset: MediaAsset) -> bool:
+        """Whether a published procedure the viewer may run references this asset."""
+        if PERM_PROCEDURE_EXECUTE not in permissions:
+            return False
+        procedures = (db.query(Procedure)
+            .join(procedure_media_assets, procedure_media_assets.c.procedure_id == Procedure.id)
+            .filter(procedure_media_assets.c.media_id == asset.id, Procedure.status == "APPROVED")
+            .all())
+        return any(is_workflow_currently_published(db, procedure) for procedure in procedures)
 
     @classmethod
     def get_config(cls) -> Dict[str, Any]:

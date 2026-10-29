@@ -3,7 +3,7 @@ from app.integrations.storage import set_storage_service
 from app.core.permissions import PERM_KNOWLEDGE_CREATE
 from app.core.config import settings
 from app.integrations.storage.local import LocalStorageService
-from app.models import Machine, MediaAsset, Procedure, ProcedureRun, ProcessingJob, Transcript, User
+from app.models import LearningItem, LearningPath, Machine, MediaAsset, Procedure, ProcedureRun, ProcessingJob, Transcript, User
 from app.repositories.media_repository import MediaRepository
 from app.services.media_service import MediaService
 from app.core.exceptions import UnsupportedMediaTypeError, ConflictError
@@ -466,6 +466,43 @@ def test_procedure_asset_references_are_reviewable_but_only_mutable_by_draft_own
     assert db_session.get(Procedure, procedure.id).media_assets[0].id == asset.id
 
 
+def test_trainee_views_published_procedure_assets_only_while_published(client, db_session, tmp_path):
+    storage = LocalStorageService(tmp_path / "published-procedure-assets")
+    set_storage_service(storage)
+    old_root = settings.MEDIA_ROOT
+    settings.MEDIA_ROOT = str(tmp_path / "published-procedure-assets")
+    try:
+        author = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+        machine = db_session.query(Machine).first()
+        used = MediaService.upload(db_session, author, [PERM_KNOWLEDGE_CREATE], None,
+            io.BytesIO(PNG), "image", "image/png", "step.png", machine_id=machine.id, storage=storage)
+        unused = MediaService.upload(db_session, author, [PERM_KNOWLEDGE_CREATE], None,
+            io.BytesIO(PNG), "image", "image/png", "unused.png", machine_id=machine.id, storage=storage)
+        procedure = Procedure(title="Published SOP", description="Published", machine_id=machine.id,
+            author_id=author.id, status="APPROVED")
+        procedure.media_assets.append(used)
+        db_session.add(procedure); db_session.commit()
+
+        login = client.post("/api/v1/auth/login", json={"email": settings.TRAINEE_EMAIL, "password": settings.TRAINEE_PASSWORD})
+        references = client.get(f"/api/v1/procedures/{procedure.id}/assets")
+        used_download = client.get(f"/api/v1/media/{used.id}")
+        unused_download = client.get(f"/api/v1/media/{unused.id}")
+        procedure.status = "ARCHIVED"
+        db_session.commit()
+        archived_download = client.get(f"/api/v1/media/{used.id}")
+
+        assert login.status_code == 200
+        assert references.status_code == 200, references.text
+        assert [asset["id"] for asset in references.json()] == [used.id]
+        assert used_download.status_code == 200, used_download.text
+        assert used_download.content == PNG
+        assert unused_download.status_code == 403
+        assert archived_download.status_code == 403
+    finally:
+        settings.MEDIA_ROOT = old_root
+        set_storage_service(None)
+
+
 def test_expert_creates_procedure_with_existing_same_machine_asset(client, db_session, tmp_path):
     from app.integrations.storage.local import LocalStorageService
     storage = LocalStorageService(tmp_path / "api-media")
@@ -625,20 +662,59 @@ def test_procedure_delete_rejects_non_owner_and_procedures_with_runs(client, db_
     assert db_session.get(Procedure, protected.id) is not None
 
 
-def test_procedure_delete_requires_auth_and_only_deletes_drafts(client, db_session):
+def test_procedure_delete_allows_unused_published_procedures_only(client, db_session):
     machine = db_session.query(Machine).first()
     author = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
     approved = Procedure(title="Published SOP", description="Published", machine_id=machine.id,
         author_id=author.id, status="APPROVED")
-    db_session.add(approved); db_session.commit()
+    archived = Procedure(title="Archived SOP", description="Archived", machine_id=machine.id,
+        author_id=author.id, status="ARCHIVED")
+    in_path = Procedure(title="Path SOP", description="In a learning path", machine_id=machine.id,
+        author_id=author.id, status="APPROVED")
+    db_session.add_all([approved, archived, in_path]); db_session.flush()
+    path = LearningPath(title="Onboarding", description="Path", created_by=author.id)
+    path.items.append(LearningItem(item_type="PROCEDURE", reference_id=in_path.id, order_index=1, title=in_path.title))
+    db_session.add(path); db_session.commit()
     unauthenticated = client.delete(f"/api/v1/procedures/{approved.id}")
     login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
     csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
     headers = {settings.CSRF_HEADER_NAME: csrf}
-    not_draft = client.delete(f"/api/v1/procedures/{approved.id}", headers=headers)
+    published = client.delete(f"/api/v1/procedures/{approved.id}", headers=headers)
+    archived_response = client.delete(f"/api/v1/procedures/{archived.id}", headers=headers)
+    path_response = client.delete(f"/api/v1/procedures/{in_path.id}", headers=headers)
     missing = client.delete("/api/v1/procedures/nonexistent-procedure", headers=headers)
 
     assert unauthenticated.status_code == 401
-    assert not_draft.status_code == 409
-    assert not_draft.json()["error"]["code"] == "procedure_not_draft"
+    assert published.status_code == 204, published.text
+    assert archived_response.status_code == 409
+    assert archived_response.json()["error"]["code"] == "procedure_archived"
+    assert path_response.status_code == 409
+    assert path_response.json()["error"]["code"] == "procedure_in_learning_path"
     assert missing.status_code == 404
+    db_session.expire_all()
+    assert db_session.get(Procedure, approved.id) is None
+    assert db_session.get(Procedure, archived.id) is not None
+    assert db_session.get(Procedure, in_path.id) is not None
+
+
+def test_published_procedure_author_can_update_references_until_archived(client, db_session, tmp_path):
+    storage = LocalStorageService(tmp_path / "published-references")
+    author = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+    machine = db_session.query(Machine).first()
+    asset = MediaService.upload(db_session, author, [PERM_KNOWLEDGE_CREATE], None,
+        io.BytesIO(PNG), "image", "image/png", "reference.png", machine_id=machine.id, storage=storage)
+    procedure = Procedure(title="Published SOP", description="Published", machine_id=machine.id,
+        author_id=author.id, status="APPROVED")
+    db_session.add(procedure); db_session.commit()
+
+    login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
+    headers = {settings.CSRF_HEADER_NAME: login.cookies.get(settings.CSRF_COOKIE_NAME)}
+    updated = client.put(f"/api/v1/procedures/{procedure.id}/assets", headers=headers, json={"asset_ids": [asset.id]})
+    procedure.status = "ARCHIVED"
+    db_session.commit()
+    archived = client.put(f"/api/v1/procedures/{procedure.id}/assets", headers=headers, json={"asset_ids": []})
+
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["asset_ids"] == [asset.id]
+    assert archived.status_code == 409
+    assert archived.json()["error"]["code"] == "procedure_archived"

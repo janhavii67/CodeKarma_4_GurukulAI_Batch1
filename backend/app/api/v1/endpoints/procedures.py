@@ -20,6 +20,7 @@ from app.core.permissions import (
 from app.core.exceptions import NotFoundError, ForbiddenError, ConflictError
 from app.models import Procedure, ProcedureStep, ProcedureRun, ProcedureRunStep, Machine, MediaAsset
 from app.models.knowledge import KnowledgeItem, KnowledgeVersion
+from app.models.learning import LearningItem
 from app.schemas.procedure import (
     ProcedureResponse,
     ProcedureStepResponse,
@@ -231,8 +232,9 @@ def set_procedure_assets(procedure_id: str, payload: ProcedureAssetsUpdate,
         raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
     if procedure.author_id != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
         raise ForbiddenError(code="forbidden", message="You may only edit references on your own procedures.")
-    if procedure.status != "DRAFT":
-        raise ConflictError(code="procedure_not_draft", message="Only draft procedures can change their knowledge references.")
+    # Procedures publish directly on create, so authors may adjust references until archived.
+    if procedure.status == "ARCHIVED":
+        raise ConflictError(code="procedure_archived", message="Archived procedures cannot change their knowledge references.")
     reference_ids = list(dict.fromkeys(payload.asset_ids + _procedure_step_asset_ids(procedure)))
     assets = db.query(MediaAsset).filter(MediaAsset.id.in_(set(reference_ids))).all() if reference_ids else []
     if len(assets) != len(set(reference_ids)):
@@ -272,6 +274,9 @@ def delete_procedure(
         raise ConflictError(code="procedure_archived", message="Archived procedures cannot be deleted.")
     if db.query(ProcedureRun.id).filter(ProcedureRun.procedure_id == procedure.id).first():
         raise ConflictError(code="procedure_in_use", message="This procedure has execution history and cannot be deleted.")
+    # Learning items reference procedures by plain id, so deletion would leave a broken path entry.
+    if db.query(LearningItem.id).filter(LearningItem.item_type == "PROCEDURE", LearningItem.reference_id == procedure.id).first():
+        raise ConflictError(code="procedure_in_learning_path", message="This procedure is part of a learning path. Remove it from the path before deleting it.")
     db.delete(procedure)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
