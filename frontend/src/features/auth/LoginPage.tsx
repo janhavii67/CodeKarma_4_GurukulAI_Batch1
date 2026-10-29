@@ -111,43 +111,53 @@ export const LoginPage: React.FC = () => {
         <main className="my-auto py-4 sm:py-6 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 xl:gap-16 items-center">
 
           {/* ════════════ LEFT ZONE: BRANDING & EDITORIAL HEADLINE ════════════ */}
-          <section className="lg:col-span-7 xl:col-span-7 space-y-4 sm:space-y-5 pr-0 lg:pr-6 text-white order-2 lg:order-1">
+          <section className="lg:col-span-7 xl:col-span-7 space-y-6 sm:space-y-7 pr-0 lg:pr-6 text-white order-2 lg:order-1">
             
             {/* Eyebrow Label / Tagline */}
             <div>
               <div
-                className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#07172B]/75 backdrop-blur-md border border-[#2E90FA]/25 text-[11.5px] sm:text-xs font-medium tracking-[0.035em] text-[#C7D5E5] shadow-xs select-none animate-hero-fade"
-                style={{ animationDelay: '0ms' }}
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#08264A]/80 backdrop-blur-md border border-[#35C5E8]/30 text-[11.5px] sm:text-xs font-medium tracking-[0.035em] text-[#E0EBF7] shadow-xs select-none"
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-[#38BDF8] ring-2 ring-[#38BDF8]/25 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#35C5E8] ring-2 ring-[#35C5E8]/30 shrink-0" />
                 <span>The Gurukul for modern labs</span>
               </div>
             </div>
 
             {/* Main Headline & Subtitle */}
-            <div className="space-y-3 sm:space-y-3.5">
+            <div className="space-y-4">
               <h1
-                className="text-[clamp(2.15rem,3.5vw+0.6rem,3.45rem)] font-[800] tracking-[-0.04em] leading-[1.03] text-white animate-hero-fade"
-                style={{ animationDelay: '100ms' }}
+                className="font-serif text-[clamp(2.5rem,4vw+0.8rem,3.8rem)] font-bold tracking-tight leading-[1.08] text-white"
               >
-                <span className="block text-white drop-shadow-[0_2px_12px_rgba(7,23,43,0.7)]">
+                <span className="block text-white drop-shadow-[0_2px_12px_rgba(6,26,53,0.8)]">
                   Every Expert Retires.
                 </span>
-                <span className="block mt-1.5 sm:mt-2.5 tracking-[-0.04em]">
-                  <span className="text-[#258CF4] drop-shadow-[0_2px_10px_rgba(37,140,244,0.25)]">
-                    Their Expertise{' '}
-                  </span>
-                  <span className="bg-gradient-to-r from-[#60A5FA] via-[#93C5FD] to-[#BAE6FD] bg-clip-text text-transparent inline-block drop-shadow-[0_2px_12px_rgba(96,165,250,0.3)]">
-                    Shouldn’t.
-                  </span>
+                <span className="block mt-2 tracking-tight bg-gradient-to-r from-[#1677F8] via-[#43B9F4] to-[#35C5E8] bg-clip-text text-transparent">
+                  Their Expertise Shouldn’t.
                 </span>
               </h1>
               <p
-                className="text-[15px] sm:text-base lg:text-[1.125rem] xl:text-[1.2rem] text-[#C7D5E5] leading-[1.5] max-w-[540px] font-normal drop-shadow-[0_1px_3px_rgba(7,23,43,0.8)] pt-1 sm:pt-1.5 animate-hero-fade"
-                style={{ animationDelay: '200ms' }}
+                className="text-[15px] sm:text-base lg:text-[1.125rem] text-[#D9E5F2] leading-relaxed max-w-[560px] font-normal drop-shadow-[0_1px_3px_rgba(6,26,53,0.8)]"
               >
                 Gurukul AI captures what your best people know and turns it into verified, searchable guidance for the next generation.
               </p>
+            </div>
+
+            {/* Trust Indicators */}
+            <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-[620px]">
+              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[#08264A]/60 backdrop-blur-sm border border-white/10">
+                <ShieldCheck className="w-5 h-5 text-[#43B9F4] shrink-0" />
+                <span className="text-[11px] leading-tight text-[#D9E5F2] font-medium">Trusted by Leading Healthcare &amp; Industrial Enterprises</span>
+              </div>
+              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[#08264A]/60 backdrop-blur-sm border border-white/10">
+                <ShieldCheck className="w-5 h-5 text-[#35C5E8] shrink-0" />
+                <span className="text-[11px] leading-tight text-[#D9E5F2] font-medium">Secure &amp; Compliant<br/>(ISO 9001 / 27001)</span>
+              </div>
+              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[#08264A]/60 backdrop-blur-sm border border-white/10">
+                <div className="w-5 h-5 rounded-full bg-[#1677F8]/20 flex items-center justify-center shrink-0">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#43B9F4]" />
+                </div>
+                <span className="text-[11px] leading-tight text-[#D9E5F2] font-medium">Enterprise Grade<br/>Scalability</span>
+              </div>
             </div>
 
           </section>

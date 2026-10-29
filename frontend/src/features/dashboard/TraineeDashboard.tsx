@@ -84,7 +84,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ user, hasPer
   const recentActivity = metrics?.recent_activity ?? [];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+    <div className="w-full space-y-6 pb-8">
       <section className="rounded-2xl border border-[#DCE6F0] bg-white p-6 shadow-xs md:p-8" aria-labelledby="trainee-dashboard-heading">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="max-w-2xl">

@@ -76,7 +76,7 @@ export const KnowledgeDetailPage: React.FC = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] pb-20 font-sans" aria-busy="true">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
           <div className="h-6 w-48 bg-slate-200 rounded animate-pulse" />
           <div className="h-14 w-3/4 bg-slate-200 rounded-2xl animate-pulse" />
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -156,7 +156,7 @@ export const KnowledgeDetailPage: React.FC = () => {
     <div className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans pb-24">
       {/* ── TOP HEADER / BREADCRUMB STRIP ─────────────────────────────────── */}
       <div className="border-b border-slate-200 bg-white shadow-2xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3">
           <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs font-medium text-slate-500">
             <Link to="/app/knowledge" className="hover:text-teal-700 flex items-center gap-1 transition-colors">
               <ArrowLeft className="w-3.5 h-3.5" />
@@ -226,7 +226,7 @@ export const KnowledgeDetailPage: React.FC = () => {
       </div>
 
       {/* ── MAIN CONTENT CONTAINER ────────────────────────────────────────── */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
+      <main className="w-full px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
         {/* Role Learning Perspective Notice */}
         {isTrainee && (
           <div className="rounded-2xl p-4 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-white border border-emerald-200 shadow-2xs flex items-center justify-between gap-3 text-xs text-emerald-950">

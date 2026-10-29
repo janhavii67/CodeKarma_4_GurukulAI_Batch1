@@ -98,7 +98,7 @@ export const FailureSimulatorPage: React.FC = () => {
   const activeDecisionIndex = active ? active.decisions.length + (active.status === 'in_progress' ? 1 : 0) : 0;
   const sourceById = useMemo(() => new Map((active?.source_refs || []).map((r: any) => [r.version_id, r])), [active]);
 
-  return <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-5">
+  return <div className="w-full mx-auto p-4 sm:p-6 space-y-5">
     <header className="flex flex-wrap items-center justify-between gap-3">
       <div><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Module 09 · Failure Simulator</p><h1 className="text-2xl font-bold text-slate-900">Practice decisions safely</h1><p className="text-sm text-slate-600 mt-1">Training scenarios are simulated. They do not operate equipment or certify practical skill.</p></div>
       <Button variant="secondary" onClick={() => { setActive(null); setScenario(null); }}>Scenario library</Button>

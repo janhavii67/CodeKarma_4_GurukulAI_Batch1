@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useTheme } from './ThemeContext';
-import { Menu, X, Sun, Moon, Pause, Play } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 
 const NAV_LINKS = [
   { href: '#problem', label: 'Problem' },
@@ -10,16 +9,17 @@ const NAV_LINKS = [
   { href: '#industries', label: 'Industries' },
 ];
 
-interface Props { onCTA: () => void }
+interface Props {
+  onCTA: () => void;
+}
 
 export const LandingNav: React.FC<Props> = ({ onCTA }) => {
-  const { theme, toggle, animationsPaused, toggleAnimations } = useTheme();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40);
+    const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
@@ -33,33 +33,45 @@ export const LandingNav: React.FC<Props> = ({ onCTA }) => {
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         scrolled
-          ? 'bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-slate-800'
-          : 'bg-transparent'
+          ? 'bg-[#070e1b]/95 backdrop-blur-md shadow-lg shadow-black/20 border-b border-slate-800/80'
+          : 'bg-[#070e1b]'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-20">
           {/* Logo */}
-          <a href="#" className="flex items-center gap-2.5 group" onClick={e => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-brand-500 flex items-center justify-center shadow-md group-hover:shadow-cyan-500/30 transition-shadow">
+          <a
+            href="#"
+            className="flex items-center gap-3 group"
+            onClick={(e) => {
+              e.preventDefault();
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          >
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1677F8] to-[#0ea5e9] flex items-center justify-center shadow-lg shadow-[#1677F8]/30 ring-1 ring-white/20">
               <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white">
-                <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-                <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-                <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
               </svg>
             </div>
-            <span className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
-              Gurukul<span className="text-cyan-500">AI</span>
-            </span>
+            <div className="flex flex-col text-left">
+              <span className="text-lg font-extrabold text-white tracking-tight leading-none">
+                Gurukul AI
+              </span>
+              <span className="text-[10px] font-bold tracking-widest text-[#38bdf8] uppercase mt-1">
+                TACIT ENGINEERING CORE
+              </span>
+            </div>
           </a>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1">
-            {NAV_LINKS.map(l => (
+          <nav className="hidden md:flex items-center gap-7">
+            {NAV_LINKS.map((l) => (
               <button
                 key={l.href}
                 onClick={() => scrollTo(l.href)}
-                className="px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                className="text-sm font-medium text-slate-300 hover:text-white transition-colors duration-200"
               >
                 {l.label}
               </button>
@@ -67,29 +79,16 @@ export const LandingNav: React.FC<Props> = ({ onCTA }) => {
           </nav>
 
           {/* Desktop actions */}
-          <div className="hidden md:flex items-center gap-2">
-            <button
-              onClick={toggleAnimations}
-              title={animationsPaused ? 'Resume animations' : 'Pause animations'}
-              className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              {animationsPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-            </button>
-            <button
-              onClick={toggle}
-              className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
+          <div className="hidden md:flex items-center gap-5">
             <a
               href="/login"
-              className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white transition-colors"
+              className="text-sm font-medium text-slate-300 hover:text-white transition-colors"
             >
               Sign In
             </a>
             <button
               onClick={onCTA}
-              className="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-brand-500 to-cyan-500 rounded-lg hover:shadow-lg hover:shadow-brand-500/25 transition-all duration-200"
+              className="px-6 py-2.5 text-sm font-semibold text-white bg-[#1677f8] hover:bg-[#1262d1] rounded-full shadow-md shadow-[#1677f8]/30 hover:shadow-lg hover:shadow-[#1677f8]/40 transition-all duration-200"
             >
               Get Started
             </button>
@@ -97,32 +96,37 @@ export const LandingNav: React.FC<Props> = ({ onCTA }) => {
 
           {/* Mobile toggle */}
           <button
-            className="md:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-            onClick={() => setMobileOpen(o => !o)}
+            className="md:hidden p-2 rounded-lg text-slate-300 hover:bg-slate-800"
+            onClick={() => setMobileOpen((o) => !o)}
           >
-            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>
       </div>
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div ref={mobileRef} className="md:hidden bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 py-3 space-y-1">
-          {NAV_LINKS.map(l => (
+        <div ref={mobileRef} className="md:hidden bg-[#070e1b] border-t border-slate-800 px-4 py-4 space-y-2">
+          {NAV_LINKS.map((l) => (
             <button
               key={l.href}
               onClick={() => scrollTo(l.href)}
-              className="block w-full text-left px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+              className="block w-full text-left px-3 py-2.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 rounded-lg"
             >
               {l.label}
             </button>
           ))}
-          <div className="flex items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-700 mt-2">
-            <button onClick={toggle} className="flex-1 flex items-center justify-center gap-2 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            </button>
-            <button onClick={onCTA} className="flex-1 py-2 text-sm font-semibold text-white bg-brand-500 rounded-lg">
+          <div className="flex flex-col gap-2 pt-3 border-t border-slate-800 mt-2">
+            <a
+              href="/login"
+              className="w-full text-center py-2.5 text-sm font-medium text-slate-300 hover:text-white"
+            >
+              Sign In
+            </a>
+            <button
+              onClick={onCTA}
+              className="w-full py-2.5 text-sm font-semibold text-white bg-[#1677f8] rounded-full"
+            >
               Get Started
             </button>
           </div>
@@ -131,4 +135,3 @@ export const LandingNav: React.FC<Props> = ({ onCTA }) => {
     </header>
   );
 };
-

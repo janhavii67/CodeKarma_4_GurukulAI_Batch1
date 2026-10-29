@@ -43,11 +43,10 @@ export const App: React.FC = () => {
       <AuthProvider>
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
-            {/* Marketing landing page */}
-            <Route path="/" element={<LandingPage />} />
-
-            {/* Public Auth Routes */}
+            {/* Default entry point: directly open from Login Page */}
+            <Route path="/" element={<LoginPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/landing" element={<LandingPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/403" element={<ForbiddenPage />} />
 

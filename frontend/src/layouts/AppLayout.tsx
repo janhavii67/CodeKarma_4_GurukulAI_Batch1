@@ -59,40 +59,37 @@ export const AppLayout: React.FC = () => {
     : 'U';
 
   return (
-    <div className="min-h-screen bg-[#F5F8FC] flex flex-col text-[#0F172A] font-sans antialiased">
-      {/* ─── Primary horizontal navigation ─── */}
-      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-3 pb-1">
-        <header className="bg-white rounded-2xl border border-[#E2E8F0] px-5 sm:px-6 py-3 shadow-xs flex items-center justify-between gap-4">
-          {/* Left: Gurukul AI brandmark & tagline */}
+    <div className="min-h-screen bg-[#F3F7FC] flex flex-col text-[#102844] font-sans antialiased">
+      {/* ─── Clean White Industrial Header ─── */}
+      <header className="bg-[#08264A] border-b border-[#123B68] sticky top-0 z-50 shadow-md">
+        <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-3 flex items-center justify-between gap-4">
+          {/* Left: Gurukul AI Brandmark */}
           <Link to="/app" className="flex items-center gap-3 shrink-0 group">
-            <div className="w-9 h-9 rounded-xl bg-[#1976C9] text-white flex items-center justify-center font-bold shadow-sm group-hover:bg-[#125EA3] transition-colors">
-              <span className="material-symbols-outlined text-[20px]">precision_manufacturing</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#1677F8] to-[#0D51B0] text-white flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+              <span className="material-symbols-outlined text-[20px]">layers</span>
             </div>
             <div>
-              <span className="font-extrabold text-sm tracking-tight text-[#173B5E] block leading-none">
+              <span className="font-extrabold text-base tracking-tight text-white block leading-none">
                 Gurukul AI
               </span>
-              <span className="text-[10px] font-semibold tracking-wider text-[#536779] uppercase">
-                TACIT ENGINEERING CORE
+              <span className="text-[9px] font-bold tracking-widest text-[#60A5FA] uppercase block mt-1">
+                TACT ENGINEERING CORE
               </span>
             </div>
           </Link>
 
-          {/* Center: Desktop Navigation Links (all fit on one line) */}
-          <nav className={`${desktopNavigationVisibility} items-center gap-1.5 justify-center text-xs font-semibold`}>
+          {/* Center: Desktop Navigation Links */}
+          <nav className={`${desktopNavigationVisibility} items-center gap-3 justify-center text-xs font-semibold`}>
             {isTrainee ? traineeDestinations.map(({ label, to, end }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
                 className={({ isActive }) =>
-                  `px-2.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs whitespace-nowrap ${isActive ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs' : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'}`
+                  `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs whitespace-nowrap ${isActive ? 'bg-[#1677F8] text-white font-semibold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10 font-medium'}`
                 }
               >
-                {({ isActive }) => <>
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
-                  <span>{label}</span>
-                </>}
+                <span>{label}</span>
               </NavLink>
             )) : <>
             <NavLink
@@ -101,40 +98,25 @@ export const AppLayout: React.FC = () => {
               className={({ isActive }) =>
                 `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
                   isActive
-                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
-                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
+                    ? 'bg-white/15 text-white font-bold'
+                    : 'text-blue-100 hover:text-white hover:bg-white/10 font-medium'
                 }`
               }
             >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
-                  <span>Home</span>
-                </>
-              )}
+              <span>Home</span>
             </NavLink>
 
             {canReadMachines && <NavLink
               to="/app/machines"
-              className={({ isActive }) => `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${isActive ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs' : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'}`}
+              className={({ isActive }) => `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${isActive ? 'bg-white/15 text-white font-bold' : 'text-blue-100 hover:text-white hover:bg-white/10 font-medium'}`}
             >Machines</NavLink>}
 
             {hasPermission('knowledge.create') && <NavLink
               to="/app/knowledge-assets?kind=notes"
-              className={({ isActive }) =>
-                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
-                  isActive
-                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
-                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
-                }`
-              }
+              className="px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs bg-[#1677F8] text-white border border-[#1677F8]/40 font-semibold shadow-sm hover:bg-[#1060C4]"
             >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
-                  <span>Capture Knowledge</span>
-                </>
-              )}
+              <span className="material-symbols-outlined text-[15px]">photo_camera</span>
+              <span>Capture Knowledge</span>
             </NavLink>}
 
             {canReadKnowledge && <NavLink
@@ -142,17 +124,12 @@ export const AppLayout: React.FC = () => {
               className={({ isActive }) =>
                 `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
                   isActive
-                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
-                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
+                    ? 'bg-white/15 text-white font-bold'
+                    : 'text-blue-100 hover:text-white hover:bg-white/10 font-medium'
                 }`
               }
             >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
-                  <span>My Knowledge</span>
-                </>
-              )}
+              <span>My Knowledge</span>
             </NavLink>}
 
             {hasPermission('procedure.execute') && <NavLink
@@ -160,61 +137,38 @@ export const AppLayout: React.FC = () => {
               className={({ isActive }) =>
                 `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
                   isActive
-                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
-                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
+                    ? 'bg-white/15 text-white font-bold'
+                    : 'text-blue-100 hover:text-white hover:bg-white/10 font-medium'
                 }`
               }
             >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
-                  <span>Guided Workflows</span>
-                </>
-              )}
-            </NavLink>}
-
-            {hasPermission('audio.analyze') && <NavLink
-              to="/app/sound-inference"
-              className={({ isActive }) =>
-                `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
-                  isActive
-                    ? 'bg-[#EFF4FF] text-[#1976C9] font-bold shadow-xs'
-                    : 'text-[#536779] hover:text-[#173B5E] hover:bg-slate-100 font-medium'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />}
-                  <span>🔊 Sound AI</span>
-                </>
-              )}
+              <span>Guided Workflows</span>
             </NavLink>}
             </>}
           </nav>
 
-          {/* Right: Expert Profile Module with Dropdown */}
+          {/* Right: Expert Profile Chip */}
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="relative" ref={profileDropdownRef}>
               <button
                 type="button"
                 onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-                className="flex items-center gap-2.5 p-1 rounded-xl hover:bg-slate-50 transition-colors focus:outline-none"
+                className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 transition-colors focus:outline-none shadow-sm"
                 aria-expanded={isProfileDropdownOpen}
                 aria-label="Open profile menu"
               >
-                <div className="w-8 h-8 rounded-full bg-[#173B5E] text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
+                <div className="w-7 h-7 rounded-full bg-[#1677F8] text-white flex items-center justify-center font-bold text-xs shrink-0">
                   {userInitials}
                 </div>
                 <div className="text-left hidden sm:block">
-                  <span className="text-xs font-bold text-[#173B5E] block leading-tight truncate max-w-[140px]">
-                    {user?.name || 'User'}
+                  <span className="text-xs font-bold text-white block leading-tight truncate max-w-[140px]">
+                    {user?.name || 'Aarav Sharma (Author...'}
                   </span>
-                  <span className="text-[10px] text-[#536779] font-medium block">
+                  <span className="text-[10px] text-blue-200 font-medium block">
                     {roleTitle}
                   </span>
                 </div>
-                <span className="material-symbols-outlined text-[18px] text-slate-400">
+                <span className="material-symbols-outlined text-[18px] text-blue-200">
                   expand_more
                 </span>
               </button>
@@ -262,82 +216,84 @@ export const AppLayout: React.FC = () => {
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
-        </header>
-
-        {/* Mobile Navigation Drawer */}
-        {isMobileMenuOpen && (
-          <div className={`${mobileNavigationVisibility} mt-2 bg-white rounded-2xl border border-[#E2E8F0] shadow-xl p-4 space-y-2 z-40`}>
-            {isTrainee ? traineeDestinations.map(({ label, to, end }) => (
+          {/* Mobile Navigation Drawer */}
+          {isMobileMenuOpen && (
+            <div className={`${mobileNavigationVisibility} absolute top-full left-0 right-0 bg-[#061A35] border-b border-[#123B68] shadow-2xl p-5 space-y-2 z-50`}>
+              {isTrainee ? traineeDestinations.map(({ label, to, end }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  onClick={closeMobileMenu}
+                  className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold ${isActive ? 'text-white bg-[#1677F8]' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
+                >
+                  <span>{label}</span>
+                </NavLink>
+              )) : <>
               <NavLink
-                key={to}
-                to={to}
-                end={end}
+                to="/app"
+                end
                 onClick={closeMobileMenu}
-                className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold ${isActive ? 'text-[#1976C9] bg-[#EFF4FF]' : 'text-[#536779] hover:bg-slate-50'}`}
+                className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold ${isActive ? 'text-white bg-[#1677F8]' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
               >
-                <span>{label}</span>
+                <span>Home</span>
               </NavLink>
-            )) : <>
-            <NavLink
-              to="/app"
-              end
-              onClick={closeMobileMenu}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#173B5E] hover:bg-[#EFF4FF]"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#1976C9]" />
-              <span>Home</span>
-            </NavLink>
-            {hasPermission('knowledge.create') && <NavLink
-              to="/app/knowledge-assets?kind=notes"
-              onClick={closeMobileMenu}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
-            >
-              <span>Capture Knowledge</span>
-            </NavLink>}
-            {canReadKnowledge && <NavLink
-              to="/app/knowledge"
-              end
-              onClick={closeMobileMenu}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
-            >
-            </NavLink>}
-            {hasPermission('procedure.execute') && <NavLink
-              to="/app/guided-workflows"
-              onClick={closeMobileMenu}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"
-            >
-              <span>Guided Workflows</span>
-            </NavLink>}
-            {canReadMachines && <NavLink to="/app/machines" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Machine Assets (M00)</span></NavLink>}
-            {hasPermission('knowledge.create') && <NavLink to="/app/voice-capture" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Voice-to-Knowledge (M04)</span></NavLink>}
-            {hasPermission('audio.analyze') && <NavLink to="/app/sound-analysis" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Sound Analysis (M07)</span></NavLink>}
-            {hasPermission('troubleshoot.use') && <NavLink to="/app/troubleshooting" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Troubleshooting (M05)</span></NavLink>}
-            {hasPermission('simulation.attempt') && <NavLink to="/app/failure-simulator" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Failure Simulator (M09)</span></NavLink>}
-            {canUseLearning && <NavLink to="/app/learning" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Learning Portal (M10)</span></NavLink>}
-            {hasPermission('knowledge.view_published') && <NavLink to="/app/knowledge-graph" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Knowledge Graph (M08)</span></NavLink>}
-            {hasPermission('procedure.execute') && <NavLink to="/app/skill-verification" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Skill Verification (M10)</span></NavLink>}
-            {hasPermission('simulation.attempt') && <NavLink to="/app/synchronized-simulation" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Synchronized Simulation (M11)</span></NavLink>}
-            </>}
-            {isTrainee && canReadMachines && <NavLink to="/app/machines" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Machine Assets (M00)</span></NavLink>}
-            <div className="pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => {
-                  closeMobileMenu();
-                  logout();
-                }}
-                className="w-full px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl flex items-center gap-2"
+              {canReadMachines && <NavLink
+                to="/app/machines"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold ${isActive ? 'text-white bg-[#1677F8]' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Sign Out</span>
-              </button>
+                <span>Machines</span>
+              </NavLink>}
+              {hasPermission('knowledge.create') && <NavLink
+                to="/app/knowledge-assets?kind=notes"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold ${isActive ? 'text-white bg-[#1677F8]' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
+              >
+                <span>Capture Knowledge</span>
+              </NavLink>}
+              {canReadKnowledge && <NavLink
+                to="/app/knowledge"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold ${isActive ? 'text-white bg-[#1677F8]' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
+              >
+                <span>My Knowledge</span>
+              </NavLink>}
+              {hasPermission('procedure.execute') && <NavLink
+                to="/app/guided-workflows"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold ${isActive ? 'text-white bg-[#1677F8]' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
+              >
+                <span>Guided Workflows</span>
+              </NavLink>}
+              {hasPermission('audio.analyze') && <NavLink
+                to="/app/sound-inference"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold ${isActive ? 'text-white bg-[#1677F8]' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
+              >
+                <span>Sound AI</span>
+              </NavLink>}
+              </>}
+              <div className="pt-2 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeMobileMenu();
+                    logout();
+                  }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 rounded-xl flex items-center gap-2"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </header>
 
-      {/* ─── 3. FULL-WIDTH MAIN APPLICATION CONTENT ─── */}
-      <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-5">
+      {/* ─── Main Content ─── */}
+      <main className="flex-1 w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6">
         <Outlet />
       </main>
     </div>

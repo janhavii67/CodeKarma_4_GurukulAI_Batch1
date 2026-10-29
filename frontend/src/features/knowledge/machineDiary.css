@@ -23,7 +23,7 @@
   mask-image: linear-gradient(to bottom, black, transparent 76%);
 }
 
-.diary-page-inner { max-width: 1440px; margin: 0 auto; padding: clamp(1.25rem, 3vw, 2.7rem); }
+.diary-page-inner { max-width: 1920px; margin: 0 auto; padding: clamp(1.25rem, 3vw, 2.7rem); }
 .diary-eyebrow { color: #1976c9; text-transform: uppercase; letter-spacing: .18em; font-size: .7rem; font-weight: 700; }
 .diary-heading { color: #173b5e; letter-spacing: -.045em; line-height: 1.04; font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 750; }
 .diary-subtitle { color: var(--diary-muted); max-width: 48rem; line-height: 1.65; }

@@ -531,7 +531,7 @@ export const KnowledgeEditorPage: React.FC = () => {
   if (isNewRoute) {
     return (
       <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
-        <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <main className="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
           <MedicalHeroBanner onCreateClick={() => setShowCreateModal(true)} />
           
           <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-[#DCE8F5] shadow-sm p-6 sm:p-8 space-y-6">
@@ -649,7 +649,7 @@ export const KnowledgeEditorPage: React.FC = () => {
   if (isLoading || !data) {
     return (
       <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans" aria-busy="true" aria-label="Loading knowledge item">
-        <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <main className="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
           <div className="h-44 rounded-2xl bg-white border border-[#DCE8F5] animate-pulse" />
           <div className="h-14 rounded-xl bg-white border border-[#DCE8F5] animate-pulse" />
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -674,7 +674,7 @@ export const KnowledgeEditorPage: React.FC = () => {
       {/* 1. TOP NAVIGATION */}
 
       {/* Main Container */}
-      <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <main className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* 2. MEDICAL HERO BANNER */}
         <MedicalHeroBanner onCreateClick={() => setShowCreateModal(true)} />
 

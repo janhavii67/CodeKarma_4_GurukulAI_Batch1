@@ -218,7 +218,7 @@ export const TroubleshootingPage: React.FC = () => {
   });
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6">
+    <div className="w-full space-y-5 px-4 py-6 sm:px-6">
       <header className="flex items-start gap-3 border-b border-[#DCE6F0] pb-4">
         <div className="rounded-xl border border-[#BCD7F5] bg-[#EAF3FF] p-2.5 text-[#1976D2]"><Wrench className="h-5 w-5" /></div>
         <div>
