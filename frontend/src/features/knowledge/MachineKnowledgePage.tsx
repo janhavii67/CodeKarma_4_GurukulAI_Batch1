@@ -2,14 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api/client';
 import { mediaApi } from '../knowledge-capture/media/mediaApi';
-import { fetchMachines } from '../knowledge-capture/knowledgeApi';
-import { MachineListResponse } from '../knowledge-capture/types';
+import { useMachines } from '../knowledge-capture/hooks';
+import { machineOptionLabel, selectableMachines } from '../machines/registeredMachines';
 import { uploadWithProgress } from '../knowledge-capture/media/uploadWithProgress';
 import { MediaAsset } from '../knowledge-capture/media/types';
 import { getApiUrl } from '../../lib/api/client';
 import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
-import { MACHINE_DIARY_MACHINE_LABELS } from './machineDiaryApi';
 
 type Kind = 'video' | 'image' | 'audio' | 'document' | 'notes';
 const accepts: Record<Exclude<Kind, 'notes'>, string> = {
@@ -23,7 +22,8 @@ export const MachineKnowledgePage: React.FC = () => {
   const [params, setParams] = useSearchParams();
   const initial = (params.get('kind') || 'video').toLowerCase();
   const [kind, setKind] = useState<Kind>(['video','image','audio','document','notes'].includes(initial) ? initial as Kind : 'video');
-  const [machines, setMachines] = useState<MachineListResponse['items']>([]);
+  const machineQuery = useMachines();
+  const machines = machineQuery.data?.items ?? [];
   const [machineId, setMachineId] = useState(params.get('machine') || '');
   const [machineSearch, setMachineSearch] = useState('');
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -55,9 +55,7 @@ export const MachineKnowledgePage: React.FC = () => {
   const [editTags, setEditTags] = useState('');
   const [metadataSaving, setMetadataSaving] = useState(false);
   const [transcriptStatus, setTranscriptStatus] = useState('');
-  const diaryMachines = machines.filter(machine =>
-    (MACHINE_DIARY_MACHINE_LABELS as readonly string[]).includes(machine.name),
-  );
+  const diaryMachines = selectableMachines(machines);
   const inputRef = useRef<HTMLInputElement>(null);
   const startedAt = useRef<number>(0);
   const elapsedBeforeSegment = useRef<number>(0);
@@ -88,7 +86,9 @@ export const MachineKnowledgePage: React.FC = () => {
     streamRef.current = null;
   }, []);
 
-  useEffect(() => { fetchMachines({ page_size: 100 }).then(r => setMachines(r.items)).catch(() => setError('Could not load registered machines.')); }, []);
+  useEffect(() => {
+    if (machineQuery.isError) setError('Could not load registered machines. Refresh the page and try again.');
+  }, [machineQuery.isError]);
   useEffect(() => {
     if (!machineId) { setAssets([]); return; }
     const type = filter === 'all' ? '' : `?kind=${encodeURIComponent(filter)}`;
@@ -117,10 +117,10 @@ export const MachineKnowledgePage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (machines.length > 0 && machineId && !diaryMachines.some(machine => machine.id === machineId)) {
+    if (machineQuery.isSuccess && machineId && !diaryMachines.some(machine => machine.id === machineId)) {
       changeMachine('');
     }
-  }, [machines, machineId]);
+  }, [machineQuery.isSuccess, machineId, diaryMachines]);
 
   const startRecording = async () => {
     if (busy || recording) return;
@@ -305,7 +305,7 @@ export const MachineKnowledgePage: React.FC = () => {
       <div className="flex flex-wrap gap-2">{(['video','audio','notes','image','document'] as Kind[]).map(k => <button key={k} onClick={() => changeKind(k)} className={`px-4 py-2 rounded-full text-sm capitalize ${kind===k?'bg-blue-600 text-white':'bg-slate-100 text-slate-700'}`}>{k==='image'?'Photos':k==='document'?'Documents':k}</button>)}</div>
       <label className="block text-sm font-semibold">Which machine or equipment is this knowledge related to?
         <input aria-label="Search registered machines" value={machineSearch} onChange={e=>setMachineSearch(e.target.value)} placeholder="Search registered machines…" className="block w-full mt-2 border rounded-lg p-3" />
-        <select aria-label="Machine" value={machineId} onChange={e => changeMachine(e.target.value)} className="block w-full mt-2 border rounded-lg p-3 bg-white"><option value="">Select a registered machine…</option>{diaryMachines.filter(m=>`${m.name} ${m.code||''} ${m.category||''}`.toLowerCase().includes(machineSearch.toLowerCase())).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+        <select aria-label="Machine" value={machineId} disabled={machineQuery.isLoading || machineQuery.isError} onChange={e => changeMachine(e.target.value)} className="block w-full mt-2 border rounded-lg p-3 bg-white disabled:cursor-not-allowed disabled:opacity-60"><option value="">Select a registered machine…</option>{diaryMachines.filter(machine => !machineSearch.trim() || `${machine.name} ${machine.code || ''} ${machine.category_name || machine.category || ''}`.toLowerCase().includes(machineSearch.toLowerCase())).map(machine => <option key={machine.id} value={machine.id}>{machineOptionLabel(machine)}</option>)}</select>
       </label>
       <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Knowledge title" className="w-full border rounded-lg p-3" />
       <input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Optional description or observation" className="w-full border rounded-lg p-3" />
@@ -313,9 +313,9 @@ export const MachineKnowledgePage: React.FC = () => {
       {kind==='notes' ? <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Write a machine observation or practical tip…" rows={5} className="w-full border rounded-lg p-3"/> : kind==='audio' ? <div className="space-y-3"><div className="flex flex-wrap gap-2">{!recording && !recorded && <Button type="button" disabled={busy} onClick={startRecording}>Start recording</Button>}{recording && <><Button type="button" onClick={paused ? resumeRecording : pauseRecording}>{paused?'Resume':'Pause'}</Button><Button type="button" onClick={stopRecording}>Stop recording</Button><Button type="button" variant="secondary" onClick={cancelRecording}>Cancel recording</Button><span role="status" className="self-center text-sm tabular-nums">{Math.floor(recordDuration/60)}:{String(recordDuration%60).padStart(2,'0')} {paused?'Paused':'Recording'}</span></>}{recorded && <Button type="button" onClick={()=>{cancelRecording();setFile(null);if(inputRef.current)inputRef.current.value='';}}>Discard and record again</Button>}<input ref={inputRef} type="file" accept={accepts.audio} disabled={recording||busy} onChange={e=>setFile(e.target.files?.[0]||null)} /></div>{recorded && recordedPreview && <audio aria-label="Recorded audio preview" controls src={recordedPreview} className="w-full"/>}</div> : <><input ref={inputRef} type="file" accept={accepts[kind]} onChange={e=>setFile(e.target.files?.[0]||null)} className="block w-full"/>{file && <div className="text-sm">{file.name}{kind==='image' && filePreview && <img className="mt-2 max-h-56 rounded-lg" src={filePreview} alt="Upload preview"/>}{kind==='video' && filePreview && <video controls className="mt-2 max-h-56" src={filePreview}/>}</div>}</>}
       {busy && kind!=='notes' && <div className="space-y-1" role="status"><div className="flex justify-between text-xs text-slate-600"><span>Uploading to machine knowledge…</span><span>{uploadProgress}%</span></div><div className="h-2 rounded bg-slate-100 overflow-hidden"><div className="h-full bg-blue-600 transition-all" style={{width:`${uploadProgress}%`}}/></div></div>}
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}{status && <p role="status" className="text-sm text-emerald-700">{status}</p>}
-      <Button type="button" disabled={busy || (kind === 'audio' && recording)} onClick={save}>{busy?'Saving…':recording?'Stop recording before saving':'Save to machine knowledge'}</Button>
+      <Button type="button" disabled={busy || machineQuery.isLoading || machineQuery.isError || !machineId || (kind === 'audio' && recording)} onClick={save}>{busy?'Saving…':recording?'Stop recording before saving':'Save to machine knowledge'}</Button>
     </section>
-    <section className="space-y-3"><h2 className="text-lg font-bold">Knowledge assets {machineId && `· ${machines.find(m=>m.id===machineId)?.name || ''}`}</h2>{machineId && <><input className="w-full border rounded-lg p-3" placeholder="Search this machine’s knowledge" value={search} onChange={e=>setSearch(e.target.value)}/><div className="flex flex-wrap gap-2">{[['all','All'],['video','Videos'],['audio','Audio Recordings'],['transcript','Transcripts'],['image','Images'],['notes','Notes'],['document','Documents']].map(([key,label])=><button key={key} onClick={()=>setFilter(key)} className={`px-3 py-1.5 rounded-full text-xs ${filter===key?'bg-slate-900 text-white':'bg-slate-100'}`}>{label}</button>)}<select aria-label="Verification status" className="border rounded-full px-3 py-1.5 text-xs" value={verificationFilter} onChange={e=>setVerificationFilter(e.target.value)}><option value="all">All verification states</option><option value="pending_review">Pending review</option></select></div></>}{!machineId ? <p className="text-sm text-slate-500">Select a machine to browse its knowledge.</p> : loadingAssets ? <p role="status" className="text-sm text-slate-500">Loading machine knowledge…</p> : filteredAssets.length===0 ? <p className="text-sm text-slate-500">No {filter==='all'?'knowledge assets':filter==='video'?'videos':filter==='audio'?'audio recordings':filter==='transcript'?'transcripts':filter==='image'?'images':filter==='notes'?'notes':'documents'} have been added to this machine yet.</p> : <div className="grid gap-3 sm:grid-cols-2">{filteredAssets.map(a=><article key={a.id} className="bg-white border rounded-xl p-4"><button className="font-semibold text-left" onClick={()=>setSelectedAsset(a)}>{a.title || a.original_name}</button><div className="text-xs text-slate-500 mt-1">{a.kind} · {new Date(a.created_at).toLocaleDateString()} · {a.author_name || 'Unknown author'} · {a.verification_status || 'Pending review'}</div>{a.description && <p className="text-sm mt-2">{a.description}</p>}<div className="flex gap-3 mt-3"><button className="text-sm text-blue-700 underline" onClick={()=>setSelectedAsset(a)}>Details / Preview</button>{a.kind!=='transcript' && <><button className="text-sm text-blue-700 underline" onClick={()=>editAsset(a)}>Edit</button><button className="text-sm text-red-700 underline" onClick={()=>removeAsset(a)}>Delete</button></>}</div>{a.transcript_id && <button className="text-xs text-indigo-700 underline mt-2" onClick={()=>loadTranscript(a)}>Transcript · {a.transcript_status || 'Processing'}</button>}</article>)}</div>}</section>
+    <section className="space-y-3"><h2 className="text-lg font-bold">Knowledge assets {machineId && `· ${machines.find(m=>m.id===machineId)?.name || ''}`}</h2>{machineId && <><input className="w-full border rounded-lg p-3" placeholder="Search this machine’s knowledge" value={search} onChange={e=>setSearch(e.target.value)}/><div className="flex flex-wrap gap-2">{[['all','All'],['video','Videos'],['audio','Audio Recordings'],['transcript','Transcripts'],['image','Images'],['notes','Notes'],['document','Documents']].map(([key,label])=><button key={key} onClick={()=>setFilter(key)} className={`px-3 py-1.5 rounded-full text-xs ${filter===key?'bg-slate-900 text-white':'bg-slate-100'}`}>{label}</button>)}<select aria-label="Verification status" className="border rounded-full px-3 py-1.5 text-xs" value={verificationFilter} onChange={e=>setVerificationFilter(e.target.value)}><option value="all">All verification states</option><option value="pending_review">Pending review</option></select></div></>}{!machineId ? machineQuery.isLoading ? <p role="status" className="text-sm text-slate-500">Loading registered equipment…</p> : diaryMachines.length===0 ? <p className="text-sm text-slate-600">No active equipment is registered. <Link className="font-semibold text-blue-700 underline" to="/app/machines">Register equipment</Link> before capturing machine knowledge.</p> : <p className="text-sm text-slate-500">Select a machine to browse its knowledge.</p> : loadingAssets ? <p role="status" className="text-sm text-slate-500">Loading machine knowledge…</p> : filteredAssets.length===0 ? <p className="text-sm text-slate-500">No {filter==='all'?'knowledge assets':filter==='video'?'videos':filter==='audio'?'audio recordings':filter==='transcript'?'transcripts':filter==='image'?'images':filter==='notes'?'notes':'documents'} have been added to this machine yet.</p> : <div className="grid gap-3 sm:grid-cols-2">{filteredAssets.map(a=><article key={a.id} className="bg-white border rounded-xl p-4"><button className="font-semibold text-left" onClick={()=>setSelectedAsset(a)}>{a.title || a.original_name}</button><div className="text-xs text-slate-500 mt-1">{a.kind} · {new Date(a.created_at).toLocaleDateString()} · {a.author_name || 'Unknown author'} · {a.verification_status || 'Pending review'}</div>{a.description && <p className="text-sm mt-2">{a.description}</p>}<div className="flex gap-3 mt-3"><button className="text-sm text-blue-700 underline" onClick={()=>setSelectedAsset(a)}>Details / Preview</button>{a.kind!=='transcript' && <><button className="text-sm text-blue-700 underline" onClick={()=>editAsset(a)}>Edit</button><button className="text-sm text-red-700 underline" onClick={()=>removeAsset(a)}>Delete</button></>}</div>{a.transcript_id && <button className="text-xs text-indigo-700 underline mt-2" onClick={()=>loadTranscript(a)}>Transcript · {a.transcript_status || 'Processing'}</button>}</article>)}</div>}</section>
     {selectedAsset && <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div className="bg-white rounded-2xl max-w-2xl w-full p-5 space-y-3">
         <div className="flex justify-between gap-3"><h2 className="font-bold text-lg">{selectedAsset.title || selectedAsset.original_name}</h2><button onClick={() => setSelectedAsset(null)} aria-label="Close details">×</button></div>

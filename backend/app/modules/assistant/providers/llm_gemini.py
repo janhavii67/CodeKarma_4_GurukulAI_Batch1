@@ -167,9 +167,21 @@ class GeminiLLMProvider(LLMProvider):
     @staticmethod
     def _is_transient_error(exc: Exception) -> bool:
         err_str = str(exc).lower()
-        return any(
+        exception_types = {cls.__name__.lower() for cls in type(exc).__mro__}
+        return bool(exception_types & {"timeoutexception", "connecttimeout", "readtimeout", "writetimeout", "pooltimeout", "connecterror", "networkerror"}) or any(
             term in err_str
             for term in ["503", "unavailable", "high demand", "deadline", "timeout", "temporarily unavailable"]
+        )
+
+    @staticmethod
+    def _is_model_unavailable(exc: Exception) -> bool:
+        message = str(exc).lower()
+        return any(
+            marker in message
+            for marker in (
+                "404", "model not found", "unknown model", "model unavailable",
+                "model is not found", "not supported for generatecontent",
+            )
         )
 
     def generate(self, request: LLMRequest) -> LLMResponse:
@@ -240,6 +252,9 @@ class GeminiLLMProvider(LLMProvider):
                         logger.warning(f"Gemini transient error on model '{model}'. Retrying in 1s...")
                         time.sleep(min(1.0, remaining_s))
                         continue
+                    elif self._is_model_unavailable(exc):
+                        logger.warning("Configured Gemini model is unavailable; trying the next configured model.")
+                        break
                     else:
                         self._handle_exception(exc)
 
@@ -315,6 +330,9 @@ class GeminiLLMProvider(LLMProvider):
                         logger.warning(f"Gemini async transient error on model '{model}'. Retrying in 1s...")
                         await asyncio.sleep(min(1.0, remaining_s))
                         continue
+                    elif self._is_model_unavailable(exc):
+                        logger.warning("Configured Gemini model is unavailable; trying the next configured model.")
+                        break
                     else:
                         self._handle_exception(exc)
 
@@ -384,6 +402,9 @@ class GeminiLLMProvider(LLMProvider):
                         logger.warning(f"Gemini transient streaming error on model '{model}'. Waiting 1s...")
                         time.sleep(min(1.0, remaining_s))
                         continue
+                    elif self._is_model_unavailable(exc):
+                        logger.warning("Configured Gemini model is unavailable; trying the next configured model.")
+                        break
                     else:
                         self._handle_exception(exc)
 
@@ -413,7 +434,7 @@ class GeminiLLMProvider(LLMProvider):
             or "quota" in lower_msg
         ):
             raise LLMRateLimitError("Gemini API rate limit exceeded. Please retry after backoff.") from exc
-        if "deadline" in lower_msg or "timeout" in lower_msg:
+        if any(cls.__name__.lower() in {"timeoutexception", "connecttimeout", "readtimeout", "writetimeout", "pooltimeout"} for cls in type(exc).__mro__) or "deadline" in lower_msg or "timeout" in lower_msg:
             raise LLMTimeoutError("Gemini API call timed out.") from exc
         raise LLMError(f"Gemini generation error: {err_type}") from exc
 

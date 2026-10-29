@@ -197,3 +197,36 @@ def test_gemini_http_client_uses_configured_timeout_and_disables_nested_retries(
     assert shortened_options.timeout == 2500
     assert shortened_options.retry_options.attempts == 1
 
+
+def test_gemini_tries_next_model_when_configured_model_is_unavailable(monkeypatch):
+    from types import SimpleNamespace
+    from app.modules.assistant.providers.llm_gemini import GeminiLLMProvider
+
+    calls = []
+
+    class Models:
+        def generate_content(self, *, model, **_kwargs):
+            calls.append(model)
+            if model == "removed-model":
+                raise RuntimeError("404 model not found")
+            return SimpleNamespace(text="A grounded response.", usage_metadata=None)
+
+    client = SimpleNamespace(models=Models())
+    monkeypatch.setattr("app.modules.assistant.providers.llm_gemini.genai.Client", lambda **_kwargs: client)
+    provider = GeminiLLMProvider(api_key="synthetic-test-key", model_name="removed-model")
+    monkeypatch.setattr(provider, "_get_candidate_models", lambda _preferred=None: ["removed-model", "working-model"])
+
+    result = provider.generate(LLMRequest(prompt="Inspect this image", media_parts=[{"mime_type": "image/jpeg", "data": b"\xff\xd8\xffsample"}]))
+
+    assert calls == ["removed-model", "working-model"]
+    assert result.content == "A grounded response."
+    assert result.model_name == "working-model"
+
+
+def test_gemini_classifies_sdk_network_timeouts_as_transient():
+    import httpx
+    from app.modules.assistant.providers.llm_gemini import GeminiLLMProvider
+
+    assert GeminiLLMProvider._is_transient_error(httpx.ReadTimeout(""))
+    assert GeminiLLMProvider._is_transient_error(httpx.ConnectError("network unavailable"))
+

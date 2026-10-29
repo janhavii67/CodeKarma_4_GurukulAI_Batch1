@@ -27,8 +27,19 @@ export interface Message {
   evidence_status?: 'sufficient' | 'insufficient' | 'conflict' | 'clarification_needed' | 'n_a';
   sources?: SourceRef[];
   audio_analysis?: AudioAnalysisResult | null;
+  attachment?: TutorAttachment | null;
   handoffs?: TutorHandoffSuggestion[];
   created_at?: string;
+}
+
+export interface TutorAttachment {
+  media_id?: string;
+  filename: string;
+  mime: string;
+  size_bytes?: number;
+  url?: string;
+  /** Temporary object URL used only while an upload is in the current browser session. */
+  preview_url?: string;
 }
 
 export interface TutorHandoffSuggestion {
@@ -132,6 +143,7 @@ export interface ChatResponse {
   conversation_id: string;
   message_id: string;
   audio_analysis?: AudioAnalysisResult | null;
+  attachment?: TutorAttachment | null;
   handoffs?: TutorHandoffSuggestion[];
 }
 

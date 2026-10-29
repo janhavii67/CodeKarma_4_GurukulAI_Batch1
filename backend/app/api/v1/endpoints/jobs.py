@@ -6,7 +6,7 @@ from app.core.exceptions import NotFoundError, ForbiddenError
 from app.core.permissions import PERM_KNOWLEDGE_APPROVE, PERM_KNOWLEDGE_CREATE, PERM_KNOWLEDGE_VIEW_PUBLISHED, csrf_protect
 from app.models.processing_job import ProcessingJob
 from app.schemas.voice import ProcessingJobResponse
-from app.services.voice_service import retry_voice_job
+from app.services.voice_service import can_resume_structuring, has_saved_transcript, retry_voice_job
 from app.services.job_runner import execute_voice_processing_job
 from app.services.media_service import MediaService
 
@@ -31,7 +31,10 @@ def get_job_status(
         raise NotFoundError(code="media_not_found", message="The recording for this job was not found.")
     MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, job.media)
 
-    return job
+    response = ProcessingJobResponse.model_validate(job)
+    response.transcript_saved = has_saved_transcript(db, job.media_id)
+    response.can_resume_structuring = can_resume_structuring(db, job)
+    return response
 
 
 @router.post("/{job_id}/retry", response_model=ProcessingJobResponse, dependencies=[Depends(csrf_protect)])
@@ -57,4 +60,7 @@ def retry_failed_job(
         can_review=PERM_KNOWLEDGE_APPROVE in auth_ctx.permissions,
     )
     background_tasks.add_task(execute_voice_processing_job, job.id)
-    return job
+    response = ProcessingJobResponse.model_validate(job)
+    response.transcript_saved = has_saved_transcript(db, job.media_id)
+    response.can_resume_structuring = can_resume_structuring(db, job)
+    return response

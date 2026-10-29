@@ -42,7 +42,9 @@ from app.schemas.voice import (
     CreateDraftFromVoiceResponse,
 )
 from app.services.voice_service import (
+    can_resume_structuring,
     create_voice_capture_job,
+    has_saved_transcript,
     retry_voice_job,
     update_transcript_segment,
 )
@@ -152,7 +154,10 @@ def transcribe_machine_audio(
         db.refresh(job)
 
     background_tasks.add_task(execute_voice_processing_job, job.id)
-    return job
+    response = ProcessingJobResponse.model_validate(job)
+    response.transcript_saved = has_saved_transcript(db, job.media_id)
+    response.can_resume_structuring = can_resume_structuring(db, job)
+    return response
 
 
 @router.post("/upload", response_model=VoiceUploadResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -548,7 +553,10 @@ def get_voice_job(
     if not job.media:
         raise NotFoundError(code="media_not_found", message="The recording for this job was not found.")
     MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, job.media)
-    return job
+    response = ProcessingJobResponse.model_validate(job)
+    response.transcript_saved = has_saved_transcript(db, job.media_id)
+    response.can_resume_structuring = can_resume_structuring(db, job)
+    return response
 
 
 @router.get("/knowledge-versions/{version_id}/transcript", response_model=TranscriptResponse)

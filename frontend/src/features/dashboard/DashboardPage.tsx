@@ -12,6 +12,7 @@ import { AdminDiagnosticsModal } from './components/AdminDiagnosticsModal';
 import { Shield } from 'lucide-react';
 
 import { StitchExpertDashboard } from './components/StitchExpertDashboard';
+import { TraineeDashboard } from './TraineeDashboard';
 
 export const DashboardPage: React.FC = () => {
   const { user, permissions, hasPermission, hasRole } = useAuth();
@@ -23,6 +24,7 @@ export const DashboardPage: React.FC = () => {
 
   const isAdmin = hasRole('ADMIN');
   const isExpert = hasRole('EXPERT');
+  const isTrainee = hasRole('TRAINEE');
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
@@ -51,18 +53,16 @@ export const DashboardPage: React.FC = () => {
   }, [isAdmin]);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    if (!isTrainee) fetchDashboardData();
+  }, [fetchDashboardData, isTrainee]);
 
   return (
     <div className="space-y-7 max-w-[1440px] mx-auto pb-8">
-      {isExpert ? (
+      {isTrainee ? (
+        <TraineeDashboard user={user} hasPermission={hasPermission} />
+      ) : isExpert ? (
         <StitchExpertDashboard
-          user={user}
-          stats={stats}
-          loading={loading}
           hasPermission={hasPermission}
-          hasRole={hasRole}
         />
       ) : (
         <>

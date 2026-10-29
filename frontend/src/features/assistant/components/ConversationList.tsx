@@ -39,32 +39,40 @@ export const ConversationList: React.FC<ConversationListProps> = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-slate-50 border-r border-slate-200">
+    <div className="flex h-full w-full flex-col bg-white">
       {/* Sidebar Header */}
-      <div className="p-3.5 border-b border-slate-200 flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={onNewChat}
-          className="flex-1 inline-flex items-center justify-center space-x-2 px-3 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg shadow-2xs transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Chat</span>
-        </button>
-
-        {onRefresh && (
+      <div className="space-y-3 border-b border-slate-200/80 p-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">Tutor workspace</p>
+          <h2 className="mt-1 text-sm font-bold text-slate-900">Conversations</h2>
+          <p className="mt-0.5 text-[11px] text-slate-500">Your saved technical chats</p>
+        </div>
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={onRefresh}
-            className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition-colors"
-            title="Refresh conversations list"
+            onClick={onNewChat}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2.5 text-xs font-semibold text-white shadow-md shadow-blue-900/10 transition hover:from-blue-700 hover:to-indigo-700 active:from-blue-800"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <Plus className="h-4 w-4" />
+            <span>New chat</span>
           </button>
-        )}
+
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+              title="Refresh conversations list"
+              aria-label="Refresh conversations list"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Conversations List */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="flex-1 space-y-1 overflow-y-auto p-3">
         {loading ? (
           <div className="py-12 flex flex-col items-center justify-center text-slate-400 space-y-2">
             <LoadingSpinner size="sm" />
@@ -82,10 +90,10 @@ export const ConversationList: React.FC<ConversationListProps> = ({
             return (
               <div
                 key={conv.id}
-                className={`group relative flex items-center justify-between rounded-lg p-2.5 text-xs transition-all cursor-pointer ${
+                className={`group relative flex cursor-pointer items-center justify-between rounded-xl border p-3 text-xs transition-all ${
                   isActive
-                    ? 'bg-blue-100/70 text-blue-900 font-semibold border border-blue-200 shadow-2xs'
-                    : 'text-slate-700 hover:bg-slate-200/50 hover:text-slate-900 border border-transparent'
+                    ? 'border-blue-200 bg-blue-50 text-blue-900 font-semibold shadow-sm'
+                    : 'border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900'
                 }`}
                 onClick={() => onSelectConversation(conv.id)}
               >

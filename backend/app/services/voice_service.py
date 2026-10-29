@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional, Tuple, List
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, update
 from app.models.media import MediaAsset
 from app.models.processing_job import ProcessingJob
 from app.models.transcript import Transcript, TranscriptSegment
@@ -13,8 +13,79 @@ from app.integrations.media.ffmpeg import probe_duration
 from app.services.vector_service import compute_dense_embedding, KnowledgeEmbedding, EMBEDDING_DIM
 from app.core.exceptions import NotFoundError, ForbiddenError, ValidationError, ConflictError
 from app.core.logging import logger
+from app.core.config import settings
+from app.modules.assistant.providers.llm_base import (
+    LLMAuthenticationError,
+    LLMError,
+    LLMExternalDisabledError,
+    get_llm_provider,
+)
+from app.db.base import utc_now
 
 MAX_DURATION_SECONDS = 300.0  # 5 minutes maximum
+
+
+def has_saved_transcript(db: Session, media_id: Optional[str]) -> bool:
+    """Return whether this recording already has a transcript without loading its text."""
+    if not media_id:
+        return False
+    return db.query(Transcript.id).filter(Transcript.media_id == media_id).first() is not None
+
+
+def can_resume_structuring(db: Session, job: ProcessingJob) -> bool:
+    """Resume only a failed voice job whose transcript is saved at the structuring checkpoint."""
+    return bool(
+        job.type == "voice_to_knowledge"
+        and job.status == "failed"
+        and job.progress == 75
+        and job.attempts < 3
+        and has_saved_transcript(db, job.media_id)
+    )
+
+
+def _validate_structuring_provider_configuration() -> None:
+    """Validate configured provider credentials without sending a provider request."""
+    selected = str(
+        getattr(settings, "LLM_PROVIDER", None)
+        or getattr(settings, "ASSISTANT_LLM_PROVIDER", None)
+        or "gemini"
+    ).strip().lower()
+    try:
+        # Provider construction validates local configuration. It does not invoke generate().
+        get_llm_provider()
+    except LLMAuthenticationError as exc:
+        if selected == "gemini":
+            message = (
+                "Procedure structuring cannot resume because Gemini is selected but GEMINI_API_KEY is not configured. "
+                "Set GEMINI_API_KEY in backend/.env or the backend process environment, keep LLM_PROVIDER=gemini, "
+                "and restart FastAPI. The saved transcript and recording are unchanged."
+            )
+        elif selected == "anthropic":
+            message = (
+                "Procedure structuring cannot resume because Anthropic is selected but ANTHROPIC_API_KEY is not configured. "
+                "Set ANTHROPIC_API_KEY in backend/.env or the backend process environment, then restart FastAPI. "
+                "The saved transcript and recording are unchanged."
+            )
+        else:
+            message = "The configured procedure-structuring provider is missing credentials. Configure its server-side credentials and restart FastAPI. The saved transcript and recording are unchanged."
+        raise ConflictError(code="structuring_provider_not_configured", message=message) from exc
+    except LLMExternalDisabledError as exc:
+        message = (
+            "Procedure structuring cannot resume because external language-model calls are disabled. "
+            "If your data policy permits, enable ALLOW_EXTERNAL_LLM and configure the selected provider's API key "
+            "in the backend environment, then restart FastAPI. The saved transcript and recording are unchanged."
+        )
+        raise ConflictError(code="structuring_provider_disabled", message=message) from exc
+    except LLMError as exc:
+        raise ConflictError(
+            code="structuring_provider_unavailable",
+            message="The configured procedure-structuring provider is unavailable. Check the server-side LLM_PROVIDER setting and provider configuration. The saved transcript and recording are unchanged.",
+        ) from exc
+    except Exception as exc:
+        raise ConflictError(
+            code="structuring_provider_unavailable",
+            message="The procedure-structuring provider could not be initialized. Check backend dependencies and the server-side provider configuration, then restart FastAPI. The saved transcript and recording are unchanged.",
+        ) from exc
 
 
 def create_voice_capture_job(
@@ -163,15 +234,41 @@ def retry_voice_job(db: Session, job_id: str, user_id: str, can_review: bool = F
     if job.attempts >= 3:
         raise ValidationError(code="max_retries_exceeded", message="Maximum retry limit (3 attempts) reached for this job.")
 
-    if db.query(Transcript).filter(Transcript.media_id == job.media_id).first():
-        raise ConflictError(code="transcript_exists", message="A transcript already exists for this recording. Review or edit the existing transcript instead of retrying.")
+    has_transcript = has_saved_transcript(db, job.media_id)
+    resume_structuring = has_transcript and can_resume_structuring(db, job)
+    if has_transcript and not resume_structuring:
+        raise ConflictError(
+            code="transcript_exists",
+            message="A transcript already exists, but this job is not at the safe structuring-resume checkpoint. Review or edit the saved transcript; it will not be replaced.",
+        )
+    if resume_structuring:
+        _validate_structuring_provider_configuration()
 
-    job.status = "queued"
-    job.progress = 0
-    job.error_safe = None
+    # Conditional update is the single-winner gate for repeated/concurrent retries.
+    update_query = update(ProcessingJob).where(
+        ProcessingJob.id == job_id,
+        ProcessingJob.status == "failed",
+        ProcessingJob.attempts < 3,
+    )
+    if resume_structuring:
+        update_query = update_query.where(
+            ProcessingJob.type == "voice_to_knowledge",
+            ProcessingJob.progress == 75,
+        )
+    update_result = db.execute(
+        update_query.values(
+            status="queued",
+            progress=75 if resume_structuring else 0,
+            error_safe=None,
+            updated_at=utc_now(),
+        ).execution_options(synchronize_session=False)
+    )
+    if update_result.rowcount != 1:
+        db.rollback()
+        raise ConflictError(code="job_retry_in_progress", message="This job has already been retried or changed state. Refresh the job status before trying again.")
     db.commit()
-    db.refresh(job)
-    return job
+    db.expire_all()
+    return db.get(ProcessingJob, job_id)
 
 
 def update_transcript_segment(

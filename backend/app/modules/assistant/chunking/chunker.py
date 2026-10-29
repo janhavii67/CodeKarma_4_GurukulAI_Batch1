@@ -36,6 +36,48 @@ def _approx_token_count(text: str) -> int:
     return max(1, int(words * 1.3))
 
 
+def _document_source_citations(source_refs: Optional[List[Dict[str, Any]]]) -> List[str]:
+    """Render explicitly typed document references for reviewer and RAG context.
+
+    Existing ``type=knowledge`` references link related knowledge versions and
+    are intentionally excluded here; they are not evidence for this version.
+    """
+    citations: List[str] = []
+    for ref in source_refs or []:
+        if not isinstance(ref, dict) or str(ref.get("type", "")).casefold() != "document":
+            continue
+
+        title = str(ref.get("source_title") or ref.get("title") or "").strip()
+        if not title:
+            continue
+
+        details = [title]
+        publisher = str(ref.get("publisher") or "").strip()
+        manual_number = str(ref.get("manual_number") or "").strip()
+        revision = str(ref.get("revision") or "").strip()
+        pages = ref.get("pdf_pages") or ref.get("pages") or ref.get("pdf_page")
+        printed_pages = ref.get("printed_pages") or ref.get("printed_page")
+        section = str(ref.get("section") or "").strip()
+        if publisher:
+            details.append(publisher)
+        if manual_number:
+            details.append(f"document {manual_number}")
+        if revision:
+            details.append(f"revision {revision}")
+        if pages:
+            page_values = ", ".join(str(page) for page in pages) if isinstance(pages, list) else str(pages)
+            details.append(f"PDF page(s) {page_values}")
+        if printed_pages:
+            page_values = ", ".join(str(page) for page in printed_pages) if isinstance(printed_pages, list) else str(printed_pages)
+            details.append(f"printed page(s) {page_values}")
+        if section:
+            details.append(f"section {section}")
+        citation = "Source document: " + "; ".join(details)
+        if citation not in citations:
+            citations.append(citation)
+    return citations
+
+
 def chunk_text(
     text: str,
     title: str = "",
@@ -81,11 +123,12 @@ def chunk_text(
         else:
             # Paragraph-based rolling window
             paragraphs = [p.strip() for p in sec.split("\n\n") if p.strip()]
-            window_words: List[str] = []
+            window_paragraphs: List[str] = []
+            window_word_count = 0
             for p in paragraphs:
-                p_words = p.split()
-                if len(window_words) + len(p_words) > target_words and window_words:
-                    chunk_body = " ".join(window_words)
+                paragraph_word_count = len(p.split())
+                if window_word_count + paragraph_word_count > target_words and window_paragraphs:
+                    chunk_body = "\n\n".join(window_paragraphs)
                     chunks.append(
                         ChunkPayload(
                             chunk_index=current_index,
@@ -97,13 +140,22 @@ def chunk_text(
                         )
                     )
                     current_index += 1
-                    # Overlap
-                    window_words = window_words[-overlap_words:] + p_words
-                else:
-                    window_words.extend(p_words)
+                    # Preserve paragraph/line formatting in the overlap too.
+                    words = list(re.finditer(r"\S+", chunk_body))
+                    if overlap_words and words:
+                        tail_start = words[max(0, len(words) - overlap_words)].start()
+                        overlap = chunk_body[tail_start:]
+                        window_paragraphs = [overlap]
+                        window_word_count = len(overlap.split())
+                    else:
+                        window_paragraphs = []
+                        window_word_count = 0
 
-            if window_words:
-                chunk_body = " ".join(window_words)
+                window_paragraphs.append(p)
+                window_word_count += paragraph_word_count
+
+            if window_paragraphs:
+                chunk_body = "\n\n".join(window_paragraphs)
                 chunks.append(
                     ChunkPayload(
                         chunk_index=current_index,
@@ -131,6 +183,7 @@ def chunk_knowledge_version(
     prerequisites: Optional[str] = None,
     common_mistakes: Optional[str] = None,
     corrective_actions: Optional[str] = None,
+    source_refs: Optional[List[Dict[str, Any]]] = None,
 ) -> List[ChunkPayload]:
     """
     Intelligently chunk a KnowledgeVersion record, ensuring ALL data sent by the user
@@ -295,6 +348,19 @@ def chunk_knowledge_version(
                 )
             )
             idx += 1
+
+    source_citations = _document_source_citations(source_refs)
+    if source_citations and chunks:
+        citation_text = "\n".join(source_citations)
+        for chunk in chunks:
+            chunk.text = f"{chunk.text}\n\n{citation_text}"
+            chunk.token_count = _approx_token_count(chunk.text)
+            chunk.search_vector = _build_search_vector(chunk.text, title)
+            chunk.metadata["source_citations"] = source_citations
+            if chunk.section_label:
+                chunk.section_label = f"{chunk.section_label} · {citation_text}"[:250]
+            else:
+                chunk.section_label = citation_text[:250]
 
     return chunks
 

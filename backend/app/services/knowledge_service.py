@@ -36,6 +36,11 @@ from app.schemas.knowledge import (
     Step,
 )
 from app.services.audit_service import AuditService
+from app.services.source_verification import prepare_source_refs_for_save
+from app.services.synthetic_demo import (
+    is_synthetic_demo_machine,
+    synthetic_demo_environment_enabled,
+)
 
 
 class KnowledgeService:
@@ -142,6 +147,7 @@ class KnowledgeService:
         ip_address: Optional[str] = None,
     ) -> Tuple[KnowledgeItem, KnowledgeVersion]:
         # Validate machine exists if provided
+        machine = None
         if payload.machine_id:
             machine = MachineRepository.get_by_id(db, payload.machine_id)
             if not machine:
@@ -152,6 +158,7 @@ class KnowledgeService:
 
         summary_val = payload.summary or payload.description
         desc_val = payload.description
+        verified_source_count = 0
 
         try:
             item, version = KnowledgeRepository.create_item_and_version_1(
@@ -161,9 +168,40 @@ class KnowledgeService:
                 machine_id=payload.machine_id,
                 summary=summary_val,
                 description=desc_val,
-                is_demo=False,
+                is_demo=bool(machine and is_synthetic_demo_machine(machine, db=db)),
                 commit=False,
             )
+
+            # These fields are stored on the version snapshot. Keep the supplied
+            # text (including internal line breaks) intact so it remains useful
+            # to reviewers and the knowledge index.
+            for field in (
+                "content",
+                "operating_conditions",
+                "prerequisites",
+                "safety_warnings",
+                "common_mistakes",
+                "corrective_actions",
+            ):
+                if field in payload.model_fields_set:
+                    value = getattr(payload, field)
+                    setattr(version, field, value or None)
+
+            if "source_refs" in payload.model_fields_set:
+                version.source_refs, verified_source_count = prepare_source_refs_for_save(
+                    payload.source_refs,
+                    machine_id=payload.machine_id,
+                    db=db,
+                    user=user,
+                )
+
+            if payload.content and not version.summary:
+                version.summary = payload.content
+
+            if "category" in payload.model_fields_set and payload.category:
+                item.category = payload.category
+            if "tags" in payload.model_fields_set:
+                item.tags = payload.tags
 
             AuditService.log(
                 db=db,
@@ -180,6 +218,22 @@ class KnowledgeService:
                 ip_address=ip_address,
                 commit=False,
             )
+            if verified_source_count:
+                AuditService.log(
+                    db=db,
+                    action="knowledge.source_verified",
+                    entity_type="knowledge_version",
+                    entity_id=version.id,
+                    actor_id=user.id,
+                    detail={
+                        "item_id": item.id,
+                        "version_no": version.version_no,
+                        "machine_id": version.machine_id,
+                        "verified_source_count": verified_source_count,
+                    },
+                    ip_address=ip_address,
+                    commit=False,
+                )
 
             db.commit()
             db.refresh(item)
@@ -206,6 +260,12 @@ class KnowledgeService:
     ) -> Tuple[KnowledgeItem, KnowledgeVersion]:
         item = KnowledgeRepository.get_item_by_id(db, item_id)
         if not item:
+            raise NotFoundError(
+                code="not_found",
+                message="The requested knowledge item was not found.",
+            )
+
+        if item.is_demo and not synthetic_demo_environment_enabled(db):
             raise NotFoundError(
                 code="not_found",
                 message="The requested knowledge item was not found.",
@@ -386,9 +446,12 @@ class KnowledgeService:
             )
 
         changed_fields = []
+        verified_source_count = 0
 
-        # Validate and apply machine_id update
-        if payload.machine_id is not None:
+        # Apply a machine change only when the client explicitly supplied the
+        # field. This distinguishes an omitted association from an explicit
+        # null while retaining the registered-machine validation.
+        if "machine_id" in payload.model_fields_set:
             if payload.machine_id:
                 machine = MachineRepository.get_by_id(db, payload.machine_id)
                 if not machine:
@@ -428,6 +491,29 @@ class KnowledgeService:
             version.steps = normalized_steps
             changed_fields.append("steps")
 
+        for field in (
+            "content",
+            "operating_conditions",
+            "prerequisites",
+            "safety_warnings",
+            "common_mistakes",
+            "corrective_actions",
+            "changelog",
+        ):
+            if field in payload.model_fields_set:
+                value = getattr(payload, field)
+                setattr(version, field, value or None)
+                changed_fields.append(field)
+
+        if "source_refs" in payload.model_fields_set:
+            version.source_refs, verified_source_count = prepare_source_refs_for_save(
+                payload.source_refs,
+                machine_id=version.machine_id or item.machine_id,
+                db=db,
+                user=user,
+            )
+            changed_fields.append("source_refs")
+
         now = utc_now()
         version.updated_at = now
         item.updated_at = now
@@ -446,6 +532,22 @@ class KnowledgeService:
             ip_address=ip_address,
             commit=False,
         )
+        if verified_source_count:
+            AuditService.log(
+                db=db,
+                action="knowledge.source_verified",
+                entity_type="knowledge_version",
+                entity_id=version.id,
+                actor_id=user.id,
+                detail={
+                    "item_id": item.id,
+                    "version_no": version.version_no,
+                    "machine_id": version.machine_id or item.machine_id,
+                    "verified_source_count": verified_source_count,
+                },
+                ip_address=ip_address,
+                commit=False,
+            )
 
         db.commit()
         db.refresh(item)
@@ -625,7 +727,10 @@ class KnowledgeService:
         is_trainee = PERM_KNOWLEDGE_CREATE not in permissions
 
         # Fetch candidate items
-        stmt = select(KnowledgeItem)
+        stmt = select(KnowledgeItem).where(KnowledgeItem.is_archived.is_(False))
+
+        if not synthetic_demo_environment_enabled(db):
+            stmt = stmt.where(KnowledgeItem.is_demo.is_(False))
 
         if machine_id:
             stmt = stmt.where(KnowledgeItem.machine_id == machine_id)
@@ -643,6 +748,9 @@ class KnowledgeService:
 
         # Resolve representative version and filter visibility
         visible_rows = []
+        inactive_machine_ids = set(
+            db.execute(select(Machine.id).where(Machine.is_active.is_(False))).scalars().all()
+        )
         for it in all_candidate_items:
             # Find representative version
             rep_version = None
@@ -686,6 +794,12 @@ class KnowledgeService:
                         rep_version = rev_ver
 
             if not rep_version:
+                continue
+
+            # Keep historical diaries for archived equipment out of the
+            # ordinary My Knowledge catalog. The records remain stored.
+            associated_machine_id = it.machine_id or rep_version.machine_id
+            if associated_machine_id in inactive_machine_ids:
                 continue
 
             # Apply status filter on the representative version

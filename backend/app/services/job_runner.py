@@ -12,6 +12,7 @@ from app.models.transcript import Transcript, TranscriptSegment
 from app.models.knowledge import KnowledgeVersion
 from app.integrations.media.ffmpeg import extract_audio_wav, probe_duration
 from app.integrations.speech.factory import get_speech_provider
+from app.integrations.speech.base import Segment
 from app.services.vector_service import index_voice_transcript
 from app.services.structuring_service import structure_transcript_with_ai, determine_segment_flags
 from app.core.logging import logger
@@ -89,6 +90,13 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
             logger.error(f"ProcessingJob {job_id} not found in background runner.")
             return
 
+        saved_transcript = (
+            db.query(Transcript)
+            .filter(Transcript.media_id == job.media_id)
+            .first()
+        ) if job.media_id else None
+        resume_structuring = bool(saved_transcript and job.progress == 75)
+
         # Claim atomically so duplicate background task dispatches cannot run
         # transcription concurrently or create a second transcript.
         claim = db.execute(
@@ -96,7 +104,7 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
             .where(ProcessingJob.id == job_id, ProcessingJob.status == "queued")
             .values(
                 status="processing",
-                progress=15,
+                progress=75 if resume_structuring else 15,
                 attempts=ProcessingJob.attempts + 1,
             )
         )
@@ -108,105 +116,118 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
         db.refresh(job)
 
         media = db.get(MediaAsset, job.media_id)
-        audio_file_path = None
-        if media:
+        if not media:
+            job.status = "failed"
+            job.error_safe = "The recording record for this processing job was not found."
+            db.commit()
+            return
+
+        if resume_structuring:
+            # Resume from saved, editable transcript rows. No audio decoding,
+            # transcription, transcript writes, or duplicate vector indexing occur.
+            transcript = saved_transcript
+            segments_data = [
+                Segment(
+                    idx=segment.idx,
+                    start_s=segment.start_s,
+                    end_s=segment.end_s,
+                    text=segment.edited_text or segment.original_text or segment.text,
+                )
+                for segment in sorted(transcript.segments, key=lambda item: item.idx)
+            ]
+            if not segments_data:
+                job.status = "failed"
+                job.error_safe = "The saved transcript has no timestamped segments to structure. Review the transcript manually; the recording and transcript were preserved."
+                db.commit()
+                return
+        else:
             stored = Path(media.file_path)
             audio_file_path = stored if stored.is_absolute() and stored.exists() else (Path(settings.MEDIA_ROOT) / media.storage_key)
-        if not media or not audio_file_path.exists():
-            job.status = "failed"
-            job.error_safe = "Media audio file not found on disk."
+            if not audio_file_path.exists():
+                job.status = "failed"
+                job.error_safe = "Media audio file not found on disk."
+                db.commit()
+                return
+
+            stage = "audio normalization"
+            input_path = audio_file_path
+            wav_path = input_path.with_suffix(".16k.wav")
+            normalized_path = wav_path
+            extract_audio_wav(input_path, wav_path)
+
+            if not media.duration_seconds or media.duration_seconds <= 0:
+                media.duration_seconds = probe_duration(wav_path)
+                db.commit()
+
+            job.progress = 35
             db.commit()
-            return
 
-        stage = "audio normalization"
-        input_path = audio_file_path
-        wav_path = input_path.with_suffix(".16k.wav")
-        normalized_path = wav_path
-        extract_audio_wav(input_path, wav_path)
+            stage = "speech transcription"
+            speech_provider = get_speech_provider()
+            segments_data = await _transcribe_with_heartbeat(speech_provider, wav_path, db, job_id)
+            if not segments_data:
+                job.status = "failed"
+                job.error_safe = "No audible speech detected in narration. Please verify microphone input."
+                db.commit()
+                return
 
-        # Update media duration if missing
-        if not media.duration_seconds or media.duration_seconds <= 0:
-            media.duration_seconds = probe_duration(wav_path)
-            db.commit()
+            full_text = " ".join([s.text for s in segments_data])
+            existing_transcript = db.query(Transcript).filter(Transcript.media_id == media.id).first()
+            if existing_transcript:
+                raise ValidationError(
+                    code="transcript_exists",
+                    message="A transcript already exists for this recording. Review or edit the existing transcript.",
+                )
 
-        job.progress = 35
-        db.commit()
-
-        # 2. Speech-to-Text Transcription
-        stage = "speech transcription"
-        speech_provider = get_speech_provider()
-        segments_data = await _transcribe_with_heartbeat(speech_provider, wav_path, db, job_id)
-
-        if not segments_data:
-            job.status = "failed"
-            job.error_safe = "No audible speech detected in narration. Please verify microphone input."
-            db.commit()
-            return
-
-        full_text = " ".join([s.text for s in segments_data])
-
-        # Do not replace a transcript: a retry after downstream failure must not
-        # erase expert edits or create a second transcript for the same recording.
-        existing_transcript = db.query(Transcript).filter(Transcript.media_id == media.id).first()
-        if existing_transcript:
-            raise ValidationError(
-                code="transcript_exists",
-                message="A transcript already exists for this recording. Review or edit the existing transcript.",
+            transcript = Transcript(
+                media_id=media.id,
+                version_id=job.version_id,
+                raw_text=full_text,
+                language=(
+                    getattr(speech_provider, "detected_language", None)
+                    or getattr(speech_provider, "language", None)
+                    or "en"
+                ),
+                provider=getattr(speech_provider, "model", "default_stt"),
+                full_text=full_text,
+                status="completed",
             )
+            db.add(transcript)
+            db.flush()
 
-        transcript = Transcript(
-            media_id=media.id,
-            version_id=job.version_id,
-            raw_text=full_text,
-            language=(
-                getattr(speech_provider, "detected_language", None)
-                or getattr(speech_provider, "language", None)
-                or "en"
-            ),
-            provider=getattr(speech_provider, "model", "default_stt"),
-            full_text=full_text,
-            status="completed",
-        )
-        db.add(transcript)
-        db.flush()
+            for seg in segments_data:
+                is_seg_flagged, _ = determine_segment_flags(seg.text)
+                db.add(TranscriptSegment(
+                    transcript_id=transcript.id,
+                    segment_order=seg.idx,
+                    start_time_seconds=seg.start_s,
+                    end_time_seconds=seg.end_s,
+                    text=seg.text,
+                    idx=seg.idx,
+                    start_s=seg.start_s,
+                    end_s=seg.end_s,
+                    original_text=seg.text,
+                    needs_review=is_seg_flagged,
+                ))
 
-        for seg in segments_data:
-            is_seg_flagged, _ = determine_segment_flags(seg.text)
-            t_seg = TranscriptSegment(
-                transcript_id=transcript.id,
-                segment_order=seg.idx,
-                start_time_seconds=seg.start_s,
-                end_time_seconds=seg.end_s,
-                text=seg.text,
-                idx=seg.idx,
-                start_s=seg.start_s,
-                end_s=seg.end_s,
-                original_text=seg.text,
-                needs_review=is_seg_flagged,
-            )
-            db.add(t_seg)
+            db.commit()
+            db.refresh(transcript)
+            job.progress = 60
+            db.commit()
 
-        db.commit()
-        db.refresh(transcript)
+            try:
+                index_voice_transcript(db=db, transcript=transcript, media=media, version_id=job.version_id)
+            except Exception as e:
+                logger.error(f"Vector indexing error for job {job_id}: {e}")
 
-        job.progress = 60
-        db.commit()
+            try:
+                from app.modules.assistant.services.indexing_service import IndexingService
+                IndexingService.index_transcript(transcript.id, db=db, title=media.title)
+            except Exception as e:
+                logger.error(f"Assistant RAG transcript indexing error for job {job_id}: {e}")
 
-        # 3. Vector Embedding Storage for RAG Model (Voice Segment Search during Drafting)
-        try:
-            index_voice_transcript(db=db, transcript=transcript, media=media, version_id=job.version_id)
-        except Exception as e:
-            logger.error(f"Vector indexing error for job {job_id}: {e}")
-
-        # 3b. Index transcript chunks into Assistant Knowledge Base (inactive until publish)
-        try:
-            from app.modules.assistant.services.indexing_service import IndexingService
-            IndexingService.index_transcript(transcript.id, db=db, title=media.title)
-        except Exception as e:
-            logger.error(f"Assistant RAG transcript indexing error for job {job_id}: {e}")
-
-        job.progress = 75
-        db.commit()
+            job.progress = 75
+            db.commit()
 
         # 4. AI Structuring into SOP Steps
         stage = "AI structuring"
@@ -299,6 +320,8 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
                     "local_whisper_dependency_incompatible",
                     "local_whisper_model_unavailable",
                     "local_transcription_failed",
+                    "structuring_provider_not_configured",
+                    "structuring_provider_disabled",
                 }
                 message = str(e)
                 if e.code in safe_provider_errors:
@@ -310,7 +333,10 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
                 elif stage == "speech transcription":
                     job.error_safe = "Speech-to-text failed. Check the recording and configured speech provider, then retry."
                 elif stage == "AI structuring":
-                    job.error_safe = "AI could not structure this narration. The transcript is saved for expert review."
+                    job.error_safe = (
+                        "The transcript is saved, but automatic procedure structuring could not complete. "
+                        "Review the transcript manually and check the configured language-model provider and credentials."
+                    )
                 else:
                     job.error_safe = "Narration processing failed. The recording is saved; check processing service status before retrying."
                 db.commit()
@@ -325,7 +351,13 @@ async def execute_voice_processing_job(job_id: str, db: Optional[Session] = None
             job = db.get(ProcessingJob, job_id)
             if job:
                 job.status = "failed"
-                job.error_safe = "Narration processing failed. The recording is saved; check processing service status before retrying."
+                if stage == "AI structuring":
+                    job.error_safe = (
+                        "The transcript is saved, but automatic procedure structuring could not complete. "
+                        "Review the transcript manually and check the configured language-model provider and credentials."
+                    )
+                else:
+                    job.error_safe = "Narration processing failed. The recording is saved; check processing service status before retrying."
                 db.commit()
         except Exception:
             db.rollback()

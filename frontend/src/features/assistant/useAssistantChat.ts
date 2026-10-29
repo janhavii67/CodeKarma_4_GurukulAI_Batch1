@@ -238,6 +238,9 @@ export function useAssistantChat(
       } catch (streamErr: any) {
         // If aborted by user, reset state and exit
         if (controller.signal.aborted || streamErr?.name === 'AbortError') {
+          if (!accumulatedText.trim()) {
+            setMessages((prev) => prev.filter((message) => message.id !== assistantPlaceholderId));
+          }
           setState('idle');
           return false;
         }

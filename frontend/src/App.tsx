@@ -25,6 +25,8 @@ import { MachineKnowledgePage } from './features/knowledge/MachineKnowledgePage'
 import { ProcedureCreatePage } from './features/knowledge/ProcedureCreatePage';
 import { LandingPage } from './features/landing/LandingPage';
 import { MachineDiaryLibraryPage, MachineDiaryPage } from './features/knowledge/MachineDiaryLibraryPage';
+import { SoundInferencePage } from './features/sound-inference/SoundInferencePage';
+import { KnowledgeDetailPage } from './features/knowledge/KnowledgeDetailPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,7 +41,7 @@ export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             {/* Marketing landing page */}
             <Route path="/" element={<LandingPage />} />
@@ -67,7 +69,8 @@ export const App: React.FC = () => {
               <Route path="knowledge-assets" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><MachineKnowledgePage /></ProtectedRoute>} />
               <Route path="procedures/new" element={<ProtectedRoute requiredPermission="procedure.create"><ProcedureCreatePage /></ProtectedRoute>} />
               <Route path="knowledge/new" element={<ProtectedRoute requiredPermission="knowledge.create"><KnowledgeEditorPage /></ProtectedRoute>} />
-              <Route path="knowledge/:id" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><KnowledgeEditorPage /></ProtectedRoute>} />
+              <Route path="knowledge/:id" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><KnowledgeDetailPage /></ProtectedRoute>} />
+              <Route path="knowledge/:id/edit" element={<ProtectedRoute requiredPermission="knowledge.create"><KnowledgeEditorPage /></ProtectedRoute>} />
               <Route path="reviews" element={<ProtectedRoute requiredPermission="knowledge.approve"><ReviewsPage /></ProtectedRoute>} />
               <Route path="guided-workflows" element={<ProtectedRoute requiredPermission="procedure.execute"><GuidedWorkflowsPage /></ProtectedRoute>} />
               <Route path="sound-analysis" element={<ProtectedRoute requiredPermission="audio.analyze"><SoundAnalysisPage /></ProtectedRoute>} />
@@ -78,6 +81,9 @@ export const App: React.FC = () => {
 
               {/* AI Knowledge Assistant (Module 02) */}
               <Route path="assistant" element={<ProtectedRoute requiredPermission="assistant.use"><AssistantPage /></ProtectedRoute>} />
+
+              {/* Medical Equipment Sound Intelligence */}
+              <Route path="sound-inference" element={<ProtectedRoute requiredPermission="audio.analyze"><SoundInferencePage /></ProtectedRoute>} />
 
               <Route
                 path="troubleshooting"

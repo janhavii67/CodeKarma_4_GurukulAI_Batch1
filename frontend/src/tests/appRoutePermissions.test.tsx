@@ -29,6 +29,13 @@ vi.mock('../features/knowledge/ProcedureCreatePage', () => ({ ProcedureCreatePag
 vi.mock('../features/simulations/FailureSimulatorPage', () => ({ FailureSimulatorPage: () => <div>Failure simulator</div> }));
 vi.mock('../features/assistant/AssistantPage', () => ({ AssistantPage: () => <div>Assistant page</div> }));
 vi.mock('../features/workflows/GuidedWorkflowsPage', () => ({ GuidedWorkflowsPage: () => <div>Workflow page</div> }));
+vi.mock('../features/dashboard/DashboardPage', () => ({ DashboardPage: () => <div>Dashboard page</div> }));
+vi.mock('../features/knowledge/MachineDiaryLibraryPage', () => ({
+  MachineDiaryLibraryPage: () => <div>Knowledge library page</div>,
+  MachineDiaryPage: () => <div>Machine diary page</div>,
+}));
+vi.mock('../features/troubleshooting/TroubleshootingPage', () => ({ TroubleshootingPage: () => <div>Troubleshooting page</div> }));
+vi.mock('../features/audio/SoundAnalysisPage', () => ({ SoundAnalysisPage: () => <div>Audio matching page</div> }));
 
 afterEach(() => {
   cleanup();
@@ -45,9 +52,15 @@ const directOpen = (role: string, permissions: string[], path: string) => {
 
 describe('actual application route permission matrix', () => {
   it.each([
+    ['TRAINEE', [], '/app', 'Dashboard page'],
+    ['TRAINEE', ['knowledge.view_published'], '/app/knowledge', 'Knowledge library page'],
+    ['TRAINEE', ['assistant.use'], '/app/assistant', 'Assistant page'],
+    ['TRAINEE', ['troubleshoot.use'], '/app/troubleshooting', 'Troubleshooting page'],
     ['ADMIN', ['knowledge.approve'], '/app/reviews', 'Review queue'],
     ['EXPERT', ['knowledge.approve'], '/app/reviews', 'Review queue'],
     ['OPERATOR', ['procedure.execute'], '/app/guided-workflows', 'Workflow page'],
+    ['TRAINEE', ['procedure.execute'], '/app/guided-workflows', 'Workflow page'],
+    ['TRAINEE', ['audio.analyze'], '/app/sound-analysis', 'Audio matching page'],
     ['TRAINEE', ['assistant.use'], '/app/assistant', 'Assistant page'],
     ['TRAINEE', ['simulation.attempt'], '/app/failure-simulator', 'Failure simulator'],
     ['ADMIN', ['procedure.create'], '/app/procedures/new', 'Procedure authoring'],
@@ -57,6 +70,11 @@ describe('actual application route permission matrix', () => {
   });
 
   it.each([
+    ['TRAINEE', [], '/app/knowledge'],
+    ['TRAINEE', [], '/app/assistant'],
+    ['TRAINEE', [], '/app/troubleshooting'],
+    ['TRAINEE', [], '/app/guided-workflows'],
+    ['TRAINEE', [], '/app/sound-analysis'],
     ['TRAINEE', ['knowledge.view_published'], '/app/reviews'],
     ['OPERATOR', ['assistant.use', 'procedure.execute'], '/app/reviews'],
     ['TRAINEE', ['knowledge.view_published'], '/app/procedures/new'],

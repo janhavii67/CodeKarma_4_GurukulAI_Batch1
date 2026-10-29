@@ -22,6 +22,7 @@ export const SourceCitations: React.FC<SourceCitationsProps> = ({ sources, onSel
       <div className="flex flex-wrap gap-2">
         {sources.map((src, idx) => {
           const targetId = src.source_id || src.chunk_id || `src-${idx}`;
+          const isSynthetic = src.title.includes('SYNTHETIC DEMO DATA — NOT FOR REAL MACHINE OPERATION');
           return (
             <button
               key={`${targetId}-${idx}`}
@@ -36,6 +37,7 @@ export const SourceCitations: React.FC<SourceCitationsProps> = ({ sources, onSel
               <span className="font-semibold truncate max-w-[220px]">
                 {src.title.replace(/^Knowledge base document:\s*/i, '')}
               </span>
+              {isSynthetic && <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900">SYNTHETIC DEMO</span>}
               <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-blue-600 shrink-0 ml-0.5" />
             </button>
           );

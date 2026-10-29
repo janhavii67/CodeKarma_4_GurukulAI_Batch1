@@ -79,6 +79,7 @@ class KnowledgeItem(Base, TimestampMixin):
     category: Mapped[str] = mapped_column(String(64), index=True, default="GENERAL")
     tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), index=True, default="DRAFT", nullable=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=text("false"))
     current_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     author_id: Mapped[str] = mapped_column(
         String(36),

@@ -51,6 +51,7 @@ class KnowledgeCreateRequest(BaseModel):
     category: Optional[str] = Field("GENERAL", max_length=64)
     tags: Optional[str] = None
     content: Optional[str] = None
+    source_refs: Optional[List[Dict[str, Any]]] = Field(None, max_length=50)
     operating_conditions: Optional[str] = None
     prerequisites: Optional[str] = None
     safety_warnings: Optional[str] = None
@@ -58,6 +59,16 @@ class KnowledgeCreateRequest(BaseModel):
     corrective_actions: Optional[str] = None
 
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+
+
+class KnowledgeSourceCandidatePreview(BaseModel):
+    title: str
+    machine_id: Optional[str] = None
+    category: str = "GENERAL"
+    tags: Optional[str] = None
+    summary: Optional[str] = None
+    content: str
+    source_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=50)
 
 
 class KnowledgeUpdateRequest(BaseModel):
@@ -71,6 +82,7 @@ class KnowledgeUpdateRequest(BaseModel):
     category: Optional[str] = None
     tags: Optional[str] = None
     content: Optional[str] = None
+    source_refs: Optional[List[Dict[str, Any]]] = Field(None, max_length=50)
     operating_conditions: Optional[str] = None
     prerequisites: Optional[str] = None
     safety_warnings: Optional[str] = None

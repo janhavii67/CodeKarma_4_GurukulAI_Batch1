@@ -15,9 +15,10 @@ export const InsufficientEvidenceNotice: React.FC<InsufficientEvidenceNoticeProp
         <div className="space-y-1">
           <h4 className="text-sm font-bold text-amber-900">No approved source found</h4>
           <p className="text-xs text-amber-800 leading-relaxed">
-            The verified manufacturing knowledge base does not contain an approved procedure,
-            standard parameter, or verified checklist answering this question.
-            To prevent equipment damage or shopfloor safety violations, unverified steps were not generated.
+            No approved source matched this question. For machine-specific guidance, the knowledge base needs
+            a reviewed source linked to the identified machine, such as its manufacturer manual or approved SOP
+            with model, revision, and page references. Unverified settings, protocols, troubleshooting, and
+            repair steps are not generated.
           </p>
         </div>
       </div>

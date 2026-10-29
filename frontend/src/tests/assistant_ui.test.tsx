@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AssistantPage } from '../features/assistant/AssistantPage';
+import { SourceCitations } from '../features/assistant/components/SourceCitations';
 import { api } from '../lib/api/client';
 
 function createMockStream(chunks: string[]): ReadableStream<Uint8Array> {
@@ -97,6 +98,21 @@ describe('AI Knowledge Assistant UI Component Tests', () => {
     });
   });
 
+  it('visibly labels synthetic citations separately from ordinary sources', () => {
+    render(
+      <SourceCitations
+        sources={[
+          { title: 'SYNTHETIC DEMO DATA — NOT FOR REAL MACHINE OPERATION — CT Example', type: 'knowledge_version' },
+          { title: 'Approved training SOP', type: 'knowledge_version' },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('SYNTHETIC DEMO')).toBeInTheDocument();
+    expect(screen.getByText('Approved training SOP')).toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+  });
+
   afterEach(() => {
     global.fetch = originalFetch;
   });
@@ -175,6 +191,28 @@ describe('AI Knowledge Assistant UI Component Tests', () => {
     expect(
       await screen.findByText(/Run spindle warmup for 15 mins at 5000 RPM/i)
     ).toBeInTheDocument();
+  });
+
+  it('aborts an in-flight stream and removes an empty assistant placeholder', async () => {
+    let requestSignal: AbortSignal | undefined;
+    global.fetch = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal as AbortSignal;
+      return new Promise<Response>((_resolve, reject) => {
+        requestSignal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      });
+    });
+
+    renderAssistant();
+    await userEvent.type(screen.getByPlaceholderText(/Ask about SOPs, machines/i), 'Check this machine');
+    fireEvent.click(screen.getByTitle(/Send query/i));
+
+    const stopButton = await screen.findByTitle('Stop streaming response');
+    fireEvent.click(stopButton);
+
+    expect(requestSignal?.aborted).toBe(true);
+    expect(await screen.findByTitle(/Send query/i)).toBeInTheDocument();
+    expect(screen.getByText('Check this machine')).toBeInTheDocument();
+    expect(screen.queryByText(/Writing your grounded answer/i)).not.toBeInTheDocument();
   });
 
   it('uploads machine audio, follows a reliable match through grounded chat, and renders the persisted analysis result', async () => {
@@ -297,6 +335,13 @@ describe('AI Knowledge Assistant UI Component Tests', () => {
       conversation_id: 'conv-media',
       message_id: 'msg-media',
       handoffs: [],
+      attachment: {
+        media_id: 'media-image-1',
+        filename: 'machine.jpg',
+        mime: 'image/jpeg',
+        size_bytes: 1024,
+        url: '/api/v1/assistant/attachments/media-image-1',
+      },
     } as any);
     renderAssistant();
 
@@ -306,6 +351,10 @@ describe('AI Knowledge Assistant UI Component Tests', () => {
     });
 
     expect(await screen.findByText('The approved procedure identifies the relevant inspection checkpoint.')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Open attachment machine.jpg' })).toHaveAttribute(
+      'href',
+      '/api/v1/assistant/attachments/media-image-1',
+    );
     expect(api.postForm).toHaveBeenCalledWith('/assistant/chat/media', expect.any(FormData));
   });
 
@@ -331,10 +380,56 @@ describe('AI Knowledge Assistant UI Component Tests', () => {
 
     // Insufficient evidence banner
     expect(await screen.findByText(/No approved source found/i)).toBeInTheDocument();
+    expect(screen.getByText(/reviewed source linked to the identified machine/i)).toBeInTheDocument();
     expect(
       screen.getByText(/Ask an Expert \(Planned\)/i)
     ).toBeInTheDocument();
     expect(screen.getByText(/Insufficient Evidence/i)).toBeInTheDocument();
+  });
+
+  it('shows clearly labelled synthetic demo sample questions for a selected demo machine', async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.includes('/assistant/conversations')) return [] as any;
+      if (url.includes('/machines')) return {
+        items: [{ id: 'synthetic-ct', name: 'CT-SCAN 11 — SYNTHETIC DEMO', code: 'SYNTH-DEMO-CT-01', is_demo: true }],
+      } as any;
+      if (url.includes('/assistant/synthetic-demo/questions')) return {
+        label: 'SYNTHETIC DEMO DATA — NOT FOR REAL MACHINE OPERATION',
+        questions: [{
+          id: 'ct-source-match',
+          question: 'Which synthetic source reference is shown?',
+          expected_grounded_answer: 'Retain the fictional page reference.',
+          expects_evidence: true,
+        }],
+      } as any;
+      return {} as any;
+    });
+    const sseResponse = [
+      'event: token\ndata: {"token":"Synthetic source-review example only."}\n\n',
+      'event: sources\ndata: {"sources":[],"insufficient_evidence":true,"conversation_id":"synthetic-demo-conv","message_id":"synthetic-demo-msg"}\n\n',
+      'event: done\ndata: [DONE]\n\n',
+    ];
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      body: createMockStream(sseResponse),
+    });
+
+    const user = userEvent.setup();
+    renderAssistant();
+    const machineFilter = screen.getByTitle('Filter RAG retrieval context by specific machine asset');
+    await waitFor(() => expect(machineFilter).not.toBeDisabled());
+    await user.selectOptions(machineFilter, 'synthetic-ct');
+    await waitFor(() => expect(screen.getByText('SYNTHETIC DEMO DATA — NOT FOR REAL MACHINE OPERATION')).toBeInTheDocument());
+    const tryQuestion = await screen.findByRole('button', { name: /Try grounded example: Which synthetic source reference is shown/i });
+    expect(screen.getByText(/Fictional source-review examples only/i)).toBeInTheDocument();
+    fireEvent.click(tryQuestion);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const request = JSON.parse(String((global.fetch as any).mock.calls[0][1].body));
+    expect(request.machine_id).toBe('synthetic-ct');
+    expect(request.message).toBe('Which synthetic source reference is shown?');
+    expect(screen.getByText(/Retain the fictional page reference/i)).toBeInTheDocument();
   });
 
   it('submits feedback via problem reporting modal', async () => {

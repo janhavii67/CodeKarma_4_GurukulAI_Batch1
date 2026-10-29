@@ -1,7 +1,9 @@
 import io
 import json
+import time
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from starlette.datastructures import Headers, UploadFile
@@ -124,7 +126,7 @@ async def test_required_value_phrase_is_flagged_without_inventing_a_number(monke
 
 
 @pytest.mark.asyncio
-async def test_gemini_transcriber_returns_real_timestamps_and_uses_canonical_wav_mime(tmp_path):
+async def test_gemini_transcriber_returns_real_timestamps_and_uses_canonical_wav_mime(tmp_path, monkeypatch):
     fixture = Path(__file__).parent / "fixtures" / "multimodal" / "sample_voice.wav"
     audio_path = tmp_path / "normalized.16k.wav"
     audio_path.write_bytes(fixture.read_bytes())
@@ -140,9 +142,9 @@ async def test_gemini_transcriber_returns_real_timestamps_and_uses_canonical_wav
                 })
             })()
 
-    provider = object.__new__(GeminiSpeechProvider)
-    provider.model = "test-model"
-    provider.client = type("Client", (), {"models": Models()})()
+    client = type("Client", (), {"models": Models()})()
+    monkeypatch.setattr("app.integrations.speech.gemini_provider.genai.Client", lambda **_kwargs: client)
+    provider = GeminiSpeechProvider(api_key="test-key", model="test-model")
     segments = await provider.transcribe(audio_path)
 
     assert captured["mime"] == "audio/wav"
@@ -152,7 +154,7 @@ async def test_gemini_transcriber_returns_real_timestamps_and_uses_canonical_wav
 
 
 @pytest.mark.asyncio
-async def test_gemini_transcriber_rejects_segments_without_timestamps(tmp_path):
+async def test_gemini_transcriber_rejects_segments_without_timestamps(tmp_path, monkeypatch):
     fixture = Path(__file__).parent / "fixtures" / "multimodal" / "sample_voice.wav"
     audio_path = tmp_path / "normalized.16k.wav"
     audio_path.write_bytes(fixture.read_bytes())
@@ -161,12 +163,91 @@ async def test_gemini_transcriber_rejects_segments_without_timestamps(tmp_path):
         def generate_content(self, **_kwargs):
             return type("Response", (), {"text": json.dumps({"segments": [{"text": "A test segment."}]})})()
 
-    provider = object.__new__(GeminiSpeechProvider)
-    provider.model = "test-model"
-    provider.client = type("Client", (), {"models": Models()})()
+    client = type("Client", (), {"models": Models()})()
+    monkeypatch.setattr("app.integrations.speech.gemini_provider.genai.Client", lambda **_kwargs: client)
+    provider = GeminiSpeechProvider(api_key="test-key", model="test-model")
     with pytest.raises(ValidationError) as exc:
         await provider.transcribe(audio_path)
     assert exc.value.code == "invalid_transcript_timestamps"
+
+
+def test_gemini_speech_client_uses_the_configured_bounded_timeout(monkeypatch):
+    captured = {}
+
+    def make_client(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(settings, "AI_REQUEST_TIMEOUT_S", 2.5)
+    monkeypatch.setattr("app.integrations.speech.gemini_provider.genai.Client", make_client)
+
+    GeminiSpeechProvider(api_key="test-key", model="test-model")
+
+    options = captured["http_options"]
+    assert options.timeout == 2500
+    assert options.retry_options.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_gemini_transcriber_times_out_after_the_total_request_budget(tmp_path, monkeypatch):
+    audio_path = tmp_path / "normalized.16k.wav"
+    audio_path.write_bytes((Path(__file__).parent / "fixtures" / "multimodal" / "sample_voice.wav").read_bytes())
+    calls = []
+
+    class Models:
+        def generate_content(self, **_kwargs):
+            calls.append(True)
+            time.sleep(0.02)
+            return type("Response", (), {"text": json.dumps({"segments": []})})()
+
+    client = type("Client", (), {"models": Models()})()
+    monkeypatch.setattr("app.integrations.speech.gemini_provider.genai.Client", lambda **_kwargs: client)
+    provider = GeminiSpeechProvider(api_key="test-key", model="test-model", timeout_s=0.005)
+
+    with pytest.raises(ValidationError) as error:
+        await provider.transcribe(audio_path)
+
+    assert error.value.code == "transcription_timeout"
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_gemini_transcriber_propagates_provider_failure_safely(tmp_path, monkeypatch):
+    audio_path = tmp_path / "normalized.16k.wav"
+    audio_path.write_bytes((Path(__file__).parent / "fixtures" / "multimodal" / "sample_voice.wav").read_bytes())
+
+    class Models:
+        def generate_content(self, **_kwargs):
+            raise RuntimeError("provider rejected request")
+
+    client = type("Client", (), {"models": Models()})()
+    monkeypatch.setattr("app.integrations.speech.gemini_provider.genai.Client", lambda **_kwargs: client)
+    provider = GeminiSpeechProvider(api_key="test-key", model="test-model", timeout_s=1)
+
+    with pytest.raises(ValidationError) as error:
+        await provider.transcribe(audio_path)
+
+    assert error.value.code == "transcription_failed"
+    assert "provider rejected request" in error.value.message
+
+
+@pytest.mark.asyncio
+async def test_gemini_transcriber_classifies_sdk_timeout_without_message(tmp_path, monkeypatch):
+    audio_path = tmp_path / "normalized.16k.wav"
+    audio_path.write_bytes((Path(__file__).parent / "fixtures" / "multimodal" / "sample_voice.wav").read_bytes())
+
+    class Models:
+        def generate_content(self, **_kwargs):
+            raise httpx.ReadTimeout("")
+
+    client = type("Client", (), {"models": Models()})()
+    monkeypatch.setattr("app.integrations.speech.gemini_provider.genai.Client", lambda **_kwargs: client)
+    provider = GeminiSpeechProvider(api_key="test-key", model="test-model", timeout_s=1)
+
+    with pytest.raises(ValidationError) as error:
+        await provider.transcribe(audio_path)
+
+    assert error.value.code == "transcription_timeout"
 
 
 def test_identical_voice_upload_reuses_the_existing_processing_job(

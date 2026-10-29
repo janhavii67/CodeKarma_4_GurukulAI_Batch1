@@ -19,7 +19,7 @@ MAX_ARCHIVE_EXPANDED_BYTES = 40 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 1_000
 MAX_EMBEDDED_IMAGES = 4
 
-SUPPORTED_MEDIA_FORMATS = ".mp3, .wav, .flac, .m4a, .aac, .aiff, .aif, .ogg, .opus, .weba, .webm, .mp4, .mov, .avi, .flv, .mpeg, .mpg, .wmv, .3gp, .bmp, .png, .jpg, .jpeg, .webp, .pdf, .docx, .pptx, .xlsx, .csv, .txt, .md"
+SUPPORTED_MEDIA_FORMATS = ".mp3, .wav, .flac, .m4a, .aac, .aiff, .aif, .ogg, .opus, .weba, .webm, .mp4, .mov, .avi, .flv, .mpeg, .mpg, .wmv, .3gp, .png, .jpg, .jpeg, .webp, .pdf, .docx, .pptx, .xlsx, .csv, .txt, .md"
 
 
 @dataclass
@@ -59,6 +59,20 @@ def _mime_from_image(data: bytes) -> str | None:
     if len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
         return "image/webp"
     return None
+
+
+def _is_quicktime_mov(data: bytes) -> bool:
+    """Accept MOV only when its ISO BMFF ftyp box identifies the QuickTime brand."""
+    if len(data) < 16 or data[4:8] != b"ftyp":
+        return False
+
+    box_size = int.from_bytes(data[:4], "big")
+    if box_size < 16 or box_size > len(data) or (box_size - 16) % 4:
+        return False
+
+    brands = [data[8:12]]
+    brands.extend(data[offset : offset + 4] for offset in range(16, box_size, 4))
+    return b"qt  " in brands
 
 
 def _extract_archive_images(archive: zipfile.ZipFile, prefix: str) -> list[dict[str, Any]]:
@@ -152,9 +166,17 @@ def prepare_attachment(data: bytes, filename: str | None) -> PreparedAttachment:
     safe_name = PurePath((filename or "attachment").replace("\\", "/")).name[:180]
     suffix = PurePath(safe_name).suffix.lower()
 
-    if suffix in {".bmp", ".png", ".jpg", ".jpeg", ".webp"}:
+    if suffix == ".bmp":
+        if _mime_from_image(data) != "image/bmp":
+            raise ValidationError(code="invalid_media_signature", message="The image contents do not match the selected file type.")
+        raise ValidationError(
+            code="unsupported_media_type",
+            message="BMP images are not supported by the AI provider. Convert the image to PNG, JPEG, or WebP and upload it again.",
+        )
+
+    if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
         mime = _mime_from_image(data)
-        if not mime or (suffix == ".bmp" and mime != "image/bmp") or (suffix == ".png" and mime != "image/png") or (suffix in {".jpg", ".jpeg"} and mime != "image/jpeg") or (suffix == ".webp" and mime != "image/webp"):
+        if not mime or (suffix == ".png" and mime != "image/png") or (suffix in {".jpg", ".jpeg"} and mime != "image/jpeg") or (suffix == ".webp" and mime != "image/webp"):
             raise ValidationError(code="invalid_media_signature", message="The image contents do not match the selected file type.")
         return PreparedAttachment(safe_name, mime, media_parts=[{"mime_type": mime, "data": data}])
 
@@ -179,7 +201,7 @@ def prepare_attachment(data: bytes, filename: str | None) -> PreparedAttachment:
     video_types = {
         ".mp4": ("video/mp4", lambda: len(data) >= 12 and data[4:8] == b"ftyp"),
         ".webm": ("video/webm", lambda: data.startswith(b"\x1aE\xdf\xa3")),
-        ".mov": ("video/quicktime", lambda: len(data) >= 12 and data[4:8] == b"ftyp"),
+        ".mov": ("video/mov", lambda: _is_quicktime_mov(data)),
         ".avi": ("video/avi", lambda: len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"AVI "),
         ".flv": ("video/x-flv", lambda: data.startswith(b"FLV")),
         ".mpeg": ("video/mpeg", lambda: len(data) >= 4 and data[:3] == b"\x00\x00\x01" and data[3] in {0x00, 0xB3, 0xBA}),

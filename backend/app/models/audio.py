@@ -38,6 +38,10 @@ class AudioReference(Base, TimestampMixin):
     recording_source: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     recorded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     related_links_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Enriched expert metadata (migration 018)
+    manufacturer: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    sound_label: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # e.g. 'normal_operation', 'alarm', 'abnormal_vibration'
+    annotation_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     reviewer_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     review_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

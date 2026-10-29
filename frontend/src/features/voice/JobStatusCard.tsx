@@ -11,14 +11,16 @@ interface JobStatusCardProps {
 
 export const JobStatusCard: React.FC<JobStatusCardProps> = ({ job, onRetried }) => {
   const [isRetrying, setIsRetrying] = React.useState(false);
+  const [retryError, setRetryError] = React.useState<string | null>(null);
 
   const handleRetry = async () => {
     try {
       setIsRetrying(true);
+      setRetryError(null);
       const updated = await retryProcessingJob(job.id);
       if (onRetried) onRetried(updated);
     } catch (err) {
-      console.error(err);
+      setRetryError(err instanceof Error ? err.message : 'Unable to resume processing. Refresh the job and try again.');
     } finally {
       setIsRetrying(false);
     }
@@ -106,17 +108,28 @@ export const JobStatusCard: React.FC<JobStatusCardProps> = ({ job, onRetried }) 
 
       {/* Error State */}
       {job.status === 'failed' && (
-        <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-[#D94848] flex items-center justify-between font-medium">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-[#D94848] shrink-0" />
-            <span>{job.error_safe || 'Transcription failed. The recording is saved; check the transcription service and retry.'}</span>
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-[#D94848] font-medium">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-[#D94848] shrink-0" />
+              <span>{job.error_safe || 'Transcription failed. The recording is saved; check the transcription service and retry.'}</span>
+            </div>
+            {job.can_resume_structuring && (
+              <Button size="sm" variant="outline" onClick={handleRetry} isLoading={isRetrying}>
+                <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                Resume structuring
+              </Button>
+            )}
+            {job.attempts < 3 && !job.transcript_saved && (
+              <Button size="sm" variant="outline" onClick={handleRetry} isLoading={isRetrying}>
+                <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                Retry ({job.attempts}/3)
+              </Button>
+            )}
           </div>
-          {job.attempts < 3 && (
-            <Button size="sm" variant="outline" onClick={handleRetry} isLoading={isRetrying}>
-              <RotateCcw className="w-3.5 h-3.5 mr-1" />
-              Retry ({job.attempts}/3)
-            </Button>
-          )}
+          {retryError && <p role="alert" className="mt-2 pl-6 text-rose-800">{retryError}</p>}
+          {job.transcript_saved && job.can_resume_structuring && <p className="mt-2 pl-6 text-rose-800">The saved transcript and original recording will be preserved. Resume continues procedure structuring from the transcript without running transcription again.</p>}
+          {job.transcript_saved && !job.can_resume_structuring && <p className="mt-2 pl-6 text-rose-800">A transcript is already saved for this recording. It will not be replaced; review or edit it while this job is not eligible for a safe structuring resume.</p>}
         </div>
       )}
 

@@ -72,6 +72,31 @@ def _procedure_snapshot(db: Session, procedure: Procedure) -> ProcedureResponse:
     )
 
 
+def _effective_asset_machine_id(db: Session, asset: MediaAsset) -> Optional[str]:
+    """Resolve legacy version-attached assets that predate machine_id backfills."""
+    if asset.machine_id:
+        return asset.machine_id
+    if not asset.version_id:
+        return None
+    version = db.get(KnowledgeVersion, asset.version_id)
+    if not version:
+        return None
+    if version.machine_id:
+        return version.machine_id
+    item = db.get(KnowledgeItem, version.item_id)
+    return item.machine_id if item else None
+
+
+def _procedure_step_asset_ids(procedure: Procedure) -> List[str]:
+    ids: List[str] = []
+    for step in procedure.steps:
+        details = step.details if isinstance(step.details, dict) else {}
+        step_ids = details.get("asset_ids", [])
+        if isinstance(step_ids, list):
+            ids.extend(asset_id for asset_id in step_ids if isinstance(asset_id, str))
+    return list(dict.fromkeys(ids))
+
+
 @router.get("/sources", response_model=List[WorkflowSourceResponse])
 def list_workflow_sources(
     q: Optional[str] = Query(None, max_length=100),
@@ -131,6 +156,8 @@ class ProcedureStepInput(BaseModel):
     expected_observation: Optional[str] = None
     safety_warning: Optional[str] = None
     is_critical: bool = False
+    asset_ids: List[str] = Field(default_factory=list)
+    notes: Optional[str] = Field(None, max_length=10000)
 
 
 class ProcedureCreatePayload(BaseModel):
@@ -149,20 +176,24 @@ def create_procedure(payload: ProcedureCreatePayload,
     auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_CREATE)), db: Session = Depends(get_db)):
     if not db.get(Machine, payload.machine_id):
         raise NotFoundError(code="machine_not_found", message="The selected machine was not found.")
-    ids = set(payload.asset_ids)
+    step_asset_ids = [asset_id for step in payload.steps for asset_id in step.asset_ids]
+    ids = set(payload.asset_ids + step_asset_ids)
     assets = db.query(MediaAsset).filter(MediaAsset.id.in_(ids)).all() if ids else []
     if len(assets) != len(ids):
         raise NotFoundError(code="asset_not_found", message="One or more selected knowledge assets were not found.")
-    if any(asset.machine_id != payload.machine_id for asset in assets):
+    if any(_effective_asset_machine_id(db, asset) != payload.machine_id for asset in assets):
         raise ForbiddenError(code="machine_mismatch", message="A procedure can only reference assets from its selected machine.")
     for asset in assets:
         MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, asset)
+    # Publish directly — no draft stage. The procedure is immediately available
+    # in guided workflows the moment it is authored.
     procedure = Procedure(title=payload.title, description=payload.description, machine_id=payload.machine_id,
-        author_id=auth_ctx.user.id, status="DRAFT", prerequisites=payload.prerequisites,
+        author_id=auth_ctx.user.id, status="APPROVED", prerequisites=payload.prerequisites,
         required_tools=payload.required_tools, safety_warnings=payload.safety_warnings)
     procedure.media_assets = assets
     procedure.steps = [ProcedureStep(step_order=i, title=s.title, instruction=s.instruction,
-        expected_observation=s.expected_observation, safety_warning=s.safety_warning, is_critical=s.is_critical)
+        expected_observation=s.expected_observation, safety_warning=s.safety_warning, is_critical=s.is_critical,
+        details={"asset_ids": list(dict.fromkeys(s.asset_ids)), "notes": s.notes} if s.asset_ids or s.notes else {})
         for i, s in enumerate(payload.steps, 1)]
     db.add(procedure); db.commit(); db.refresh(procedure)
     return _procedure_snapshot(db, procedure)
@@ -183,7 +214,7 @@ def list_procedure_assets(procedure_id: str, auth_ctx: AuthenticatedContext = De
         "id": a.id,
         "title": a.title,
         "kind": a.kind,
-        "machine_id": a.machine_id,
+        "machine_id": _effective_asset_machine_id(db, a),
         "url": f"/api/v1/media/{a.id}",
         "mime": a.mime,
         # A media file is verified only when it belongs to an approved/published
@@ -202,10 +233,11 @@ def set_procedure_assets(procedure_id: str, payload: ProcedureAssetsUpdate,
         raise ForbiddenError(code="forbidden", message="You may only edit references on your own procedures.")
     if procedure.status != "DRAFT":
         raise ConflictError(code="procedure_not_draft", message="Only draft procedures can change their knowledge references.")
-    assets = db.query(MediaAsset).filter(MediaAsset.id.in_(set(payload.asset_ids))).all() if payload.asset_ids else []
-    if len(assets) != len(set(payload.asset_ids)):
+    reference_ids = list(dict.fromkeys(payload.asset_ids + _procedure_step_asset_ids(procedure)))
+    assets = db.query(MediaAsset).filter(MediaAsset.id.in_(set(reference_ids))).all() if reference_ids else []
+    if len(assets) != len(set(reference_ids)):
         raise NotFoundError(code="asset_not_found", message="One or more selected knowledge assets were not found.")
-    if any(a.machine_id != procedure.machine_id for a in assets):
+    if any(_effective_asset_machine_id(db, a) != procedure.machine_id for a in assets):
         raise ForbiddenError(code="machine_mismatch", message="A procedure can only reference assets from its own machine.")
     for asset in assets:
         MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, asset)
@@ -236,8 +268,8 @@ def delete_procedure(
         raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
     if procedure.author_id != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
         raise ForbiddenError(code="forbidden", message="You may only delete your own machine procedures.")
-    if procedure.status != "DRAFT":
-        raise ConflictError(code="procedure_not_draft", message="Only draft procedures can be deleted. Published or archived procedures must follow the review and archive workflow.")
+    if procedure.status == "ARCHIVED":
+        raise ConflictError(code="procedure_archived", message="Archived procedures cannot be deleted.")
     if db.query(ProcedureRun.id).filter(ProcedureRun.procedure_id == procedure.id).first():
         raise ConflictError(code="procedure_in_use", message="This procedure has execution history and cannot be deleted.")
     db.delete(procedure)

@@ -21,6 +21,7 @@ from app.core.logging import logger
 from app.core.permissions import (
     PERM_KNOWLEDGE_CREATE,
     PERM_KNOWLEDGE_APPROVE,
+    PERM_KNOWLEDGE_VIEW_PUBLISHED,
 )
 from app.integrations.storage import StorageService, get_storage_service
 from app.models.knowledge import (
@@ -224,7 +225,14 @@ def verify_file_signature(header: bytes, canonical_mime: str) -> bool:
 class MediaService:
     @classmethod
     def ensure_can_view_asset(cls, db: Session, user: User, permissions: List[str], asset: MediaAsset) -> None:
-        """Keep standalone machine assets private to their author and reviewers."""
+        """Enforce visibility rules for media assets.
+
+        - Version-attached assets: governed by the knowledge version's publication status.
+        - Machine library assets (machine_id set, no version_id): visible to anyone who can
+          view published knowledge. These are authoritative reference documents attached to a
+          machine (e.g. manuals, PDFs) and should be readable by Operators and Trainees.
+        - Orphan assets (no version_id, no machine_id): private to the uploader and approvers.
+        """
         if asset.version_id:
             version = KnowledgeRepository.get_version_by_id(db, asset.version_id)
             if not version:
@@ -233,6 +241,12 @@ class MediaService:
             if not item:
                 raise NotFoundError(code="not_found", message="The requested media asset was not found.")
             KnowledgeService.ensure_can_view_version(user, permissions, version, item)
+        elif asset.machine_id:
+            # Machine library asset — visible to anyone who can view published knowledge
+            if (PERM_KNOWLEDGE_VIEW_PUBLISHED not in permissions
+                    and PERM_KNOWLEDGE_CREATE not in permissions
+                    and PERM_KNOWLEDGE_APPROVE not in permissions):
+                raise ForbiddenError(code="forbidden", message="You do not have permission to view this machine knowledge asset.")
         elif asset.uploaded_by != user.id and PERM_KNOWLEDGE_APPROVE not in permissions:
             raise ForbiddenError(code="forbidden", message="You may only access your own machine knowledge assets or assets assigned for review.")
 

@@ -31,6 +31,7 @@ import {
 export const VoiceToKnowledgePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'record' | 'review' | 'search'>('record');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [jobPollGeneration, setJobPollGeneration] = useState(0);
   const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [currentTranscript, setCurrentTranscript] = useState<Transcript | null>(null);
@@ -134,7 +135,7 @@ export const VoiceToKnowledgePage: React.FC = () => {
       }
     }
     loadAssets();
-  });
+  }, jobPollGeneration);
 
   const handleUploadComplete = (res: VoiceUploadResponse) => {
     if (res.knowledge_item_id) setActiveKnowledgeItemId(res.knowledge_item_id);
@@ -195,10 +196,13 @@ export const VoiceToKnowledgePage: React.FC = () => {
       </div>
 
       {/* Active Processing Card if Job is Running */}
-      {polledJob && polledJob.status !== 'completed' && polledJob.status !== 'failed' && (
+      {polledJob && polledJob.status !== 'completed' && (
         <JobStatusCard
           job={polledJob}
-          onRetried={(newJob) => setActiveJobId(newJob.id)}
+          onRetried={(newJob) => {
+            setActiveJobId(newJob.id);
+            setJobPollGeneration((generation) => generation + 1);
+          }}
         />
       )}
 
@@ -240,11 +244,6 @@ export const VoiceToKnowledgePage: React.FC = () => {
           Semantic Vector Search
         </Button>
       </div>
-
-      {/* Active Processing Job Card (Polls automatically) */}
-      {polledJob && polledJob.status !== 'completed' && polledJob.status !== 'failed' && (
-        <JobStatusCard job={polledJob} />
-      )}
 
       {/* Tab 1: Record / Upload */}
       {activeTab === 'record' && (

@@ -9,6 +9,8 @@ import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { api, ApiClientError } from '../../lib/api/client';
 import { useAuth } from '../../hooks/useAuth';
+import { useMachines } from '../knowledge-capture/hooks';
+import { selectableMachines } from '../machines/registeredMachines';
 import { ArrowLeft, CircleHelp, FileText, Search, ShieldAlert, Wrench } from 'lucide-react';
 
 interface WorkflowCheck {
@@ -71,7 +73,8 @@ export const TroubleshootingPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const canCreateKnowledge = hasPermission('knowledge.create');
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
-  const [machines, setMachines] = useState<MachineOption[]>([]);
+  const machineQuery = useMachines();
+  const machines = selectableMachines(machineQuery.data?.items ?? []) as MachineOption[];
   const [processes, setProcesses] = useState<ProcessOption[]>([]);
   const [active, setActive] = useState<SessionResponse | null>(null);
   const [topics, setTopics] = useState<SourceRef[]>([]);
@@ -97,9 +100,6 @@ export const TroubleshootingPage: React.FC = () => {
 
   useEffect(() => {
     void refreshSessions();
-    api.get<{ items: MachineOption[] } | MachineOption[]>('/machines').then((data) => {
-      setMachines(Array.isArray(data) ? data : data.items || []);
-    }).catch(() => setMachines([]));
     api.get<ProcessOption[]>('/troubleshooting/processes').then(setProcesses).catch(() => setProcesses([]));
   }, []);
 

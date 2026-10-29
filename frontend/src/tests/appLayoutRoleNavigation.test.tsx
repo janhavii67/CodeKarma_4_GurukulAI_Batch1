@@ -39,7 +39,7 @@ const renderLayout = () =>
   );
 
 describe('AppLayout role navigation', () => {
-  it('shows trainee pages and hides authoring and reviewer actions', () => {
+  it('shows all six authorized trainee destinations in desktop and mobile navigation', () => {
     authState.role = 'TRAINEE';
     authState.permissions = [
       'knowledge.view_published', 'assistant.use', 'procedure.execute',
@@ -47,14 +47,41 @@ describe('AppLayout role navigation', () => {
     ];
     renderLayout();
 
-    expect(screen.getByRole('link', { name: 'My Knowledge' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Guided Workflows' })).toBeInTheDocument();
+    const traineeLinks = [
+      ['Dashboard', '/app'],
+      ['Knowledge Library', '/app/knowledge'],
+      ['AI Tutor', '/app/assistant'],
+      ['Troubleshooting', '/app/troubleshooting'],
+      ['Guided Workflow', '/app/guided-workflows'],
+      ['Audio Matching', '/app/sound-analysis'],
+    ] as const;
+    for (const [name, href] of traineeLinks) {
+      expect(screen.getByRole('link', { name })).toHaveAttribute('href', href);
+    }
     fireEvent.click(screen.getByRole('button', { name: 'Open profile menu' }));
     expect(screen.getByRole('link', { name: /Knowledge Assistant/i })).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Troubleshooting (M05)' }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('link', { name: 'Capture Knowledge' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Review & Verify/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Voice-to-Knowledge (M04)' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle navigation menu' }));
+    for (const [name, href] of traineeLinks) {
+      expect(screen.getAllByRole('link', { name }).some((link) => link.getAttribute('href') === href)).toBe(true);
+    }
+  });
+
+  it('hides trainee destinations when the matching route permission is absent', () => {
+    authState.role = 'TRAINEE';
+    authState.permissions = ['procedure.execute'];
+    renderLayout();
+
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/app');
+    expect(screen.getByRole('link', { name: 'Guided Workflow' })).toHaveAttribute('href', '/app/guided-workflows');
+    expect(screen.queryByRole('link', { name: 'Knowledge Library' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'AI Tutor' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Troubleshooting' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Audio Matching' })).not.toBeInTheDocument();
   });
 
   it('shows the expert authoring and review links only when the permissions are granted', () => {

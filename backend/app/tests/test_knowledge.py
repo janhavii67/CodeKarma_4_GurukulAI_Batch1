@@ -91,6 +91,41 @@ def test_knowledge_create_flow_and_permissions(client: TestClient, db_session: S
     assert audit.entity_type == "knowledge_item"
 
 
+def test_knowledge_library_hides_items_for_inactive_machines(client: TestClient, db_session: Session):
+    expert = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).one()
+    machine = Machine(
+        id="inactive-machine-knowledge-list",
+        name="Archived equipment",
+        code="ARCHIVED-KNOWLEDGE-001",
+        is_active=False,
+    )
+    item = KnowledgeItem(
+        id="inactive-machine-knowledge-item",
+        title="Legacy equipment diary",
+        machine_id=machine.id,
+        author_id=expert.id,
+        category="GENERAL",
+        status="DRAFT",
+    )
+    version = KnowledgeVersion(
+        id="inactive-machine-knowledge-version",
+        item_id=item.id,
+        version_no=1,
+        title=item.title,
+        status=STATUS_DRAFT,
+        origin=ORIGIN_EXPERT,
+        created_by=expert.id,
+    )
+    db_session.add_all([machine, item, version])
+    db_session.flush()
+
+    _login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
+    response = client.get("/api/v1/knowledge")
+
+    assert response.status_code == 200
+    assert all(row["title"] != item.title for row in response.json()["items"])
+
+
 def test_update_and_persistence(client: TestClient):
     csrf_a = _login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
 

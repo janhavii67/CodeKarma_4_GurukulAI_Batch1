@@ -33,11 +33,20 @@ async def test_voice_capture_job_automatically_indexes_into_rag(db_session: Sess
     expert = db_session.query(User).filter(User.role_id == ROLE_EXPERT).first()
     assert expert is not None
 
-    # 1. Create sample WAV audio file
+    # 1. Create sample WAV audio file with audible narration
     dummy_wav = tmp_path / "voice_capture_sample.wav"
-    dummy_wav.write_bytes(
-        b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00"
-    )
+    sample_voice = Path(__file__).resolve().parents[4] / "app" / "tests" / "fixtures" / "multimodal" / "sample_voice.wav"
+    if sample_voice.exists():
+        dummy_wav.write_bytes(sample_voice.read_bytes())
+    else:
+        import wave, numpy as np
+        with wave.open(str(dummy_wav), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            t = np.linspace(0, 2.0, 32000, endpoint=False)
+            samples = (np.sin(2 * np.pi * 440.0 * t) * 16000).astype(np.int16)
+            wf.writeframes(samples.tobytes())
 
     media, job = create_voice_capture_job(
         db=db_session,

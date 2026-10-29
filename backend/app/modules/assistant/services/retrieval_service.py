@@ -12,6 +12,41 @@ from app.core.logging import logger
 from app.modules.assistant.providers.embedding_base import get_embedding_provider
 
 
+_SOUND_QUERY_TERMS = {
+    "acoustic",
+    "audio",
+    "buzz",
+    "buzzing",
+    "clatter",
+    "hum",
+    "humming",
+    "noise",
+    "noises",
+    "noisy",
+    "rattle",
+    "rattling",
+    "recording",
+    "recordings",
+    "sound",
+    "sounds",
+    "squeak",
+    "squeaking",
+    "squeal",
+    "squealing",
+    "vibration",
+    "vibrations",
+    "vibrating",
+    "whine",
+    "whining",
+}
+
+
+def _requests_sound_evidence(query: str) -> bool:
+    """Return whether a query explicitly asks about machine acoustics."""
+    query_terms = set(re.findall(r"[a-z0-9]+", query.casefold()))
+    return bool(query_terms & _SOUND_QUERY_TERMS)
+
+
 @dataclass
 class RetrievalQuery:
     query: str
@@ -96,18 +131,27 @@ class RetrievalService:
 
         # Optional filters
         if query_params.machine_id:
-            stmt = stmt.where(
-                or_(
-                    KnowledgeSource.machine_id == query_params.machine_id,
-                    KnowledgeSource.machine_id.is_(None),
-                )
-            )
+            # A machine-scoped question must not receive unassigned chunks.
+            # There is no explicit global-scope marker in the current schema,
+            # so NULL machine IDs cannot be assumed applicable to every unit.
+            stmt = stmt.where(KnowledgeSource.machine_id == query_params.machine_id)
 
         if query_params.knowledge_item_id:
             stmt = stmt.where(
                 or_(
                     KnowledgeVersion.item_id == query_params.knowledge_item_id,
                     KnowledgeSource.source_ref_id == query_params.knowledge_item_id,
+                )
+            )
+
+        # Recorded sound references can support acoustic questions and
+        # audio-matched requests, but are not evidence for general machine
+        # purpose, operation, or maintenance questions.
+        if not query_params.knowledge_item_id and not _requests_sound_evidence(clean_q):
+            stmt = stmt.where(
+                or_(
+                    KnowledgeItem.category.is_(None),
+                    func.upper(KnowledgeItem.category) != "MACHINE_SOUND_REFERENCE",
                 )
             )
 

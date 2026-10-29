@@ -51,6 +51,8 @@ postgres_data/
 htmlcov/
 .pytest_cache/
 .vitest/
+*.log
+scratch/
 /backend/tests/fixtures/multimodal/oversized_file
 
 # IDE & OS
@@ -65,3 +67,10 @@ Thumbs.db
 !frontend/src/lib/
 !frontend/src/lib/api/
 !frontend/src/lib/api/client.ts
+
+# Temporary QA logs and scratch artifacts
+.qa_temp/
+
+
+.vite/
+frontend/dist/

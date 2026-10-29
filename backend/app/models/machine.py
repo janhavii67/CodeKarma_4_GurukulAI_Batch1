@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import Boolean, String, Text, ForeignKey, DateTime
+from sqlalchemy import Boolean, String, Text, ForeignKey, DateTime, UniqueConstraint, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
 
@@ -11,12 +11,16 @@ class MachineCategory(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default=true())
 
     machines: Mapped[List["Machine"]] = relationship("Machine", back_populates="category_obj")
 
 
 class Machine(Base, TimestampMixin):
     __tablename__ = "machines"
+    # Preserve the invariant established by migration 002. Without this ORM
+    # declaration, Alembic autogenerate proposes dropping the live constraint.
+    __table_args__ = (UniqueConstraint("code", name="uq_machines_code"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     name: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
@@ -28,6 +32,7 @@ class Machine(Base, TimestampMixin):
     category_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("machine_categories.id"), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="ACTIVE", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default=true())
     specifications: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
@@ -46,10 +51,9 @@ class Machine(Base, TimestampMixin):
             kwargs["model_number"] = kwargs["code"]
         elif "model_number" in kwargs and "code" not in kwargs:
             kwargs["code"] = kwargs["model_number"]
-        if "category" in kwargs and "category_id" not in kwargs:
-            kwargs["category_id"] = kwargs["category"]
-        elif "category_id" in kwargs and "category" not in kwargs:
-            kwargs["category"] = kwargs["category_id"]
+        # `category` is the persisted display name for older records;
+        # `category_id` is a foreign key into the category catalog. They are
+        # separate fields and must never be copied into one another.
         super().__init__(**kwargs)
 
 

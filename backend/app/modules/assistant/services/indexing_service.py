@@ -3,6 +3,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
 from app.models.knowledge import KnowledgeItem, KnowledgeVersion, STATUS_PUBLISHED
+from app.models.machine import Machine
 from app.models.transcript import Transcript, TranscriptSegment
 from app.models.processing_job import ProcessingJob, JOB_TYPE_KNOWLEDGE_INDEX
 from app.modules.assistant.models import (
@@ -17,6 +18,7 @@ from app.modules.assistant.chunking.chunker import (
 )
 from app.core.logging import logger
 from app.db.base import utc_now
+from app.services.synthetic_demo import is_synthetic_demo_machine
 
 
 class IndexingService:
@@ -40,8 +42,16 @@ class IndexingService:
             raise ValueError(f"KnowledgeVersion '{version_id}' not found.")
 
         item = db.get(KnowledgeItem, version.item_id) if version.item_id else None
+        if item and item.is_demo:
+            machine = db.get(Machine, version.machine_id or item.machine_id)
+            if not is_synthetic_demo_machine(machine, db=db):
+                raise ValueError("Synthetic demo knowledge can be indexed only in the isolated synthetic demo database.")
         title = item.title if item else f"Knowledge Article v{version.version_no}"
-        machine_id = item.machine_id if item else None
+        # The published version is the RAG snapshot. Older knowledge items can
+        # have a machine only on the version, while newer editor flows keep both
+        # fields aligned. Prefer the version association and fall back to the
+        # parent item for legacy records.
+        machine_id = (version.machine_id or item.machine_id) if item else version.machine_id
 
         # 1. Get or create KnowledgeSource
         source = (
@@ -87,6 +97,7 @@ class IndexingService:
             prerequisites=getattr(version, "prerequisites", None),
             common_mistakes=getattr(version, "common_mistakes", None),
             corrective_actions=getattr(version, "corrective_actions", None),
+            source_refs=getattr(version, "source_refs", None),
         )
 
         # 3. Insert chunks

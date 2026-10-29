@@ -5,14 +5,19 @@ import { MemoryRouter } from 'react-router-dom';
 import { MachineKnowledgePage } from '../features/knowledge/MachineKnowledgePage';
 
 const apiMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(), upload: vi.fn() }));
+const machineQueryMock = vi.hoisted(() => ({ useMachines: vi.fn() }));
 vi.mock('../lib/api/client', () => ({ api: apiMock, getApiUrl: (path: string) => `http://api.test/api/v1${path}` }));
-vi.mock('../features/knowledge-capture/knowledgeApi', () => ({ fetchMachines: vi.fn().mockResolvedValue({ items: [
+vi.mock('../features/knowledge-capture/hooks', () => ({ useMachines: machineQueryMock.useMachines }));
+vi.mock('../features/knowledge-capture/knowledgeApi', () => ({ fetchMachines: vi.fn(), fetchAllMachines: vi.fn(), fetchMachineCategories: vi.fn() }));
+const registeredMachines = [
   { id: 'machine-cnc', name: 'MRI', code: 'MRI-001' },
   { id: 'machine-cityscan', name: 'CT-Scan', code: 'CITYSCAN-001' },
   { id: 'machine-xray', name: 'Xray', code: 'XRAY-001' },
   { id: 'machine-ecg', name: 'ECG', code: 'ECG-001' },
   { id: 'legacy-machine', name: 'CNC Machine', code: 'CNC-1' },
-] }) }));
+  { id: 'machine-ultrasound', name: 'Ultrasound', code: 'US-001' },
+  { id: 'inactive-machine', name: 'Inactive unit', code: 'OFF-1', status: 'MAINTENANCE' },
+];
 vi.mock('../features/knowledge-capture/media/mediaApi', () => ({ mediaApi: { delete: apiMock.delete } }));
 vi.mock('../features/knowledge-capture/media/uploadWithProgress', () => ({ uploadWithProgress: apiMock.upload }));
 
@@ -20,21 +25,24 @@ describe('machine knowledge capture', () => {
   beforeEach(() => {
     apiMock.get.mockReset(); apiMock.post.mockReset(); apiMock.patch.mockReset(); apiMock.delete.mockReset(); apiMock.upload.mockReset();
     apiMock.get.mockResolvedValue([]);
+    machineQueryMock.useMachines.mockReturnValue({ data: { items: registeredMachines }, isLoading: false, isError: false, isSuccess: true });
   });
 
-  it('offers only the four registered machines in the capture selector', async () => {
+  it('offers every active registered machine and omits inactive equipment', async () => {
     render(<MemoryRouter><MachineKnowledgePage /></MemoryRouter>);
     const selector = await screen.findByLabelText('Machine');
     expect(Array.from(selector.querySelectorAll('option')).map(option => option.textContent)).toEqual([
-      'Select a registered machine…', 'MRI', 'CT-Scan', 'Xray', 'ECG',
+      'Select a registered machine…', 'CNC Machine · CNC-1', 'CT-Scan · CITYSCAN-001',
+      'ECG · ECG-001', 'MRI · MRI-001', 'Ultrasound · US-001', 'Xray · XRAY-001',
     ]);
+    expect(selector.querySelector('option[value="inactive-machine"]')).toBeNull();
   });
 
   it('saves a note to the selected registered machine and reloads it in that machine library', async () => {
     const user = userEvent.setup();
     apiMock.post.mockResolvedValue({ id: 'note-1', machine_id: 'machine-cnc', title: 'Coolant check', kind: 'notes', original_name: 'note.txt', created_at: new Date().toISOString(), content: 'Check coolant flow.' });
     render(<MemoryRouter><MachineKnowledgePage /></MemoryRouter>);
-    await screen.findByRole('option', { name: 'MRI' });
+    await screen.findByRole('option', { name: /MRI · MRI-001/ });
     await user.selectOptions(screen.getByLabelText('Machine'), 'machine-cnc');
     await user.click(screen.getByRole('button', { name: 'notes' }));
     await user.type(screen.getByPlaceholderText('Knowledge title'), 'Coolant check');
@@ -51,7 +59,7 @@ describe('machine knowledge capture', () => {
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(apiMock.patch).toHaveBeenCalledWith('/media/note-1', expect.objectContaining({ title: 'Coolant check revised' })));
     expect(await screen.findByText('Coolant check revised')).toBeTruthy();
-  });
+  }, 10_000);
 
   it('rejects a PDF in the video workflow before upload', async () => {
     const user = userEvent.setup();

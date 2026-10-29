@@ -15,9 +15,11 @@ import {
   X,
 } from 'lucide-react';
 import { getApiUrl } from '../../lib/api/client';
+import { useAuth } from '../../hooks/useAuth';
 import type { MediaAsset } from '../knowledge-capture/media/types';
+import { fetchKnowledgeList } from '../knowledge-capture/knowledgeApi';
+import type { KnowledgeListItem } from '../knowledge-capture/types';
 import {
-  MACHINE_DIARY_MACHINE_LABELS,
   fetchMachineDiaryAssets,
   fetchMachineDiaryLibrary,
   type MachineDiaryMachine,
@@ -32,13 +34,49 @@ const bookPalettes = [
 const displayedKnowledgeCount = (machine: MachineDiaryMachine) =>
   machine.counts.video + machine.counts.image + machine.counts.document + machine.counts.notes;
 
+const LIBRARY_PAGE_SIZE = 100;
+
+async function fetchPublishedKnowledge(machineId?: string): Promise<KnowledgeListItem[]> {
+  const firstPage = await fetchKnowledgeList({ page: 1, page_size: LIBRARY_PAGE_SIZE, status: 'published', machine_id: machineId });
+  const pageCount = Math.ceil(firstPage.total / LIBRARY_PAGE_SIZE);
+  const remainingPages = await Promise.all(Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
+    fetchKnowledgeList({ page: index + 2, page_size: LIBRARY_PAGE_SIZE, status: 'published', machine_id: machineId }),
+  ));
+  return [firstPage, ...remainingPages].flatMap(page => page.items).filter(item =>
+    item.version_status === 'published' && item.current_published_version_id === item.version_id,
+  );
+}
+
+const machineCategory = (machine: Pick<MachineDiaryMachine, 'category' | 'category_name'> | null | undefined) =>
+  machine?.category_name || machine?.category || '';
+
+const isSupportedImage = (asset: MediaAsset) => ['image/png', 'image/jpeg', 'image/webp'].includes(asset.mime.toLowerCase());
+const isSupportedVideo = (asset: MediaAsset) => ['video/mp4', 'video/webm', 'video/quicktime'].includes(asset.mime.toLowerCase());
+const isSupportedDocument = (asset: MediaAsset) => asset.mime.toLowerCase() === 'application/pdf';
+
+function UnsupportedFile({ asset }: { asset: MediaAsset }) {
+  return <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-center" role="status">
+    <FileText className="mx-auto text-amber-700" size={34} />
+    <p className="mt-3 text-sm font-semibold text-amber-900">Preview is unavailable for this file type.</p>
+    <p className="mt-1 text-xs text-amber-800">{asset.mime || 'File type unavailable'}</p>
+    <a className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125EA3]" href={getApiUrl(`/media/${asset.id}`)} target="_blank" rel="noreferrer">Open or download file <ArrowUpRight size={15} /></a>
+  </div>;
+}
+
 export const MachineDiaryLibraryPage: React.FC = () => {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
+  const canCreateKnowledge = hasPermission('knowledge.create');
+  const canManageMachines = hasPermission('machine.manage');
   const [machines, setMachines] = useState<MachineDiaryMachine[]>([]);
+  const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [knowledgeLoading, setKnowledgeLoading] = useState(true);
+  const [knowledgeError, setKnowledgeError] = useState('');
   const [search, setSearch] = useState('');
   const [machineFilter, setMachineFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
 
   const loadMachines = () => {
     setLoading(true);
@@ -49,27 +87,47 @@ export const MachineDiaryLibraryPage: React.FC = () => {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadMachines(); }, []);
+  const loadPublishedItems = () => {
+    setKnowledgeLoading(true);
+    setKnowledgeError('');
+    fetchPublishedKnowledge()
+      .then(setKnowledgeItems)
+      .catch((cause: unknown) => setKnowledgeError(cause instanceof Error ? cause.message : 'Could not load published knowledge.'))
+      .finally(() => setKnowledgeLoading(false));
+  };
 
-  const machineOptions = useMemo(() => MACHINE_DIARY_MACHINE_LABELS.map(label => {
-    const machine = machines.find(candidate => candidate.name === label);
-    return { label, machine };
-  }), [machines]);
-  const diaryMachines = useMemo(
-    () => machineOptions.flatMap(option => option.machine ? [option.machine] : []),
-    [machineOptions],
-  );
+  useEffect(() => { loadMachines(); loadPublishedItems(); }, []);
+
+  const availableMachines = useMemo(() => machines.filter(machine =>
+    canManageMachines || machine.status.toUpperCase() !== 'DECOMMISSIONED',
+  ), [machines, canManageMachines]);
+  const machineOptions = useMemo(() => availableMachines.map(machine => ({ label: machine.name, machine })), [availableMachines]);
+  const categories = useMemo(() => [...new Set(availableMachines.map(machineCategory).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [availableMachines]);
 
   const visibleMachines = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    return diaryMachines.filter(machine => {
-      const machineCategory = machine.category_name || machine.category || '';
+    return availableMachines.filter(machine => {
+      const category = machineCategory(machine);
       const searchFields = [machine.name, machine.id, machine.code, machine.model_number,
-        machine.serial_number, machine.manufacturer, machineCategory, machine.location];
+        machine.serial_number, machine.manufacturer, category, machine.location];
       return (!query || searchFields.some(value => value?.toLocaleLowerCase().includes(query)))
-        && (!machineFilter || machine.id === machineFilter);
+        && (!machineFilter || machine.id === machineFilter)
+        && (!categoryFilter || category === categoryFilter);
     });
-  }, [diaryMachines, search, machineFilter]);
+  }, [availableMachines, search, machineFilter, categoryFilter]);
+
+  const visibleKnowledgeItems = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return knowledgeItems.filter(item => {
+      const associatedMachine = machines.find(machine => machine.id === item.machine_id);
+      const category = machineCategory(associatedMachine) || item.machine?.category || '';
+      const machineName = associatedMachine?.name || item.machine?.name || '';
+      const searchFields = [item.title, item.version_summary, machineName, item.machine_id, category];
+      return (!query || searchFields.some(value => value?.toLocaleLowerCase().includes(query)))
+        && (!machineFilter || item.machine_id === machineFilter)
+        && (!categoryFilter || category === categoryFilter);
+    });
+  }, [knowledgeItems, machines, search, machineFilter, categoryFilter]);
 
   return (
     <main className="diary-page" aria-labelledby="machine-library-title">
@@ -78,24 +136,29 @@ export const MachineDiaryLibraryPage: React.FC = () => {
           <div className="max-w-3xl">
             <div className="diary-eyebrow flex items-center gap-2"><BookOpen size={15} /> Field knowledge archive</div>
             <h1 id="machine-library-title" className="diary-heading mt-3">Your Knowledge Library</h1>
-            <p className="diary-subtitle mt-3">Every registered machine keeps its own technical diary. Open a volume to browse its videos, photos, documents, and field notes.</p>
+            <p className="diary-subtitle mt-3">Browse current approved procedures and machine knowledge, including videos, photos, documents, and field notes.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-3 self-start xl:self-auto">
+          {canCreateKnowledge && <div className="flex flex-wrap items-center gap-3 self-start xl:self-auto">
             <Link to="/app/knowledge-assets?kind=video" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#1976C9]/20 bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976C9]">
               <ClipboardList size={17} /> Capture knowledge
             </Link>
-          </div>
+          </div>}
         </header>
 
-        <section className="diary-toolbar mt-8 grid gap-3 rounded-2xl p-3 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,18rem)] sm:p-4" aria-label="Search machine diaries">
+        <section className="diary-toolbar mt-8 grid gap-3 rounded-2xl p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(11rem,15rem)_minmax(11rem,15rem)] sm:p-4" aria-label="Search knowledge library">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#536779]" size={18} />
-            <input className="diary-control w-full pl-11 pr-4 text-sm" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name, machine ID, model, or location…" aria-label="Search machines" />
+            <input className="diary-control w-full pl-11 pr-4 text-sm" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search titles, machines, models, or categories…" aria-label="Search knowledge library" />
           </label>
           <label className="sr-only" htmlFor="diary-machine-filter">Filter by machine</label>
           <select id="diary-machine-filter" className="diary-control px-3.5 text-sm" aria-label="Filter by machine" value={machineFilter} onChange={event => setMachineFilter(event.target.value)}>
-            <option value="">Choose a machine…</option>
-            {machineOptions.map(({ label, machine }) => <option key={label} value={machine?.id || `unavailable-${label}`} disabled={!machine}>{label}</option>)}
+            <option value="">All machines</option>
+            {machineOptions.map(({ label, machine }) => <option key={machine.id} value={machine.id}>{label}</option>)}
+          </select>
+          <label className="sr-only" htmlFor="diary-category-filter">Filter by machine category</label>
+          <select id="diary-category-filter" className="diary-control px-3.5 text-sm" aria-label="Filter by machine category" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}>
+            <option value="">All categories</option>
+            {categories.map(category => <option key={category} value={category}>{category}</option>)}
           </select>
         </section>
 
@@ -113,7 +176,11 @@ export const MachineDiaryLibraryPage: React.FC = () => {
           <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#536779]">Machine diaries appear here once equipment is registered. Ask a machine manager to add the equipment before capturing its knowledge.</p>
         </div>}
 
-        {!loading && !error && machines.length > 0 && visibleMachines.length === 0 && <div className="mt-8 rounded-2xl border border-[#E2E8F0] bg-white px-6 py-12 text-center">
+        {!loading && !error && machines.length > 0 && availableMachines.length === 0 && <div className="mt-8 rounded-2xl border border-[#E2E8F0] bg-white px-6 py-12 text-center">
+          <Cpu className="mx-auto text-[#536779]" size={30} /><h2 className="mt-3 text-lg font-semibold text-[#173B5E]">No active machine diaries to display</h2><p className="mx-auto mt-1 max-w-lg text-sm leading-6 text-[#536779]">Ask a machine manager to make a machine available in the library.</p>
+        </div>}
+
+        {!loading && !error && availableMachines.length > 0 && visibleMachines.length === 0 && <div className="mt-8 rounded-2xl border border-[#E2E8F0] bg-white px-6 py-12 text-center">
           <Search className="mx-auto text-[#536779]" size={28} /><h2 className="mt-3 text-lg font-semibold text-[#173B5E]">No diaries match those filters</h2><p className="mt-1 text-sm text-[#536779]">Try another search or choose one of the available machines.</p>
         </div>}
 
@@ -122,6 +189,11 @@ export const MachineDiaryLibraryPage: React.FC = () => {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {visibleMachines.map((machine, index) => {
               const [accent, mid, dark] = bookPalettes[index % 2];
+              const publishedProcedureCount = knowledgeItems.filter(item => item.machine_id === machine.id).length;
+              const machineMediaCount = displayedKnowledgeCount(machine);
+              const entryCountLabel = publishedProcedureCount > 0
+                ? `${machineMediaCount} media · ${publishedProcedureCount} SOP${publishedProcedureCount === 1 ? '' : 's'}`
+                : `${machineMediaCount} entries`;
               return <button key={machine.id} type="button" className="diary-book-button group" onClick={() => navigate(`/app/knowledge/machine/${encodeURIComponent(machine.id)}`)} aria-label={`Open knowledge diary for ${machine.name}`}>
                 <div className="diary-book" style={{ '--book-a': accent, '--book-b': mid, '--book-c': dark } as React.CSSProperties}>
                   <span className="diary-book-spine" aria-hidden="true" /><span className="diary-book-pages" aria-hidden="true" />
@@ -133,7 +205,7 @@ export const MachineDiaryLibraryPage: React.FC = () => {
                       <span className="diary-book-count flex items-center gap-1.5"><ImageIcon size={13} /> {machine.counts.image} <span>photos</span></span>
                       <span className="diary-book-count flex items-center gap-1.5"><FileText size={13} /> {machine.counts.document} <span>documents</span></span>
                       <span className="diary-book-count flex items-center gap-1.5"><ClipboardList size={13} /> {machine.counts.notes} <span>notes</span></span>
-                    </div><div className="diary-book-link"><span>{displayedKnowledgeCount(machine)} entries</span><ArrowUpRight size={16} /></div></div>
+                    </div><div className="diary-book-link"><span>{entryCountLabel}</span><ArrowUpRight size={16} /></div></div>
                   </div></div>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 pl-2 text-left text-xs text-[#536779]">
@@ -145,6 +217,26 @@ export const MachineDiaryLibraryPage: React.FC = () => {
             })}
           </div>
         </section>}
+
+        <section className="mt-10" aria-label="Published procedures and knowledge">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-semibold tracking-wide text-[#173B5E]">PUBLISHED PROCEDURES &amp; KNOWLEDGE</h2><p className="mt-1 text-xs text-[#536779]">Current approved versions available for study.</p></div>{!knowledgeLoading && !knowledgeError && <span className="text-xs text-[#536779]">{visibleKnowledgeItems.length} shown</span>}</div>
+          {knowledgeLoading && <div role="status" aria-live="polite" className="rounded-2xl border border-[#E2E8F0] bg-white p-5 text-sm text-[#536779]">Loading published procedures…</div>}
+          {knowledgeError && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-800" role="alert"><p className="font-semibold">Published knowledge could not be loaded.</p><p className="mt-1 text-sm text-rose-700">{knowledgeError}</p><button type="button" onClick={loadPublishedItems} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium hover:bg-rose-100"><RefreshCw size={15} /> Try again</button></div>}
+          {!knowledgeLoading && !knowledgeError && visibleKnowledgeItems.length === 0 && <div className="rounded-2xl border border-[#E2E8F0] bg-white px-6 py-10 text-center"><BookOpen className="mx-auto text-[#1976C9]" size={30} /><h3 className="mt-3 text-base font-semibold text-[#173B5E]">{knowledgeItems.length === 0 ? 'No published procedures yet' : 'No published knowledge matches those filters'}</h3><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#536779]">{knowledgeItems.length === 0 ? 'Approved SOPs and learning documents will appear here when they are published.' : 'Try another search or choose a different machine or category.'}</p></div>}
+          {!knowledgeLoading && !knowledgeError && visibleKnowledgeItems.length > 0 && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {visibleKnowledgeItems.map(item => {
+              const associatedMachine = machines.find(machine => machine.id === item.machine_id);
+              const machineName = associatedMachine?.name || item.machine?.name || 'General procedure';
+              const category = machineCategory(associatedMachine) || item.machine?.category || '';
+              return <article key={item.version_id} className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3"><h3 className="min-w-0 text-base font-semibold text-[#173B5E]">{item.title}</h3><span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[.68rem] font-semibold text-emerald-800">Published</span></div>
+                <p className="mt-2 line-clamp-3 min-h-10 text-sm leading-5 text-[#536779]">{item.version_summary || 'Published learning procedure'}</p>
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[#536779]"><span className="inline-flex items-center gap-1"><Cpu size={13} />{machineName}</span>{category && <span className="rounded-full bg-[#F1F5F9] px-2 py-1">{category}</span>}<span className="rounded-full bg-[#F1F5F9] px-2 py-1 font-mono">v{item.version_no}</span></div>
+                <Link className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#1976C9]/20 bg-[#EFF6FF] px-3.5 py-2 text-sm font-semibold text-[#125EA3] hover:bg-[#DBEAFE]" to={`/app/knowledge/${encodeURIComponent(item.id)}?version_id=${encodeURIComponent(item.version_id)}`}>Open procedure <ArrowUpRight size={15} /></Link>
+              </article>;
+            })}
+          </div>}
+        </section>
       </div>
     </main>
   );
@@ -166,19 +258,23 @@ function assetDate(asset: MediaAsset): string {
 
 function previewFor(asset: MediaAsset, compact = false) {
   const fileUrl = getApiUrl(`/media/${asset.id}`);
-  if (asset.kind === 'image') return <img src={fileUrl} alt={asset.title || asset.original_name} loading="lazy" />;
-  if (asset.kind === 'video') return <video src={fileUrl} muted preload="metadata" aria-label={`Video preview: ${asset.title || asset.original_name}`} />;
+  if (asset.kind === 'image' && isSupportedImage(asset)) return <img src={fileUrl} alt={asset.title || asset.original_name} loading="lazy" />;
+  if (asset.kind === 'video' && isSupportedVideo(asset)) return <video src={fileUrl} muted preload="metadata" aria-label={`Video preview: ${asset.title || asset.original_name}`} />;
   const Icon = asset.kind === 'notes' ? ClipboardList : FileText;
   return <div className="flex flex-col items-center gap-2 px-5 text-center">
     <Icon size={compact ? 25 : 34} />
-    <span className="max-w-full truncate text-xs text-[#536779]">{asset.kind === 'document' ? (asset.mime === 'application/pdf' ? 'PDF document' : asset.mime) : asset.kind}</span>
+    <span className="max-w-full truncate text-xs text-[#536779]">{asset.kind === 'document' ? (isSupportedDocument(asset) ? 'PDF document' : 'Unsupported file') : asset.kind}</span>
   </div>;
 }
 
 export const MachineDiaryPage: React.FC = () => {
   const { machineId = '' } = useParams<{ machineId: string }>();
+  const { user, hasPermission } = useAuth();
+  const canCreateKnowledge = hasPermission('knowledge.create');
+  const isTrainee = user?.role_id === 'TRAINEE';
   const [machine, setMachine] = useState<MachineDiaryMachine | null>(null);
   const [assets, setAssets] = useState<MediaAsset[]>([]);
+  const [publishedItemsByVersion, setPublishedItemsByVersion] = useState<Map<string, KnowledgeListItem>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -191,17 +287,21 @@ export const MachineDiaryPage: React.FC = () => {
     Promise.all([
       fetchMachineDiaryLibrary(machineId),
       fetchMachineDiaryAssets(machineId),
-    ]).then(([machines, machineAssets]) => {
+      isTrainee ? fetchPublishedKnowledge(machineId) : Promise.resolve([]),
+    ]).then(([machines, machineAssets, publishedItems]) => {
       setMachine(machines[0] || null);
+      const itemsByVersion = new Map(publishedItems.map(item => [item.version_id, item]));
+      setPublishedItemsByVersion(itemsByVersion);
       // Treat the backend association as authoritative and retain a client-side
       // guard so a malformed response cannot leak another machine's assets.
       const visibleKinds = new Set(['video', 'image', 'document', 'notes']);
-      setAssets(machineAssets.filter(asset => asset.machine_id === machineId && visibleKinds.has(asset.kind)));
+      setAssets(machineAssets.filter(asset => asset.machine_id === machineId && visibleKinds.has(asset.kind)
+        && (!isTrainee || (!!asset.version_id && itemsByVersion.has(asset.version_id)))));
     }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Could not load this machine diary.'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadDiary(); setSelected(null); }, [machineId]);
+  useEffect(() => { loadDiary(); setSelected(null); }, [machineId, isTrainee]);
 
   const allEntries = useMemo(() => [...assets].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [assets]);
   const counts = useMemo(() => {
@@ -217,6 +317,7 @@ export const MachineDiaryPage: React.FC = () => {
   const visibleEntries = allEntries.filter(asset => (filter === 'all' || asset.kind === filter)
     && (!search.trim() || [asset.title, asset.original_name, asset.description, asset.tags, asset.content]
       .some(value => value?.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))));
+  const publishedProcedures = [...publishedItemsByVersion.values()].sort((a, b) => a.title.localeCompare(b.title));
 
   const countCards = [
     { label: 'Video', count: machine?.counts.video || 0, Icon: Video },
@@ -247,12 +348,23 @@ export const MachineDiaryPage: React.FC = () => {
               {machine.location && <span className="inline-flex items-center gap-1"><MapPin size={14} />{machine.location}</span>}
             </div>
           </div>
-          <Link to={captureHref} className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-xl border border-[#1976C9] bg-[#1976C9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#125EA3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976C9] lg:self-auto"><ClipboardList size={16} /> Add to this diary</Link>
+          {canCreateKnowledge && <Link to={captureHref} className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-xl border border-[#1976C9] bg-[#1976C9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#125EA3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976C9] lg:self-auto"><ClipboardList size={16} /> Add to this diary</Link>}
         </header>
 
         <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Knowledge counts">
           {countCards.map(({ label, count, Icon }) => <div key={label} className="diary-stat flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#EFF4FF] text-[#1976C9]"><Icon size={17} /></span><div><div className="text-lg font-semibold leading-tight text-[#173B5E]">{count}</div><div className="text-xs text-[#536779]">{label}{count === 1 ? '' : 's'}</div></div></div>)}
         </section>
+
+        {isTrainee && publishedProcedures.length > 0 && <section className="mt-7" aria-label="Published procedures">
+          <div className="mb-3 flex items-center justify-between gap-3"><h2 className="text-sm font-semibold tracking-wide text-[#173B5E]">PUBLISHED PROCEDURES</h2><span className="text-xs text-[#536779]">{publishedProcedures.length}</span></div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {publishedProcedures.map(item => <article key={item.version_id} className="rounded-2xl border border-[#DCE6F0] bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3"><h3 className="min-w-0 text-sm font-semibold text-[#173B5E]">{item.title}</h3><span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[.65rem] font-semibold text-emerald-800">Published</span></div>
+              <p className="mt-2 line-clamp-3 text-xs leading-5 text-[#536779]">{item.version_summary || 'Published learning procedure'}</p>
+              <div className="mt-3 flex items-center justify-between gap-2"><span className="rounded-full bg-[#F1F5F9] px-2 py-1 font-mono text-xs text-[#536779]">v{item.version_no}</span><Link className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-[#1976C9]/20 bg-[#EFF6FF] px-3 py-1.5 text-xs font-semibold text-[#125EA3] hover:bg-[#DBEAFE]" to={`/app/knowledge/${encodeURIComponent(item.id)}?version_id=${encodeURIComponent(item.version_id)}`}>Open procedure <ArrowUpRight size={14} /></Link></div>
+            </article>)}
+          </div>
+        </section>}
 
         <section className="diary-toolbar mt-7 rounded-2xl p-3 sm:p-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -264,9 +376,9 @@ export const MachineDiaryPage: React.FC = () => {
         </section>
 
         {visibleEntries.length === 0 ? <div className="mt-7 rounded-2xl border border-[#E2E8F0] bg-white px-6 py-14 text-center">
-          <BookOpen className="mx-auto text-[#1976C9]" size={31} /><h2 className="mt-4 text-lg font-semibold text-[#173B5E]">{allEntries.length === 0 ? 'This diary is ready for its first entry' : search.trim() ? 'No entries match your search' : `No ${diaryTabs.find(tab => tab.id === filter)?.label.toLowerCase() || 'entries'} in this diary yet`}</h2>
-          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#536779]">{allEntries.length === 0 ? 'Capture a video, photo, document, or field note and it will be stored with this machine.' : search.trim() ? 'Try another search or choose a different section.' : 'Capture a new entry and it will be stored with this machine.'}</p>
-          {allEntries.length === 0 && <Link to={captureHref} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125EA3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976C9]"><ClipboardList size={16} /> Capture the first entry</Link>}
+          <BookOpen className="mx-auto text-[#1976C9]" size={31} /><h2 className="mt-4 text-lg font-semibold text-[#173B5E]">{allEntries.length === 0 ? (isTrainee ? (publishedProcedures.length > 0 ? 'No published media files yet' : 'No published machine knowledge available') : 'This diary is ready for its first entry') : search.trim() ? 'No entries match your search' : `No ${diaryTabs.find(tab => tab.id === filter)?.label.toLowerCase() || 'entries'} in this diary yet`}</h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#536779]">{allEntries.length === 0 ? (isTrainee ? (publishedProcedures.length > 0 ? 'The published procedures above are available. Machine photos, videos, documents, and field notes will appear here when published.' : 'Published machine media and procedures will appear here when available.') : 'Capture a video, photo, document, or field note and it will be stored with this machine.') : search.trim() ? 'Try another search or choose a different section.' : (canCreateKnowledge ? 'Capture a new entry and it will be stored with this machine.' : 'There are no published entries in this section yet.')}</p>
+          {allEntries.length === 0 && canCreateKnowledge && <Link to={captureHref} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125EA3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976C9]"><ClipboardList size={16} /> Capture the first entry</Link>}
         </div> : <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Machine knowledge entries">
           {visibleEntries.map(asset => <article key={`${asset.kind}-${asset.id}`} className="diary-asset">
             <button type="button" className="diary-asset-preview w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-blue-200" onClick={() => setSelected(asset)} aria-label={`Preview ${asset.title || asset.original_name}`}>
@@ -275,7 +387,7 @@ export const MachineDiaryPage: React.FC = () => {
             <div className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><button type="button" onClick={() => setSelected(asset)} className="block max-w-full truncate text-left text-sm font-semibold text-[#173B5E] hover:text-[#1976C9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1976C9]">{asset.title || asset.original_name}</button><p className="mt-1 truncate text-xs text-[#536779]">{asset.original_name}</p></div><span className="shrink-0 rounded-full border border-[#DCE6F0] bg-[#F8FAFC] px-2 py-1 text-[.65rem] capitalize text-[#536779]">{asset.kind === 'image' ? 'photo' : asset.kind}</span></div>
               {asset.description && <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#536779]">{asset.description}</p>}
               {asset.kind === 'notes' && asset.content && <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-xs leading-5 text-[#173B5E]">{asset.content}</p>}
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#E2E8F0] pt-3 text-[.68rem] text-[#536779]"><span className="inline-flex items-center gap-1"><CalendarDays size={12} />{assetDate(asset)}</span><span>{asset.verification_status || 'Pending review'}</span></div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#E2E8F0] pt-3 text-[.68rem] text-[#536779]"><span className="inline-flex items-center gap-1"><CalendarDays size={12} />{assetDate(asset)}</span><span>{publishedItemsByVersion.has(asset.version_id || '') ? `v${publishedItemsByVersion.get(asset.version_id || '')?.version_no} · Published` : asset.verification_status || 'Pending review'}</span></div>
             </div>
           </article>)}
         </div>}
@@ -285,9 +397,9 @@ export const MachineDiaryPage: React.FC = () => {
     {selected && <div className="diary-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSelected(null); }}>
       <section className="diary-modal p-5 sm:p-7" role="dialog" aria-modal="true" aria-labelledby="diary-asset-title" onKeyDown={event => { if (event.key === 'Escape') setSelected(null); }}>
         <header className="mb-5 flex items-start justify-between gap-4"><div className="min-w-0"><p className="diary-eyebrow">{selected.kind === 'image' ? 'Photo' : selected.kind} · {assetDate(selected)}</p><h2 id="diary-asset-title" className="mt-2 break-words text-xl font-semibold text-[#173B5E]">{selected.title || selected.original_name}</h2><p className="mt-1 break-all text-xs text-[#536779]">{selected.original_name}</p></div><button autoFocus type="button" onClick={() => setSelected(null)} aria-label="Close preview" className="rounded-lg p-2 text-[#536779] hover:bg-[#F8FAFC] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1976C9]"><X size={19} /></button></header>
-        {selected.kind === 'video' && <video className="max-h-[62vh] w-full rounded-xl bg-black" controls autoPlay src={getApiUrl(`/media/${selected.id}`)} />}
-        {selected.kind === 'image' && <img className="mx-auto max-h-[62vh] max-w-full rounded-xl object-contain" src={getApiUrl(`/media/${selected.id}`)} alt={selected.title || selected.original_name} />}
-        {selected.kind === 'document' && <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-6 text-center"><FileText className="mx-auto text-[#1976C9]" size={38} /><p className="mt-3 text-sm text-[#536779]">{selected.mime === 'application/pdf' ? 'PDF document' : selected.mime}</p><a className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125EA3]" href={getApiUrl(`/media/${selected.id}`)} target="_blank" rel="noreferrer">Open document <ArrowUpRight size={15} /></a></div>}
+        {selected.kind === 'video' && (isSupportedVideo(selected) ? <video className="max-h-[62vh] w-full rounded-xl bg-black" controls autoPlay src={getApiUrl(`/media/${selected.id}`)} /> : <UnsupportedFile asset={selected} />)}
+        {selected.kind === 'image' && (isSupportedImage(selected) ? <img className="mx-auto max-h-[62vh] max-w-full rounded-xl object-contain" src={getApiUrl(`/media/${selected.id}`)} alt={selected.title || selected.original_name} /> : <UnsupportedFile asset={selected} />)}
+        {selected.kind === 'document' && (isSupportedDocument(selected) ? <div className="space-y-3"><iframe className="h-[55vh] w-full rounded-xl border border-[#E2E8F0] bg-white" src={getApiUrl(`/media/${selected.id}`)} title={`PDF preview: ${selected.title || selected.original_name}`} /><a className="inline-flex items-center gap-2 rounded-lg bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125EA3]" href={getApiUrl(`/media/${selected.id}`)} target="_blank" rel="noreferrer">Open or download PDF <ArrowUpRight size={15} /></a></div> : <UnsupportedFile asset={selected} />)}
         {selected.kind === 'notes' && <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-5"><p className="whitespace-pre-wrap text-sm leading-7 text-[#173B5E]">{selected.content || 'No text content is available for this entry.'}</p></div>}
         <div className="mt-5 flex flex-wrap gap-2 text-xs text-[#536779]">{selected.tags?.split(',').filter(Boolean).map(tag => <span key={tag.trim()} className="rounded-full border border-[#DCE6F0] px-2.5 py-1">{tag.trim()}</span>)}{selected.author_name && <span className="ml-auto">Added by {selected.author_name}</span>}</div>
       </section>

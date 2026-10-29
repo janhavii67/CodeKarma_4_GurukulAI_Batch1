@@ -37,6 +37,7 @@ from app.models.media import KIND_AUDIO
 from app.models.user import User
 from app.modules.assistant.services.retrieval_service import RetrievalQuery, RetrievalService
 from app.schemas.audio import (
+    AnalysisJobHistoryItem,
     AudioAnalysisJobResponse,
     AudioCandidate,
     AudioReferenceDecisionRequest,
@@ -449,6 +450,57 @@ async def submit_audio_for_review(
     return AudioReviewSubmissionResponse(id=job.id, status=job.status, review_status=job.review_status, submitted_at=utc_now(), message="Recording submitted privately for expert review. It has not been added to the approved reference library.")
 
 
+@router.get("/analysis-jobs", response_model=List[AnalysisJobHistoryItem])
+def list_my_analysis_jobs(
+    machine_id: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_AUDIO_ANALYZE)),
+    db: Session = Depends(get_db),
+):
+    """Return the authenticated user's own audio-analysis history, newest first.
+
+    Only shows jobs owned by the requesting user. Optionally filter by machine.
+    Managers who also have audio.manage may see all jobs via review-submissions.
+    """
+    page_size = min(max(page_size, 1), 50)
+    query = (
+        db.query(AudioAnalysisJob)
+        .filter(AudioAnalysisJob.uploaded_by == auth_ctx.user.id)
+    )
+    if machine_id:
+        query = query.filter(AudioAnalysisJob.machine_id == machine_id)
+    total = query.count()
+    jobs = (
+        query.order_by(desc(AudioAnalysisJob.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    results = []
+    for job in jobs:
+        matched_title = None
+        if job.matched_reference_id:
+            ref = db.get(AudioReference, job.matched_reference_id)
+            if ref:
+                matched_title = ref.title
+        results.append(AnalysisJobHistoryItem(
+            id=job.id,
+            status=job.status,
+            reason_code=job.reason_code,
+            message=job.message,
+            similarity_score=job.similarity_score,
+            matched_reference_title=matched_title,
+            matched_reference_id=job.matched_reference_id,
+            machine_id=job.machine_id,
+            review_status=job.review_status,
+            requires_expert_review=job.requires_expert_review,
+            created_at=job.created_at,
+            completed_at=job.completed_at,
+        ))
+    return results
+
+
 @router.get("/analysis-jobs/{job_id}", response_model=AudioAnalysisJobResponse)
 def get_audio_analysis(job_id: str, auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_AUDIO_ANALYZE)), db: Session = Depends(get_db)):
     return _audio_analysis_response(job_id, auth_ctx, db)
@@ -518,6 +570,9 @@ async def create_audio_reference(
     recording_source: Optional[str] = Form(None, max_length=256),
     recorded_at: Optional[str] = Form(None),
     related_links_json: Optional[str] = Form(None),
+    manufacturer: Optional[str] = Form(None, max_length=256),
+    sound_label: Optional[str] = Form(None, max_length=128),
+    annotation_notes: Optional[str] = Form(None, max_length=4000),
     auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_AUDIO_MANAGE)),
     db: Session = Depends(get_db),
 ):
@@ -578,6 +633,9 @@ async def create_audio_reference(
             knowledge_version_id=version.id, media_asset_id=asset.id, model_name=model_name,
             component=component, operation=operation, recording_source=recording_source,
             recorded_at=parsed_recorded_at, related_links_json=json.dumps(normalized_links),
+            manufacturer=manufacturer.strip() if manufacturer else None,
+            sound_label=sound_label.strip() if sound_label else None,
+            annotation_notes=annotation_notes.strip() if annotation_notes else None,
         )
         db.add(reference)
         db.flush()
@@ -596,7 +654,10 @@ async def create_audio_reference(
     return AudioReferenceResponse(
         id=reference.id, title=reference.title, description=reference.description,
         machine_id=reference.machine_id, machine_name=machine.name if machine else None,
-        model_name=reference.model_name, component=reference.component, operation=reference.operation,
+        model_name=reference.model_name, manufacturer=reference.manufacturer,
+        component=reference.component, operation=reference.operation,
+        sound_label=reference.sound_label, annotation_notes=reference.annotation_notes,
+        is_expert_verified=reference.is_expert_verified,
         duration_seconds=reference.duration_seconds, sample_rate=reference.sample_rate,
         operating_conditions=reference.operating_conditions, recording_source=reference.recording_source,
         recorded_at=reference.recorded_at, status=reference.status,
@@ -733,7 +794,8 @@ def update_audio_reference(
     if not version or not item or reference.uploaded_by != auth_ctx.user.id or version.status not in {"draft", "changes_requested"}:
         raise InvalidStateError(code="audio_reference_not_editable", message="Only your own reference drafts can be edited before publication.")
     fields = payload.model_dump(exclude_unset=True)
-    for attr in ("description", "model_name", "component", "operation", "operating_conditions", "recording_source"):
+    for attr in ("description", "model_name", "manufacturer", "component", "operation",
+                 "operating_conditions", "recording_source", "sound_label", "annotation_notes"):
         if attr in fields:
             setattr(reference, attr, fields[attr])
     if "machine_id" in fields:
@@ -765,7 +827,10 @@ def update_audio_reference(
     return AudioReferenceResponse(
         id=reference.id, title=reference.title, description=reference.description,
         machine_id=reference.machine_id, machine_name=machine.name if machine else None,
-        model_name=reference.model_name, component=reference.component, operation=reference.operation,
+        model_name=reference.model_name, manufacturer=reference.manufacturer,
+        component=reference.component, operation=reference.operation,
+        sound_label=reference.sound_label, annotation_notes=reference.annotation_notes,
+        is_expert_verified=reference.is_expert_verified,
         duration_seconds=reference.duration_seconds, sample_rate=reference.sample_rate,
         operating_conditions=reference.operating_conditions, recording_source=reference.recording_source,
         recorded_at=reference.recorded_at, status=reference.status,

@@ -20,7 +20,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const { user, isAuthenticated, isLoading, hasRole, hasPermission } = useAuth();
   const location = useLocation();
 
-  if (isLoading) {
+  // Only block with the full-screen spinner on the very first auth check, i.e.
+  // when no user is yet known. Background revalidations (triggered by window
+  // focus, native file-picker closing, visibility change) also flip isLoading to
+  // true while the session is re-checked, but the user is already authenticated.
+  // Rendering <LoadingSpinner> during those background checks unmounts the entire
+  // child page tree and destroys all unsaved draft state.
+  if (isLoading && !user) {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center">
         <LoadingSpinner size="lg" message="Authenticating session..." />

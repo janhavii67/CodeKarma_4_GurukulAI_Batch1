@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Query, Request, status
@@ -25,9 +26,11 @@ from app.models.knowledge import (
     STATUS_IN_REVIEW,
     STATUS_PUBLISHED,
 )
+from app.models.machine import Machine
 from app.models.user import User
 from app.schemas.knowledge import (
     KnowledgeCreateRequest,
+    KnowledgeSourceCandidatePreview,
     KnowledgeItemDetailResponse,
     KnowledgeListResponse,
     KnowledgeListItemResponse,
@@ -41,8 +44,58 @@ from app.schemas.knowledge import (
 )
 from app.services.knowledge_service import KnowledgeService
 from app.services.audit_service import AuditService
+from app.services.source_verification import validate_sources_for_publication
+from app.services.synthetic_demo import (
+    build_synthetic_knowledge_draft,
+    is_synthetic_demo_machine,
+    synthetic_demo_environment_enabled,
+)
 
 router = APIRouter(prefix="/knowledge", tags=["Knowledge Capture"])
+
+_UGA_ECG_CANDIDATE_KEY = "uga_ecg_training_manual_ecg001_100_01"
+_UGA_ECG_CANDIDATE_TITLE = "Review Candidate: Uganda ECG Training Manual (ECG001)"
+
+
+def _extract_uga_ecg_manual_excerpt() -> str:
+    """Extract only the ECG chapter pages into a private, unassigned draft."""
+    from pypdf import PdfReader
+
+    source_path = (
+        Path(__file__).resolve().parents[5]
+        / "Knowledge Base"
+        / "uga_Medical_Equipment_User_Training_manual.pdf"
+    )
+    if not source_path.is_file() or source_path.stat().st_size > 10 * 1024 * 1024:
+        raise ValidationError(
+            code="source_document_unavailable",
+            message="The reviewed ECG source PDF is unavailable in this project checkout.",
+        )
+
+    try:
+        reader = PdfReader(str(source_path), strict=True)
+        # Physical PDF pages 78–81 are the ECG chapter; printed pages 70–73.
+        excerpts = []
+        for pdf_page, printed_page in zip((78, 79, 80, 81), (70, 71, 72, 73)):
+            text = reader.pages[pdf_page - 1].extract_text() or ""
+            text = text.strip()
+            if text:
+                excerpts.append(
+                    f"[Source PDF page {pdf_page}; printed page {printed_page}]\n{text}"
+                )
+    except Exception as exc:
+        raise ValidationError(
+            code="source_document_unreadable",
+            message="The reviewed ECG source PDF could not be read. No draft was created.",
+        ) from exc
+
+    content = "\n\n".join(excerpts)
+    if not content:
+        raise ValidationError(
+            code="source_excerpt_empty",
+            message="The reviewed ECG source pages contained no extractable text. No draft was created.",
+        )
+    return content
 
 
 @router.post(
@@ -65,24 +118,73 @@ def create_knowledge(
         payload=req,
         ip_address=client_ip,
     )
-    # Also copy extra fields if supplied (category, tags, content)
-    if req.category:
-        item.category = req.category
-    if req.tags:
-        item.tags = req.tags
-    if req.content:
-        version.content = req.content
-        if not version.summary:
-            version.summary = req.content
-    if req.operating_conditions:
-        version.operating_conditions = req.operating_conditions
-    if req.safety_warnings:
-        version.safety_warnings = req.safety_warnings
+    # The service stores version content with the initial record so all
+    # supported multiline fields are committed together with the draft.
     db.commit()
     db.refresh(item)
     db.refresh(version)
 
     return _build_detail_response(db, item, version)
+
+
+@router.get(
+    "/import-candidates/uganda-ecg-training-manual",
+    response_model=KnowledgeSourceCandidatePreview,
+    summary="Preview an unassigned ECG source review candidate",
+)
+def preview_uga_ecg_review_candidate(
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_KNOWLEDGE_CREATE)),
+):
+    """Return a permission-gated source excerpt without persisting a knowledge record."""
+    _ = auth_ctx  # authorization is the purpose of this dependency
+    source_refs = [
+        {
+            "type": "document",
+            "source_import_key": _UGA_ECG_CANDIDATE_KEY,
+            "source_title": "Medical Equipment User Training Manual for National and Regional User Trainer",
+            "publisher": "Republic of Uganda Ministry of Health",
+            "revision": "February 2020; ECG manual 100-01",
+            "manual_number": "ECG001 100-01",
+            "pdf_pages": [13, 78, 79, 80, 81],
+            "printed_pages": [5, 70, 71, 72, 73],
+            "section": "Target equipment catalog; section 3.20 Electrocardiagram (ECG)",
+        }
+    ]
+
+    content = _extract_uga_ecg_manual_excerpt()
+    return KnowledgeSourceCandidatePreview(
+        title=_UGA_ECG_CANDIDATE_TITLE,
+        machine_id=None,
+        category="GENERAL",
+        tags="source_review_candidate, ecg_manual",
+        summary=(
+            "Unassigned source review candidate. Compare the source identifier, manufacturer, and exact model "
+            "with a verified machine identity before association, review, or publication."
+        ),
+        content=content,
+        source_refs=source_refs,
+    )
+
+
+@router.get(
+    "/synthetic-demo/templates/{machine_id}",
+    response_model=KnowledgeSourceCandidatePreview,
+    summary="Preview a non-operational synthetic knowledge draft for an isolated demo machine",
+)
+def preview_synthetic_demo_template(
+    machine_id: str,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_KNOWLEDGE_CREATE)),
+    db: Session = Depends(get_db),
+):
+    """Return a draft template without writing a knowledge record."""
+    _ = auth_ctx
+    machine = db.get(Machine, machine_id)
+    if not synthetic_demo_environment_enabled(db) or not is_synthetic_demo_machine(machine, db=db):
+        raise NotFoundError(
+            code="synthetic_demo_unavailable",
+            message="Synthetic demo templates are available only for registered demo machines in the isolated demo database.",
+        )
+    return build_synthetic_knowledge_draft(machine, db=db)
 
 
 @router.get(
@@ -170,16 +272,10 @@ def update_knowledge(
         version_id=req.version_id,
         ip_address=client_ip,
     )
-    if req.category:
+    if "category" in req.model_fields_set and req.category:
         item.category = req.category
-    if req.tags:
+    if "tags" in req.model_fields_set:
         item.tags = req.tags
-    if req.content:
-        version.content = req.content
-    if req.operating_conditions:
-        version.operating_conditions = req.operating_conditions
-    if req.safety_warnings:
-        version.safety_warnings = req.safety_warnings
     db.commit()
     db.refresh(item)
     db.refresh(version)
@@ -222,6 +318,7 @@ def submit_knowledge(
         )
 
     if version:
+        validate_sources_for_publication(version, item, db)
         if item.category == "GUIDED_WORKFLOW":
             source_refs = version.source_refs or []
             if not source_refs:

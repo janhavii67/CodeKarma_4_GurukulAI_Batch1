@@ -30,22 +30,21 @@ const GENERIC_SUGGESTIONS = [
 
 export const SuggestedQuestions: React.FC<SuggestedQuestionsProps> = ({ onSelectQuestion }) => {
   return (
-    <div className="max-w-2xl mx-auto py-10 px-4 space-y-6 text-center">
-      <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 mb-2 border border-blue-100 shadow-2xs">
-        <Sparkles className="w-6 h-6" />
-      </div>
-
-      <div className="space-y-2">
-        <h3 className="text-lg font-bold text-slate-900 tracking-tight">
+    <div className="mx-auto w-full max-w-3xl px-3 py-8 sm:px-5 sm:py-12">
+      <div className="mb-8 text-center">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-900/15">
+          <Sparkles className="h-6 w-6" />
+        </div>
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-blue-600">Gurukul AI · Technical Tutor</p>
+        <h2 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
           How can I assist your shopfloor operations?
-        </h3>
-        <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-          Ask questions regarding equipment operating procedures, preventive maintenance checklists,
-          or safety protocols. Every response is grounded in approved technical documents.
+        </h2>
+        <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-slate-500">
+          Ask about a machine, a maintenance task, or a safety procedure. Answers are checked against approved knowledge.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left pt-2">
+      <div className="grid grid-cols-1 gap-3 text-left sm:grid-cols-2">
         {GENERIC_SUGGESTIONS.map((item, idx) => {
           const Icon = item.icon;
           return (
@@ -53,20 +52,27 @@ export const SuggestedQuestions: React.FC<SuggestedQuestionsProps> = ({ onSelect
               key={idx}
               type="button"
               onClick={() => onSelectQuestion(item.question)}
-              className="p-3.5 rounded-xl bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 transition-all text-left shadow-2xs group flex flex-col justify-between"
+              className="group flex min-h-28 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-900/5 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
             >
-              <div className="flex items-center space-x-2 text-blue-600 mb-1.5">
-                <Icon className="w-4 h-4 shrink-0" />
-                <span className="text-xs font-bold text-slate-800 group-hover:text-blue-700">
+              <div className="mb-2 flex items-center gap-2.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover:bg-blue-100">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="text-xs font-bold text-slate-800 transition group-hover:text-blue-700">
                   {item.title}
                 </span>
               </div>
-              <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                "{item.question}"
+              <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">
+                {item.question}
               </p>
             </button>
           );
         })}
+      </div>
+      <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px] text-slate-500">
+        <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">Ask in plain language</span>
+        <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">Add a machine for context</span>
+        <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">Attach a photo or manual</span>
       </div>
     </div>
   );

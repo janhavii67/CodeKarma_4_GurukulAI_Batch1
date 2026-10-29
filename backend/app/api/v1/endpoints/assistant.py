@@ -5,10 +5,11 @@ import queue
 import threading
 import time
 import uuid
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -33,16 +34,22 @@ from app.core.permissions import (
 )
 from app.db.base import generate_uuid, utc_now
 from app.db.session import get_db
-from app.models.knowledge import KnowledgeVersion, STATUS_PUBLISHED
+from app.models.knowledge import KnowledgeItem, KnowledgeVersion, STATUS_PUBLISHED
 from app.models.machine import Machine
 from app.models.media import (
     KIND_AUDIO,
     KIND_DOCUMENT,
     KIND_IMAGE,
+    KIND_NOTES,
     KIND_VIDEO,
     MediaAsset,
 )
 from app.services.media_service import sanitize_filename, MIME_TO_EXT
+from app.services.synthetic_demo import (
+    build_synthetic_question_payload,
+    is_synthetic_demo_machine,
+    synthetic_demo_environment_enabled,
+)
 from app.integrations.storage import get_storage_service
 from app.modules.assistant.models import (
     AssistantFeedback,
@@ -73,6 +80,7 @@ from app.modules.assistant.services.retrieval_service import (
     RetrievalService,
 )
 from app.modules.assistant.services.eligibility import get_eligibility_service
+from app.modules.assistant.services.machine_context import resolve_machine_context
 from app.modules.assistant.validation.answer_validator import AnswerValidator
 from app.schemas.assistant import (
     ChatRequest,
@@ -89,6 +97,7 @@ from app.schemas.assistant import (
     SourceChunkItem,
     SourceDetailResponse,
     SourceItem,
+    TutorAttachment,
     TutorHandoffStartRequest,
     TutorHandoffStartResponse,
 )
@@ -100,6 +109,44 @@ from app.services.assistant_handoff_service import get_tutor_handoffs, start_tut
 from app.services.assistant_media_service import MAX_MEDIA_BYTES, PreparedAttachment, prepare_attachment
 
 router = APIRouter(prefix="/assistant", tags=["Assistant"])
+
+
+@router.get(
+    "/synthetic-demo/questions",
+    summary="Get non-operational sample questions for an isolated synthetic demo machine",
+)
+def get_synthetic_demo_questions(
+    machine_id: str = Query(...),
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_ASSISTANT_USE)),
+    db: Session = Depends(get_db),
+):
+    _ = auth_ctx
+    machine = db.get(Machine, machine_id)
+    if not synthetic_demo_environment_enabled(db) or not is_synthetic_demo_machine(machine, db=db):
+        raise NotFoundError(
+            code="synthetic_demo_unavailable",
+            message="Synthetic Tutor samples are available only for registered demo machines in the isolated demo database.",
+        )
+    return build_synthetic_question_payload(machine, db=db)
+INSUFFICIENT_EVIDENCE_ANSWER = "The verified technical knowledge base does not contain sufficient information to answer this question."
+
+
+def _missing_evidence_answer(machine: Optional[Machine]) -> str:
+    """Explain a machine-scoped evidence gap without offering unsupported guidance."""
+    if not machine:
+        return INSUFFICIENT_EVIDENCE_ANSWER
+
+    machine_label = machine.name
+    if machine.code:
+        machine_label = f"{machine_label} ({machine.code})"
+    return (
+        f"The approved knowledge base does not contain verified, published information linked to {machine_label} "
+        "that answers this question. I can't provide machine-specific settings, medical protocols, troubleshooting, "
+        "or repair steps without that evidence. An authorized expert should add and review the applicable "
+        "manufacturer's manual or approved SOP, including its model, revision, and relevant page references, "
+        "then publish it for this machine. For safety-critical work, follow your site's current approved procedure "
+        "and contact your supervisor."
+    )
 
 # Rate limit tracker: user_id -> list of timestamps
 _chat_rate_limits: Dict[str, List[datetime]] = {}
@@ -215,6 +262,155 @@ def _keep_tolerance_supporting_chunks(chunks: list, question: str) -> list:
     return [chunk for chunk in chunks if any(term in (chunk.text or "").lower() for term in terms)]
 
 
+def _references_prior_attachment(question: str) -> bool:
+    cues = {
+        "it", "its", "this", "that", "these", "those", "image", "picture", "photo",
+        "video", "recording", "attachment", "file", "document", "pdf", "audio", "shown",
+    }
+    words = set(re.findall(r"[a-z0-9]+", (question or "").lower()))
+    return bool(words & cues)
+
+
+def _load_prior_tutor_attachment(db: Session, conv: ChatConversation, user_id: str, question: str):
+    if not _references_prior_attachment(question):
+        return None, None
+    prior_message = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.conversation_id == conv.id,
+            ChatMessage.role == MESSAGE_ROLE_USER,
+            ChatMessage.attachment_media_id.isnot(None),
+        )
+        .order_by(ChatMessage.created_at.desc())
+        .first()
+    )
+    if not prior_message:
+        return None, None
+    asset = db.get(MediaAsset, prior_message.attachment_media_id)
+    if not asset or asset.uploaded_by != user_id:
+        raise NotFoundError(code="attachment_not_found", message="The earlier attachment is no longer available in this conversation.")
+    if asset.size_bytes <= 0 or asset.size_bytes > MAX_MEDIA_BYTES:
+        raise ValidationError(code="invalid_attachment", message="The earlier attachment exceeds the Tutor's supported size limit.")
+    storage = get_storage_service()
+    try:
+        stream, _ = storage.open(asset.storage_key)
+        data = b"".join(stream)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise NotFoundError(code="attachment_not_found", message="The earlier attachment is no longer available in storage.") from exc
+    if len(data) != asset.size_bytes:
+        raise NotFoundError(code="attachment_not_found", message="The earlier attachment is incomplete and cannot be analyzed.")
+    prepared = prepare_attachment(data, asset.original_name)
+    if prepared.mime_type != asset.mime:
+        raise ValidationError(code="invalid_attachment", message="The earlier attachment no longer matches its stored media type.")
+    context = f"Previously attached file ({asset.original_name}) content:\n{prepared.text}" if prepared.text else None
+    if not prepared.media_parts and not prepared.text:
+        raise ValidationError(code="unsupported_media_type", message="The earlier attachment cannot be analyzed by the Tutor.")
+    return asset, (prepared, context)
+
+
+def _tutor_attachment_payload(asset: MediaAsset) -> TutorAttachment:
+    return TutorAttachment(
+        media_id=asset.id,
+        filename=asset.original_name,
+        mime=asset.mime,
+        size_bytes=asset.size_bytes,
+        url=f"/api/v1/assistant/attachments/{asset.id}",
+    )
+
+
+def _provider_failure_message(error_code: Optional[str]) -> str:
+    code = (error_code or "").lower()
+    if "auth" in code or "credential" in code:
+        return "AI provider authentication failed. Verify the server's configured provider credentials."
+    if "rate" in code or "quota" in code:
+        return "The AI provider's usage limit was reached. Please retry later."
+    if "timeout" in code:
+        return "The AI assistant is temporarily unavailable because the request timed out. Try a smaller attachment or retry shortly."
+    return "The AI assistant is temporarily unavailable. Verify the configured model and supported attachment format, then retry."
+
+
+def _provider_failure_code(error: Exception) -> str:
+    if isinstance(error, LLMAuthenticationError):
+        return "authentication"
+    if isinstance(error, LLMRateLimitError):
+        return "rate_limit"
+    if isinstance(error, (LLMTimeoutError, TimeoutError)):
+        return "timeout"
+    detail = str(error).lower()
+    if "auth" in detail or "credential" in detail:
+        return "authentication"
+    if "rate" in detail or "quota" in detail or "usage limit" in detail:
+        return "rate_limit"
+    if "timeout" in detail or "timed out" in detail:
+        return "timeout"
+    return "provider_error"
+
+
+def _store_tutor_attachment(db: Session, user_id: str, prepared: PreparedAttachment, data: bytes) -> MediaAsset:
+    suffix = Path(prepared.filename).suffix.lower()
+    if not re.fullmatch(r"\.[a-z0-9]{1,10}", suffix):
+        suffix = {
+            "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+            "video/mp4": ".mp4", "video/mov": ".mov", "video/webm": ".webm",
+            "audio/wav": ".wav", "audio/mpeg": ".mp3", "application/pdf": ".pdf",
+        }.get(prepared.mime_type, ".bin")
+    raw_uuid = uuid.uuid4().hex
+    storage_key = f"{raw_uuid[:2]}/{raw_uuid[2:4]}/{raw_uuid}{suffix}"
+    storage = get_storage_service()
+    try:
+        stored_size = storage.save(storage_key, io.BytesIO(data), max_bytes=MAX_MEDIA_BYTES)
+        if stored_size != len(data):
+            raise AppError(code="attachment_storage_failed", message="The attachment could not be stored completely.", status_code=500)
+        mime = prepared.mime_type
+        kind = KIND_IMAGE if mime.startswith("image/") else KIND_VIDEO if mime.startswith("video/") else KIND_AUDIO if mime.startswith("audio/") else KIND_NOTES if mime.startswith("text/") else KIND_DOCUMENT
+        asset = MediaAsset(
+            title=prepared.filename[:256] or "Tutor attachment",
+            kind=kind,
+            storage_key=storage_key,
+            original_name=prepared.filename,
+            mime=mime,
+            size_bytes=stored_size,
+            uploaded_by=user_id,
+        )
+        db.add(asset)
+        db.flush()
+        return asset
+    except Exception:
+        storage.delete(storage_key)
+        raise
+
+
+def _record_machine_clarification(
+    db: Session,
+    conv: ChatConversation,
+    req: ChatRequest,
+    answer: str,
+    attachment_label: Optional[str] = None,
+    attachment_media_id: Optional[str] = None,
+) -> Tuple[ChatConversation, ChatMessage, List[SourceItem], bool, str, bool, Optional[AudioAnalysisJobResponse]]:
+    """Persist a focused machine-selection prompt without calling the model."""
+    user_msg = ChatMessage(
+        conversation_id=conv.id,
+        role=MESSAGE_ROLE_USER,
+        content=req.message.strip() + (f"\n[Attachment: {attachment_label}]" if attachment_label else ""),
+        is_ai_generated=False,
+        evidence_status=EVIDENCE_STATUS_NA,
+        attachment_media_id=attachment_media_id,
+    )
+    assistant_msg = ChatMessage(
+        conversation_id=conv.id,
+        role=MESSAGE_ROLE_ASSISTANT,
+        content=answer,
+        is_ai_generated=True,
+        evidence_status=EVIDENCE_STATUS_INSUFFICIENT,
+    )
+    conv.updated_at = utc_now()
+    db.add_all([user_msg, assistant_msg])
+    db.commit()
+    db.refresh(assistant_msg)
+    return conv, assistant_msg, [], True, answer, False, None
+
+
 def _execute_chat_turn(
     db: Session,
     auth_ctx: AuthenticatedContext,
@@ -222,6 +418,7 @@ def _execute_chat_turn(
     attachment_context: Optional[str] = None,
     media_parts: Optional[list[dict]] = None,
     attachment_label: Optional[str] = None,
+    attachment_media_id: Optional[str] = None,
 ) -> Tuple[ChatConversation, ChatMessage, List[SourceItem], bool, str, bool, Optional[AudioAnalysisJobResponse]]:
     """
     Executes a single conversational turn:
@@ -254,31 +451,72 @@ def _execute_chat_turn(
                 message=f"Conversation '{req.conversation_id}' was not found.",
             )
     else:
-        title = req.message[:50].strip() or "New Conversation"
+        conv = None
+
+    machine_context = resolve_machine_context(
+        db,
+        req.message,
+        explicit_machine_id=req.machine_id,
+        conversation_machine_id=conv.machine_id if conv else None,
+    )
+    if machine_context.clarification and not (req.image_media_id or media_parts or attachment_context):
+        if conv is None:
+            conv = ChatConversation(
+                user_id=auth_ctx.user.id,
+                title=req.message[:50].strip() or "New Conversation",
+                status=CONVERSATION_STATUS_ACTIVE,
+            )
+            db.add(conv)
+            db.flush()
+        return _record_machine_clarification(
+            db,
+            conv,
+            req,
+            machine_context.clarification,
+            attachment_label=attachment_label,
+            attachment_media_id=attachment_media_id,
+        )
+
+    if conv is None:
         conv = ChatConversation(
             user_id=auth_ctx.user.id,
-            title=title,
-            machine_id=req.machine_id,
+            title=req.message[:50].strip() or "New Conversation",
+            machine_id=machine_context.machine_id,
             status=CONVERSATION_STATUS_ACTIVE,
         )
         db.add(conv)
         db.flush()
+    elif machine_context.machine_id and conv.machine_id != machine_context.machine_id:
+        # Persist selected or recognized context for restored history and follow-ups.
+        conv.machine_id = machine_context.machine_id
 
-    if req.machine_id and conv.machine_id != req.machine_id:
-        # Keep the machine context available to restored citations and later handoff validation.
-        conv.machine_id = req.machine_id
+    # Restore the latest attachment only when a follow-up refers to it.
+    if not attachment_media_id and not req.image_media_id and not media_parts:
+        restored_asset, restored = _load_prior_tutor_attachment(db, conv, auth_ctx.user.id, req.message)
+        if restored:
+            restored_prepared, restored_context = restored
+            media_parts = restored_prepared.media_parts or None
+            attachment_context = "\n\n".join(filter(None, [attachment_context, restored_context])) or None
+            attachment_label = restored_asset.original_name
+            attachment_media_id = restored_asset.id
 
-    # 1.5 Load image attachment from media storage if image_media_id provided
+    # Load image attachment from media storage if image_media_id provided.
     if req.image_media_id and not media_parts:
         image_asset = db.get(MediaAsset, req.image_media_id)
-        if not image_asset or image_asset.kind != KIND_IMAGE:
+        if not image_asset or image_asset.kind != KIND_IMAGE or image_asset.uploaded_by != auth_ctx.user.id:
             raise NotFoundError(code="not_found", message=f"Image asset '{req.image_media_id}' was not found.")
         storage = get_storage_service()
         stream, _ = storage.open(image_asset.storage_key)
         img_bytes = b"".join(stream)
-        media_parts = [{"mime_type": image_asset.mime, "data": img_bytes}]
+        if len(img_bytes) > MAX_MEDIA_BYTES:
+            raise PayloadTooLargeError(code="payload_too_large", message="Tutor attachments must be 14 MB or smaller.")
+        prepared_image = prepare_attachment(img_bytes, image_asset.original_name)
+        if not prepared_image.mime_type.startswith("image/") or prepared_image.mime_type != image_asset.mime:
+            raise ValidationError(code="invalid_attachment", message="The stored image does not match its declared media type.")
+        media_parts = prepared_image.media_parts
         if not attachment_label:
             attachment_label = image_asset.original_name
+        attachment_media_id = image_asset.id
 
     # 2. Record User message
     user_msg = ChatMessage(
@@ -287,6 +525,7 @@ def _execute_chat_turn(
         content=(req.message.strip() + (f"\n[Attachment: {attachment_label}]" if attachment_label else "")),
         is_ai_generated=False,
         evidence_status=EVIDENCE_STATUS_NA,
+        attachment_media_id=attachment_media_id,
     )
     db.add(user_msg)
     db.flush()
@@ -294,7 +533,9 @@ def _execute_chat_turn(
     # 3. Retrieve chunks grounded strictly in published knowledge
     audio_grounded_match = bool(audio_analysis and audio_knowledge_item_id)
     try:
-        if audio_analysis and not audio_grounded_match:
+        if machine_context.clarification:
+            chunks = []
+        elif audio_analysis and not audio_grounded_match:
             chunks = []
         else:
             retrieval_query = RetrievalQuery(
@@ -305,13 +546,13 @@ def _execute_chat_turn(
                     req.message + (f"\nAttachment context: {attachment_context}" if attachment_context else ""),
                 ),
                 user_id=auth_ctx.user.id,
-                machine_id=req.machine_id or conv.machine_id,
+                machine_id=conv.machine_id,
                 top_k=settings.ASSISTANT_RETRIEVAL_TOP_K,
                 min_score=settings.ASSISTANT_RETRIEVAL_MIN_SCORE,
                 knowledge_item_id=audio_knowledge_item_id,
             )
             chunks = RetrievalService.retrieve_chunks(retrieval_query, db)
-            if media_parts or req.image_media_id:
+            if media_parts or req.image_media_id or attachment_context:
                 chunks = _keep_tolerance_supporting_chunks(chunks, req.message)
     except Exception as exc:
         db.rollback()
@@ -323,8 +564,19 @@ def _execute_chat_turn(
         ) from exc
 
     # 4. Handle grounding invariant: if no approved source is found, return insufficient_evidence=True
-    if not chunks and not audio_analysis and not media_parts and not req.image_media_id:
-        answer = "The verified technical knowledge base does not contain sufficient information to answer this question."
+    if machine_context.clarification:
+        answer = machine_context.clarification
+        insufficient_evidence = True
+        sources: List[SourceItem] = []
+        cited_chunk_ids: List[str] = []
+        evidence_status = EVIDENCE_STATUS_INSUFFICIENT
+        provider_name = None
+        model_name = None
+        latency_ms = 0
+        provider_unavailable = False
+    elif not chunks and not audio_analysis and not media_parts and not req.image_media_id and not attachment_context:
+        target_machine = db.get(Machine, conv.machine_id) if conv.machine_id else None
+        answer = _missing_evidence_answer(target_machine)
         insufficient_evidence = True
         sources: List[SourceItem] = []
         cited_chunk_ids: List[str] = []
@@ -347,7 +599,7 @@ def _execute_chat_turn(
         prompt_builder = PromptBuilder()
         prior_messages = _prompt_history(db, conv.id, user_msg.id, auth_ctx)
         machine_name = None
-        target_machine_id = req.machine_id or conv.machine_id
+        target_machine_id = conv.machine_id
         if target_machine_id:
             mach = db.get(Machine, target_machine_id)
             if mach:
@@ -370,10 +622,12 @@ def _execute_chat_turn(
                 timeout_s=settings.AI_REQUEST_TIMEOUT_S,
             ))
             if ai_resp.status != "succeeded":
-                raise LLMError(ai_resp.error_code or "AI provider unavailable")
+                raise LLMError(_provider_failure_message(ai_resp.error_code))
+            if not str(ai_resp.result or "").strip():
+                raise LLMError("The AI provider returned an empty response.")
         except (LLMAuthenticationError, LLMRateLimitError, LLMTimeoutError, LLMError) as err:
             logger.error(f"LLM generation failed: {type(err).__name__}")
-            answer = "The AI assistant is temporarily unavailable. Please try again shortly."
+            answer = _provider_failure_message(_provider_failure_code(err))
             insufficient_evidence = False
             sources = []
             cited_chunk_ids = []
@@ -388,9 +642,20 @@ def _execute_chat_turn(
             val_result = validator.validate(str(ai_resp.result or ""), chunks)
 
             answer = val_result.sanitized_content
-            has_media = bool(media_parts or req.image_media_id)
+            has_media = bool(media_parts or req.image_media_id or attachment_context)
+            # Do not show a generated procedure when it contains unsupported
+            # parameters or references. A warning badge alone is not enough.
+            # Visual media observations (e.g. gauge readings) can legitimately report observed numbers.
+            rejected_answer = bool(
+                val_result.hallucinated_citations
+                or (val_result.hallucinated_numbers and not has_media)
+            )
+            if rejected_answer:
+                answer = INSUFFICIENT_EVIDENCE_ANSWER
+                insufficient_evidence = True
+                evidence_status = EVIDENCE_STATUS_INSUFFICIENT
             # Strict citation grounding check: if no valid citations exist, force insufficient_evidence=True
-            if not val_result.cited_chunk_ids:
+            elif not val_result.cited_chunk_ids:
                 if has_media:
                     # For visual media queries:
                     # If tolerance is asked without an approved procedure chunk, evidence is insufficient
@@ -404,17 +669,17 @@ def _execute_chat_turn(
                     insufficient_evidence = True
                     evidence_status = EVIDENCE_STATUS_INSUFFICIENT
                     if "does not contain sufficient information" not in answer.lower():
-                        answer = "The verified technical knowledge base does not contain sufficient information to answer this question."
+                        answer = INSUFFICIENT_EVIDENCE_ANSWER
             else:
                 insufficient_evidence = (val_result.evidence_status == EVIDENCE_STATUS_INSUFFICIENT)
                 evidence_status = val_result.evidence_status
 
-            cited_chunk_ids = val_result.cited_chunk_ids
+            cited_chunk_ids = [] if rejected_answer else val_result.cited_chunk_ids
             provider_name = ai_resp.provider
             model_name = ai_resp.model
             latency_ms = ai_resp.processing_time_ms
 
-            sources = [
+            sources = [] if rejected_answer else [
                 SourceItem(
                     chunk_id=c.chunk_id,
                     source_id=c.source_id,
@@ -522,26 +787,35 @@ async def chat_media_endpoint(
         if summary_response.status != "succeeded" or not str(summary_response.result or "").strip():
             raise AppError(
                 code="media_analysis_unavailable",
-                message="Media analysis is temporarily unavailable. Please try again shortly.",
+                message=_provider_failure_message(summary_response.error_code),
                 status_code=503,
             )
         attachment_context = (attachment_context + "\n\n" if attachment_context else "") + (
             "Unverified AI description of user media (context for retrieval only):\n" + str(summary_response.result)[:6000]
         )
 
+    attachment_asset = _store_tutor_attachment(db, auth_ctx.user.id, prepared, data)
+
     req = ChatRequest(
         message=question,
         conversation_id=conversation_id,
         machine_id=machine_id,
     )
-    conv, assistant_msg, sources, insufficient_evidence, answer, provider_unavailable, audio_analysis = _execute_chat_turn(
-        db=db,
-        auth_ctx=auth_ctx,
-        req=req,
-        attachment_context=attachment_context or None,
-        media_parts=prepared.media_parts,
-        attachment_label=prepared.filename,
-    )
+    try:
+        conv, assistant_msg, sources, insufficient_evidence, answer, provider_unavailable, audio_analysis = _execute_chat_turn(
+            db=db,
+            auth_ctx=auth_ctx,
+            req=req,
+            attachment_context=attachment_context or None,
+            media_parts=prepared.media_parts,
+            attachment_label=prepared.filename,
+            attachment_media_id=attachment_asset.id,
+        )
+    except Exception:
+        db.rollback()
+        if not db.query(ChatMessage).filter(ChatMessage.attachment_media_id == attachment_asset.id).first():
+            get_storage_service().delete(attachment_asset.storage_key)
+        raise
     return ChatResponse(
         answer=answer,
         sources=sources,
@@ -550,6 +824,7 @@ async def chat_media_endpoint(
         conversation_id=conv.id,
         message_id=assistant_msg.id,
         audio_analysis=audio_analysis,
+        attachment=_tutor_attachment_payload(attachment_asset),
         handoffs=(get_tutor_handoffs(db, auth_ctx, req.message, sources, machine_id=req.machine_id or conv.machine_id)
                   if not insufficient_evidence and not provider_unavailable and not audio_analysis else []),
     )
@@ -714,55 +989,87 @@ def chat_stream_endpoint(
                 message=f"Conversation '{req.conversation_id}' was not found.",
             )
     else:
-        title = req.message[:50].strip() or "New Conversation"
+        conv = None
+
+    machine_context = resolve_machine_context(
+        db,
+        req.message,
+        explicit_machine_id=req.machine_id,
+        conversation_machine_id=conv.machine_id if conv else None,
+    )
+    if conv is None:
         conv = ChatConversation(
             user_id=auth_ctx.user.id,
-            title=title,
-            machine_id=req.machine_id,
+            title=req.message[:50].strip() or "New Conversation",
+            machine_id=machine_context.machine_id,
             status=CONVERSATION_STATUS_ACTIVE,
         )
         db.add(conv)
         db.flush()
+    elif machine_context.machine_id and conv.machine_id != machine_context.machine_id:
+        conv.machine_id = machine_context.machine_id
 
-    if req.machine_id and conv.machine_id != req.machine_id:
-        conv.machine_id = req.machine_id
-
-    # 1.5 Load image attachment from media storage if image_media_id provided
+    # Restore a referenced prior attachment or validate an explicitly supplied image.
     media_parts = None
+    attachment_context = None
+    attachment_media_id = None
+    attachment_label = None
     if req.image_media_id:
         image_asset = db.get(MediaAsset, req.image_media_id)
-        if not image_asset or image_asset.kind != KIND_IMAGE:
+        if not image_asset or image_asset.kind != KIND_IMAGE or image_asset.uploaded_by != auth_ctx.user.id:
             raise NotFoundError(code="not_found", message=f"Image asset '{req.image_media_id}' was not found.")
         storage = get_storage_service()
         stream, _ = storage.open(image_asset.storage_key)
         img_bytes = b"".join(stream)
-        media_parts = [{"mime_type": image_asset.mime, "data": img_bytes}]
+        if len(img_bytes) > MAX_MEDIA_BYTES:
+            raise PayloadTooLargeError(code="payload_too_large", message="Tutor attachments must be 14 MB or smaller.")
+        prepared_image = prepare_attachment(img_bytes, image_asset.original_name)
+        if not prepared_image.mime_type.startswith("image/") or prepared_image.mime_type != image_asset.mime:
+            raise ValidationError(code="invalid_attachment", message="The stored image does not match its declared media type.")
+        media_parts = prepared_image.media_parts
+        attachment_media_id = image_asset.id
+        attachment_label = image_asset.original_name
+    elif req.conversation_id:
+        restored_asset, restored = _load_prior_tutor_attachment(db, conv, auth_ctx.user.id, req.message)
+        if restored:
+            restored_prepared, attachment_context = restored
+            media_parts = restored_prepared.media_parts or None
+            attachment_media_id = restored_asset.id
+            attachment_label = restored_asset.original_name
 
     # 2. Record User message
     user_msg = ChatMessage(
         conversation_id=conv.id,
         role=MESSAGE_ROLE_USER,
-        content=req.message.strip(),
+        content=(req.message.strip() + (f"\n[Attachment: {attachment_label}]" if attachment_label else "")),
         is_ai_generated=False,
         evidence_status=EVIDENCE_STATUS_NA,
+        attachment_media_id=attachment_media_id,
     )
     db.add(user_msg)
     # 3. Retrieve chunks grounded strictly in published knowledge
     audio_grounded_match = bool(audio_analysis and audio_knowledge_item_id)
     try:
-        if audio_analysis and not audio_grounded_match:
+        if machine_context.clarification:
+            chunks = []
+        elif audio_analysis and not audio_grounded_match:
             chunks = []
         else:
             retrieval_query = RetrievalQuery(
-                query=_retrieval_query_text(db, conv.id, user_msg.id, req.message),
+                query=_retrieval_query_text(
+                    db,
+                    conv.id,
+                    user_msg.id,
+                    req.message + (f"\nAttachment context: {attachment_context}" if attachment_context else ""),
+                ),
                 user_id=auth_ctx.user.id,
-                machine_id=req.machine_id or conv.machine_id,
+                machine_id=conv.machine_id,
                 top_k=settings.ASSISTANT_RETRIEVAL_TOP_K,
                 min_score=settings.ASSISTANT_RETRIEVAL_MIN_SCORE,
                 knowledge_item_id=audio_knowledge_item_id,
             )
             chunks = RetrievalService.retrieve_chunks(retrieval_query, db)
-            if req.image_media_id:
+            if req.image_media_id or media_parts or attachment_context:
                 chunks = _keep_tolerance_supporting_chunks(chunks, req.message)
         # Persist the user turn only after retrieval is available.
         db.commit()
@@ -778,8 +1085,33 @@ def chat_stream_endpoint(
     # 4. Stream generator
     def event_stream():
         yield f"event: status\ndata: {json.dumps({'message': 'Checking approved knowledge sources…'})}\n\n"
+        if machine_context.clarification:
+            answer = machine_context.clarification
+            assistant_msg = ChatMessage(
+                conversation_id=conv.id,
+                role=MESSAGE_ROLE_ASSISTANT,
+                content=answer,
+                is_ai_generated=True,
+                evidence_status=EVIDENCE_STATUS_INSUFFICIENT,
+            )
+            conv.updated_at = utc_now()
+            db.add(assistant_msg)
+            db.commit()
+            for token in re.findall(r"\S+\s*", answer) or [answer]:
+                data = json.dumps({"token": token, "conversation_id": conv.id, "message_id": assistant_msg.id})
+                yield f"event: token\ndata: {data}\n\n"
+            sources_payload = json.dumps({
+                "sources": [],
+                "insufficient_evidence": True,
+                "conversation_id": conv.id,
+                "message_id": assistant_msg.id,
+                "audio_analysis": None,
+            })
+            yield f"event: sources\ndata: {sources_payload}\n\n"
+            yield "event: done\ndata: [DONE]\n\n"
+            return
         # Handle zero eligible chunks
-        if not chunks and not audio_analysis and not req.image_media_id:
+        if not chunks and not audio_analysis and not req.image_media_id and not media_parts and not attachment_context:
             answer = "The verified technical knowledge base does not contain sufficient information to answer this question."
             assistant_msg = ChatMessage(
                 conversation_id=conv.id,
@@ -842,7 +1174,7 @@ def chat_stream_endpoint(
         prompt_builder = PromptBuilder()
         prior_messages = _prompt_history(db, conv.id, user_msg.id, auth_ctx)
         machine_name = None
-        target_machine_id = req.machine_id or conv.machine_id
+        target_machine_id = conv.machine_id
         if target_machine_id:
             mach = db.get(Machine, target_machine_id)
             if mach:
@@ -853,6 +1185,7 @@ def chat_stream_endpoint(
             chunks=chunks,
             history=prior_messages,
             machine_name=machine_name,
+            attachment_context=attachment_context,
             media_parts=media_parts,
         )
 
@@ -915,7 +1248,7 @@ def chat_stream_endpoint(
                 ai_request.timeout_s = remaining_s
                 fallback = ai_orchestrator.execute(ai_request)
                 if fallback.status != "succeeded":
-                    raise LLMError(fallback.error_code or "AI provider unavailable")
+                    raise LLMError(_provider_failure_message(fallback.error_code))
                 provider_name = fallback.provider or provider_name
                 model_name = fallback.model or model_name
                 accumulated_text = str(fallback.result or "")
@@ -923,7 +1256,13 @@ def chat_stream_endpoint(
                 logger.error(f"Synchronous fallback also failed: {type(gen_err).__name__}")
                 provider_unavailable = True
                 provider_name = "unavailable"
-                accumulated_text = "The AI assistant is temporarily unavailable. Please try again shortly."
+                accumulated_text = _provider_failure_message(_provider_failure_code(gen_err))
+
+        if not provider_unavailable and not accumulated_text.strip():
+            provider_unavailable = True
+            provider_name = "unavailable"
+            model_name = None
+            accumulated_text = _provider_failure_message("provider_error")
 
         # Validate complete accumulated response
         validator = AnswerValidator()
@@ -935,7 +1274,7 @@ def chat_stream_endpoint(
             insufficient_evidence = False
             evidence_status = EVIDENCE_STATUS_NA
         elif not val_result.cited_chunk_ids:
-            if req.image_media_id:
+            if req.image_media_id or media_parts or attachment_context:
                 if "tolerance" in req.message.lower():
                     insufficient_evidence = True
                     evidence_status = EVIDENCE_STATUS_INSUFFICIENT
@@ -946,10 +1285,21 @@ def chat_stream_endpoint(
                 insufficient_evidence = True
                 evidence_status = EVIDENCE_STATUS_INSUFFICIENT
                 if "does not contain sufficient information" not in final_content.lower() and not accumulated_text.startswith("The AI assistant is temporarily unavailable"):
-                    final_content = "The verified technical knowledge base does not contain sufficient information to answer this question."
+                    final_content = INSUFFICIENT_EVIDENCE_ANSWER
         else:
             insufficient_evidence = (val_result.evidence_status == EVIDENCE_STATUS_INSUFFICIENT)
             evidence_status = val_result.evidence_status
+
+        has_stream_media = bool(media_parts or req.image_media_id or attachment_context)
+        rejected_answer = bool(
+            val_result.hallucinated_citations
+            or (val_result.hallucinated_numbers and not has_stream_media)
+        )
+        accepted_citation_ids = [] if provider_unavailable or rejected_answer else val_result.cited_chunk_ids
+        if rejected_answer:
+            final_content = INSUFFICIENT_EVIDENCE_ANSWER
+            insufficient_evidence = True
+            evidence_status = EVIDENCE_STATUS_INSUFFICIENT
 
         # Persist Assistant message
         assistant_msg = ChatMessage(
@@ -979,7 +1329,7 @@ def chat_stream_endpoint(
                 source_type=c.source_type,
                 machine_id=c.machine_id,
             )
-            for c in chunks if c.chunk_id in val_result.cited_chunk_ids
+            for c in chunks if c.chunk_id in accepted_citation_ids
         ]
 
         for c in chunks if not provider_unavailable else []:
@@ -990,7 +1340,7 @@ def chat_stream_endpoint(
                     source_id=c.source_id,
                     rank=c.rank,
                     score=c.score,
-                    cited=(c.chunk_id in val_result.cited_chunk_ids),
+                    cited=(c.chunk_id in accepted_citation_ids),
                 )
             )
 
@@ -1009,7 +1359,7 @@ def chat_stream_endpoint(
 
         # Emit sources event and done
         handoffs = (
-            get_tutor_handoffs(db, auth_ctx, req.message, sources, machine_id=req.machine_id or conv.machine_id)
+            get_tutor_handoffs(db, auth_ctx, req.message, sources, machine_id=conv.machine_id)
             if not insufficient_evidence and not provider_unavailable and not audio_analysis else []
         )
         sources_payload = json.dumps({
@@ -1140,6 +1490,12 @@ def get_conversation_detail(
                     )
                 )
 
+        attachment = None
+        if msg.role == MESSAGE_ROLE_USER and msg.attachment_media_id:
+            attachment_asset = db.get(MediaAsset, msg.attachment_media_id)
+            if attachment_asset and attachment_asset.uploaded_by == conv.user_id:
+                attachment = _tutor_attachment_payload(attachment_asset)
+
         formatted_messages.append(
             MessageItem(
                 id=msg.id,
@@ -1151,6 +1507,7 @@ def get_conversation_detail(
                 created_at=msg.created_at,
                 sources=msg_sources,
                 audio_analysis=audio_result,
+                attachment=attachment,
                 conversation_id=conv.id,
                 handoffs=(
                     get_tutor_handoffs(db, auth_ctx, _latest_question(db, conv, msg), msg_sources, machine_id=conv.machine_id)
@@ -1173,6 +1530,43 @@ def get_conversation_detail(
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=formatted_messages,
+    )
+
+
+@router.get(
+    "/attachments/{media_id}",
+    summary="Download an attachment from the authenticated user's Tutor conversation",
+)
+def download_tutor_attachment(
+    media_id: str,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_ASSISTANT_USE)),
+    db: Session = Depends(get_db),
+    inline: bool = False,
+):
+    asset = db.get(MediaAsset, media_id)
+    if not asset or asset.uploaded_by != auth_ctx.user.id:
+        raise NotFoundError(code="attachment_not_found", message="The Tutor attachment was not found.")
+    storage = get_storage_service()
+    if not storage.exists(asset.storage_key):
+        raise NotFoundError(code="attachment_not_found", message="The Tutor attachment is no longer available in storage.")
+    stream, _ = storage.open(asset.storage_key)
+    filename = urllib.parse.quote(asset.original_name, safe="")
+    inline_mimes = {
+        "image/jpeg", "image/png", "image/webp",
+        "audio/wav", "audio/mpeg", "audio/m4a", "audio/mp4", "audio/aac", "audio/aiff", "audio/flac", "audio/ogg", "audio/opus", "audio/webm",
+        "video/mp4", "video/mov", "video/quicktime", "video/webm", "video/avi", "video/x-flv", "video/mpeg", "video/wmv", "video/3gpp",
+        "application/pdf",
+    }
+    disposition = "inline" if inline and asset.mime in inline_mimes else "attachment"
+    return StreamingResponse(
+        stream,
+        media_type=asset.mime,
+        headers={
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{filename}",
+            "Content-Length": str(asset.size_bytes),
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -1302,6 +1696,12 @@ def get_source_detail(
             raise NotFoundError(
                 code="source_not_found",
                 message=f"Knowledge source '{source_id}' is not in published status.",
+            )
+        item = db.get(KnowledgeItem, kv.item_id) if kv.item_id else None
+        if item and item.is_demo and not synthetic_demo_environment_enabled(db):
+            raise NotFoundError(
+                code="source_not_found",
+                message=f"Knowledge source '{source_id}' was not found or is not published.",
             )
 
     active_chunks = [

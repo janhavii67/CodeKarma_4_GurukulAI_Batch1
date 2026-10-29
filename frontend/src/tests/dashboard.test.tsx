@@ -60,20 +60,26 @@ const mockExpertStats = {
   ],
 };
 
-const mockTraineeStats = {
-  ...mockExpertStats,
-  user_sops_created: 0,
-  user_sops_approved: 0,
-  user_sops_pending: 0,
-  user_sops_draft: 0,
-  user_revisions_count: 0,
-  user_machines_contributed: 0,
-  user_captured_duration_seconds: 0,
-  pending_reviews_for_user: 0,
-  user_reviews_completed: 0,
-  user_procedures_completed: 3,
-  latest_draft_id: null,
-  latest_draft_title: null,
+const mockTraineeMetrics = {
+  welcome_message: 'Continue learning from approved procedures.',
+  user_name: 'Devendra Verma',
+  role_id: 'TRAINEE',
+  assigned_paths_count: 1,
+  completed_tasks_count: 2,
+  assigned_paths: [{
+    id: 'assignment-1', path_id: 'path-1', path_title: 'Equipment Basics',
+    path_description: 'Approved equipment learning path.', status: 'IN_PROGRESS',
+    progress_percentage: 40, assigned_at: '2026-10-01T00:00:00Z', total_items: 5, items: [],
+  }],
+  in_progress_procedures: [{
+    run_id: 'run-1', procedure_id: 'procedure-1', procedure_title: 'Daily Safety Check',
+    machine_name: 'MRI', status: 'IN_PROGRESS', started_at: '2026-10-01T00:00:00Z',
+    completed_steps: 2, total_steps: 5, progress_percentage: 40,
+  }],
+  recent_activity: [{
+    id: 'activity-1', type: 'PROCEDURE_RUN', title: 'Daily Safety Check',
+    status: 'IN_PROGRESS', timestamp: '2026-10-01T00:00:00Z',
+  }],
 };
 
 describe('Redesigned Operational Dashboard Tests', () => {
@@ -154,22 +160,23 @@ describe('Redesigned Operational Dashboard Tests', () => {
       '/app/knowledge-assets?kind=image'
     );
 
-    // The expert Home keeps its capture, overview, and hero sections only.
+    // The expert Home keeps its capture and hero sections only.
     expect(screen.queryByText(/Review & Verify Knowledge/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Knowledge Assistant/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/My Knowledge Overview/i)).toBeInTheDocument();
+    expect(screen.queryByText(/My Knowledge Overview/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/View My Knowledge \(/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Verified')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pending Review')).not.toBeInTheDocument();
+    expect(screen.queryByText('To Capture')).not.toBeInTheDocument();
     expect(screen.queryByText(/Continue a Draft/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Recently Shared/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Resume Draft/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Pending peer evaluations/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/View History/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No Knowledge Entries Recorded/i)).not.toBeInTheDocument();
-    expect(container.querySelectorAll('section')).toHaveLength(3);
+    expect(container.querySelectorAll('section')).toHaveLength(2);
     expect(Array.from(container.querySelectorAll('div')).some((element) =>
       element.className.includes('max-w-6xl'),
-    )).toBe(true);
-    expect(Array.from(container.querySelectorAll('div')).some((element) =>
-      element.className.includes('sm:grid-cols-2') && element.className.includes('lg:grid-cols-3'),
     )).toBe(true);
     expect(screen.getByText(/Start Capturing →/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Start Capturing/i })).toHaveAttribute(
@@ -210,7 +217,7 @@ describe('Redesigned Operational Dashboard Tests', () => {
         is_active: true,
         created_at: '2026-01-01',
       },
-      permissions: ['knowledge.view_published', 'procedure.execute', 'assistant.use'],
+      permissions: ['knowledge.view_published', 'procedure.execute', 'assistant.use', 'troubleshoot.use', 'audio.analyze'],
       isAuthenticated: true,
       isLoading: false,
       error: null,
@@ -219,11 +226,11 @@ describe('Redesigned Operational Dashboard Tests', () => {
       logout: vi.fn(),
       refreshUser: vi.fn(),
       hasPermission: (perm: string) =>
-        ['knowledge.view_published', 'procedure.execute', 'assistant.use'].includes(perm),
+        ['knowledge.view_published', 'procedure.execute', 'assistant.use', 'troubleshoot.use', 'audio.analyze'].includes(perm),
       hasRole: (role: string) => role === 'TRAINEE',
     });
 
-    (api.get as any).mockResolvedValueOnce(mockTraineeStats);
+    (api.get as any).mockResolvedValueOnce(mockTraineeMetrics);
 
     render(
       <BrowserRouter>
@@ -231,26 +238,55 @@ describe('Redesigned Operational Dashboard Tests', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getByText(/Welcome back, Devendra Verma/i)).toBeInTheDocument();
-    expect(screen.getByText(/Laboratory & Clinical Trainee/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Welcome, Devendra Verma' })).toBeInTheDocument();
+    expect(screen.getByText(/Trainee dashboard/i)).toBeInTheDocument();
 
     // Trainees must NOT see Expert-only draft capture or review queue buttons
     expect(screen.queryByText(/Capture New Knowledge/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Review Queue \(/i)).not.toBeInTheDocument();
 
-    // Guided workflow execution is prominent for Trainees
-    expect(screen.getByText(/Start Guided Workflow/i)).toBeInTheDocument();
+    // Real progress, recent activity, and an in-progress workflow are shown.
+    expect(await screen.findByRole('link', { name: /Continue workflow/i })).toHaveAttribute('href', '/app/guided-workflows');
 
     await waitFor(() => {
-      expect(screen.getByText('Guided Checklists')).toBeInTheDocument();
-      expect(screen.getByText('Checklists Completed')).toBeInTheDocument();
-      expect(screen.getByText('Active Machines')).toBeInTheDocument();
+      expect(screen.getByText('Equipment Basics')).toBeInTheDocument();
+      expect(screen.getByText('Completed training tasks')).toBeInTheDocument();
+      expect(screen.getAllByText('Daily Safety Check')).toHaveLength(2);
     });
+
+    for (const [label, href] of [
+      ['Knowledge Library', '/app/knowledge'], ['AI Tutor', '/app/assistant'],
+      ['Troubleshooting', '/app/troubleshooting'], ['Guided Workflow', '/app/guided-workflows'],
+      ['Audio Matching', '/app/sound-analysis'],
+    ]) {
+      expect(screen.getByRole('link', { name: new RegExp(label) })).toHaveAttribute('href', href);
+    }
 
     // Technical cards remain removed
     expect(screen.queryByText(/System & Database Health/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Role-Based Access \(RBAC\)/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Grounded Industrial Assets/i)).not.toBeInTheDocument();
+  });
+
+  it('shows useful empty states without inventing trainee progress', async () => {
+    vi.spyOn(useAuthHook, 'useAuth').mockReturnValue({
+      user: { id: 'u-trainee', name: 'Devendra Verma', email: 'trainee@demo.local', role_id: 'TRAINEE', is_active: true, created_at: '2026-01-01' },
+      permissions: ['knowledge.view_published', 'procedure.execute', 'assistant.use', 'troubleshoot.use', 'audio.analyze'],
+      isAuthenticated: true, isLoading: false, error: null, login: vi.fn(), register: vi.fn(), logout: vi.fn(), refreshUser: vi.fn(),
+      hasPermission: (perm: string) => ['knowledge.view_published', 'procedure.execute', 'assistant.use', 'troubleshoot.use', 'audio.analyze'].includes(perm),
+      hasRole: (role: string) => role === 'TRAINEE',
+    });
+    (api.get as any).mockResolvedValueOnce({
+      ...mockTraineeMetrics, assigned_paths_count: 0, completed_tasks_count: 0,
+      assigned_paths: [], in_progress_procedures: [], recent_activity: [],
+    });
+
+    render(<BrowserRouter><DashboardPage /></BrowserRouter>);
+
+    expect(await screen.findByText('No learning paths assigned yet')).toBeInTheDocument();
+    expect(screen.getByText('No recent activity yet')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Continue workflow/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Completed training tasks')).toBeInTheDocument();
   });
 
   it('renders the administrator dashboard instead of the expert author workspace', async () => {
@@ -322,8 +358,9 @@ describe('Redesigned Operational Dashboard Tests', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('My Knowledge Overview')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Start Capturing/i })).toBeInTheDocument();
     });
+    expect(screen.queryByText('My Knowledge Overview')).not.toBeInTheDocument();
     expect(screen.queryByText(/Review & Verify Knowledge/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Continue a Draft/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Recently Shared/i)).not.toBeInTheDocument();

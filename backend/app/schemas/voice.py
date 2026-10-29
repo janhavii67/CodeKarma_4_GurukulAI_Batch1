@@ -62,6 +62,8 @@ class ProcessingJobResponse(BaseModel):
     status: str  # queued, processing, needs_review, completed, failed, cancelled
     progress: Optional[int] = 0
     error_safe: Optional[str] = None
+    transcript_saved: bool = False
+    can_resume_structuring: bool = False
     attempts: int = 0
     created_by: str
     created_at: datetime

@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { GuidedWorkflowsPage } from '../features/workflows/GuidedWorkflowsPage';
 
 const apiMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 const machineApiMock = vi.hoisted(() => ({ fetchMachines: vi.fn() }));
+const permissionMock = vi.hoisted(() => ({ hasPermission: vi.fn(() => true) }));
 vi.mock('../lib/api/client', () => ({
   api: apiMock,
   getApiUrl: (path: string) => `http://api.test/api/v1${path}`,
 }));
 vi.mock('../features/knowledge-capture/knowledgeApi', () => machineApiMock);
+vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ hasPermission: permissionMock.hasPermission }) }));
 
 const machines = [
   { id: 'mri', name: 'MRI', code: 'MRI-001', category: 'medical', is_demo: false, created_at: '', updated_at: '' },
@@ -64,6 +66,7 @@ describe('Guided Workflow', () => {
   beforeEach(() => {
     apiMock.get.mockReset();
     apiMock.post.mockReset();
+    permissionMock.hasPermission.mockReset().mockReturnValue(true);
     machineApiMock.fetchMachines.mockReset().mockResolvedValue({ items: machines, total: machines.length, page: 1, page_size: 100 });
   });
 
@@ -76,8 +79,28 @@ describe('Guided Workflow', () => {
     expect(screen.queryByRole('button', { name: /CNC Machine/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /MRI MRI-001/ }));
     expect(await screen.findByText('No approved procedure is available for MRI')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Go to Create Procedure/ })).toHaveAttribute('href', '/app/procedures/new');
+    expect(screen.getByRole('link', { name: /Create a procedure/ })).toHaveAttribute('href', '/app/procedures/new');
     expect(apiMock.post).not.toHaveBeenCalled();
+  });
+
+  it('shows real saved progress and keeps future steps locked on the learning path', async () => {
+    setupApi();
+    await chooseMri();
+    await screen.findByRole('heading', { name: /MRI learning path/ });
+    const progress = screen.getByRole('progressbar', { name: 'Procedure progress' });
+    expect(progress).toHaveAttribute('aria-valuenow', '0');
+    expect(progress).toHaveAttribute('aria-valuemax', '2');
+    expect(screen.getByRole('button', { name: /Step 1: Clear the room, Current/ })).toHaveAttribute('aria-current', 'step');
+    expect(screen.getByRole('button', { name: /Step 2: Confirm scanner status, Locked/ })).toBeDisabled();
+  });
+
+  it('does not show procedure authoring navigation without create permission', async () => {
+    permissionMock.hasPermission.mockReturnValue(false);
+    apiMock.get.mockResolvedValue([]);
+    render(<MemoryRouter><GuidedWorkflowsPage /></MemoryRouter>);
+    await userEvent.click(await screen.findByRole('button', { name: /MRI MRI-001/ }));
+    expect(await screen.findByText('No approved procedure is available for MRI')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Create a procedure/ })).not.toBeInTheDocument();
   });
 
   it('loads the selected machine procedure and enforces step confirmations before advancing', async () => {
@@ -104,12 +127,12 @@ describe('Guided Workflow', () => {
       return Promise.reject(new Error(`Unexpected POST ${path}`));
     });
     await user.click(markComplete);
-    expect(await screen.findByText('Checkpoint recorded complete')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Next Step' })).toBeEnabled();
-    await user.click(screen.getByRole('button', { name: 'Next Step' }));
+    expect(await screen.findByText('Checkpoint saved')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue to next step' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Continue to next step' }));
     expect(await screen.findByText('STEP 2 OF 2')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Confirm scanner status' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Previous Step' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled();
   });
 
   it('resumes an in-progress run instead of creating a duplicate', async () => {
@@ -145,7 +168,7 @@ describe('Guided Workflow', () => {
     }));
     await user.click(screen.getByRole('button', { name: 'Mark Complete' }));
     await screen.findByText(/server has not confirmed procedure completion/);
-    expect(screen.getByRole('button', { name: 'Review & Complete' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Review completed path' })).toBeDisabled();
     expect(screen.queryByRole('heading', { name: 'Procedure complete' })).not.toBeInTheDocument();
   });
 
@@ -167,8 +190,8 @@ describe('Guided Workflow', () => {
       ],
     }));
     await user.click(screen.getByRole('button', { name: 'Mark Complete' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Review & Complete' })).toBeEnabled());
-    await user.click(screen.getByRole('button', { name: 'Review & Complete' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Review completed path' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Review completed path' }));
     expect(await screen.findByRole('heading', { name: 'Procedure complete' })).toBeInTheDocument();
     expect(screen.getByText('2 / 2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Finish workflow' })).toBeEnabled();
@@ -190,6 +213,9 @@ describe('Guided Workflow', () => {
       if (path === '/procedures/runs/my/all') return Promise.resolve([]);
       if (path === '/procedures/procedure-mri/assets') return Promise.resolve([
         { id: 'verified-asset', title: 'Verified setup photo', kind: 'image', machine_id: 'mri', verification_status: 'published', url: '/media/verified-asset' },
+        { id: 'verified-video', title: 'Procedure walkthrough', kind: 'video', mime: 'video/mp4', machine_id: 'mri', verification_status: 'approved', url: '/media/walkthrough' },
+        { id: 'verified-audio', title: 'Audio explanation', kind: 'audio', mime: 'audio/wav', machine_id: 'mri', verification_status: 'verified', url: '/media/explanation' },
+        { id: 'verified-document', title: 'Approved manual', kind: 'document', mime: 'application/pdf', machine_id: 'mri', verification_status: 'published', url: '/media/manual' },
         { id: 'wrong-machine', title: 'Other machine image', kind: 'image', machine_id: 'ct', verification_status: 'published' },
         { id: 'pending-asset', title: 'Pending reference', kind: 'image', machine_id: 'mri', verification_status: 'pending_review' },
       ]);
@@ -197,7 +223,13 @@ describe('Guided Workflow', () => {
     });
     await chooseMri();
     expect(await screen.findByText('Verified setup photo')).toBeInTheDocument();
-    expect(screen.getByText('Verified reference')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Verified setup photo' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Procedure walkthrough preview')).toBeInTheDocument();
+    expect(screen.getByLabelText('Audio explanation preview')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open or download Approved manual' })).toHaveAttribute('href', 'http://api.test/api/v1/media/manual');
+    expect(screen.getAllByText('Verified for this machine')).toHaveLength(4);
+    fireEvent.error(screen.getByRole('img', { name: 'Verified setup photo' }));
+    expect(await screen.findByText('The embedded preview could not be loaded. Open the approved file to view it.')).toBeInTheDocument();
     expect(screen.queryByText('Other machine image')).not.toBeInTheDocument();
     expect(screen.queryByText('Pending reference')).not.toBeInTheDocument();
   });

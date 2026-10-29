@@ -16,6 +16,7 @@ from app.api.v1.endpoints import (
     jobs,
     assistant,
     simulations,
+    sound_inference,
 )
 
 api_router = APIRouter()
@@ -36,3 +37,4 @@ api_router.include_router(voice.router)
 api_router.include_router(jobs.router)
 api_router.include_router(assistant.router)
 api_router.include_router(simulations.router)
+api_router.include_router(sound_inference.router)

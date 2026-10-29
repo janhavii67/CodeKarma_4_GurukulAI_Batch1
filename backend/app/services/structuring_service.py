@@ -5,6 +5,8 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from app.integrations.speech.base import Segment
 from app.core.logging import logger
+from app.core.config import settings
+from app.core.exceptions import ValidationError
 from app.services.ai_orchestrator import AIRequest, AICapability, ai_orchestrator
 from app.modules.assistant.providers.llm_base import LLMRequest
 
@@ -203,6 +205,39 @@ async def structure_transcript_with_ai(
     )
     response = await asyncio.to_thread(ai_orchestrator.execute, request)
     if response.status != "succeeded" or not isinstance(response.result, str):
+        selected_provider = str(
+            getattr(settings, "LLM_PROVIDER", None)
+            or getattr(settings, "ASSISTANT_LLM_PROVIDER", None)
+            or "gemini"
+        ).strip().lower()
+        if response.error_code == "LLMAuthenticationError":
+            if selected_provider == "gemini":
+                raise ValidationError(
+                    code="structuring_provider_not_configured",
+                    message=(
+                        "The transcript is saved, but procedure structuring needs Gemini credentials. "
+                        "Set GEMINI_API_KEY in backend/.env or the backend process environment, keep "
+                        "LLM_PROVIDER=gemini, and restart FastAPI. The recording and transcript are unchanged."
+                    ),
+                )
+            if selected_provider == "anthropic":
+                raise ValidationError(
+                    code="structuring_provider_not_configured",
+                    message=(
+                        "The transcript is saved, but procedure structuring needs Anthropic credentials. "
+                        "Set ANTHROPIC_API_KEY in backend/.env or the backend process environment, then restart FastAPI. "
+                        "The recording and transcript are unchanged."
+                    ),
+                )
+        if response.error_code == "LLMExternalDisabledError":
+            raise ValidationError(
+                code="structuring_provider_disabled",
+                message=(
+                    "The transcript is saved, but procedure structuring is disabled by the external LLM policy. "
+                    "If permitted by your data policy, enable ALLOW_EXTERNAL_LLM and configure the selected provider's "
+                    "server-side API key, then restart FastAPI. The recording and transcript are unchanged."
+                ),
+            )
         raise RuntimeError("AI structuring is unavailable. The transcript was saved, but no knowledge draft was generated.")
     content_text = response.result.strip()
     if content_text.startswith("```"):

@@ -9,6 +9,7 @@ import type {
   KnowledgeUpdateRequest,
   KnowledgeListParams,
   MachineListResponse,
+  MachineCategory,
   RevisionCreateRequest,
 } from './types';
 
@@ -27,6 +28,25 @@ export async function fetchMachines(params?: {
   if (params?.category) qs.set('category', params.category);
   const query = qs.toString() ? `?${qs}` : '';
   return api.get<MachineListResponse>(`/machines${query}`);
+}
+
+/** Fetch every catalog page so selectors never silently omit equipment past page 1. */
+export async function fetchAllMachines(q?: string): Promise<MachineListResponse> {
+  const pageSize = 100;
+  const firstPage = await fetchMachines({ page: 1, page_size: pageSize, q });
+  const items = [...firstPage.items];
+  let page = 2;
+  while (items.length < firstPage.total) {
+    const nextPage = await fetchMachines({ page, page_size: pageSize, q });
+    if (!nextPage.items.length) break;
+    items.push(...nextPage.items);
+    page += 1;
+  }
+  return { ...firstPage, items, page: 1, page_size: items.length };
+}
+
+export function fetchMachineCategories(): Promise<MachineCategory[]> {
+  return api.get<MachineCategory[]>('/machines/categories');
 }
 
 // ─── Knowledge Items ──────────────────────────────────────────────────────────

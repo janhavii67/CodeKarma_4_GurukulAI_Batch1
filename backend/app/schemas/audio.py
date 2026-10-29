@@ -39,13 +39,17 @@ class AudioReferenceResponse(BaseModel):
     machine_id: Optional[str] = None
     machine_name: Optional[str] = None
     model_name: Optional[str] = None
+    manufacturer: Optional[str] = None
     component: Optional[str] = None
     operation: Optional[str] = None
+    sound_label: Optional[str] = None
+    annotation_notes: Optional[str] = None
     duration_seconds: float
     sample_rate: int
     operating_conditions: Optional[str] = None
     recording_source: Optional[str] = None
     recorded_at: Optional[datetime] = None
+    is_expert_verified: bool = False
     status: str
     knowledge_version_id: Optional[str] = None
     knowledge_item_id: Optional[str] = None
@@ -77,8 +81,11 @@ class AudioReferenceUpdateRequest(BaseModel):
     machine_id: Optional[str] = None
     description: Optional[str] = Field(None, max_length=4000)
     model_name: Optional[str] = Field(None, max_length=256)
+    manufacturer: Optional[str] = Field(None, max_length=256)
     component: Optional[str] = Field(None, max_length=256)
     operation: Optional[str] = Field(None, max_length=256)
+    sound_label: Optional[str] = Field(None, max_length=128)
+    annotation_notes: Optional[str] = Field(None, max_length=4000)
     operating_conditions: Optional[str] = Field(None, max_length=2000)
     recording_source: Optional[str] = Field(None, max_length=256)
     related_links: Optional[List[dict[str, Any]]] = None
@@ -107,3 +114,19 @@ class AudioReviewQueueItem(BaseModel):
     created_at: datetime
     uploaded_by: str
     media_asset_id: Optional[str] = None
+
+
+class AnalysisJobHistoryItem(BaseModel):
+    """Compact record for the per-user analysis history list."""
+    id: str
+    status: str
+    reason_code: str
+    message: str
+    similarity_score: Optional[float] = None
+    matched_reference_title: Optional[str] = None
+    matched_reference_id: Optional[str] = None
+    machine_id: Optional[str] = None
+    review_status: Optional[str] = None
+    requires_expert_review: bool = False
+    created_at: datetime
+    completed_at: Optional[datetime] = None

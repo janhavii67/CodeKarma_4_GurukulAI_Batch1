@@ -1,49 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Cpu, ChevronDown } from 'lucide-react';
-import { api } from '../../../lib/api/client';
+import { useMachines } from '../../knowledge-capture/hooks';
+import { selectableMachines } from '../../machines/registeredMachines';
 
-interface MachineOption {
+export interface MachineOption {
   id: string;
   name: string;
   code?: string;
   category?: string;
+  is_demo?: boolean;
 }
 
 interface MachineContextFilterProps {
   selectedMachineId: string | null;
   onSelectMachine: (machineId: string | null) => void;
+  onMachinesLoaded?: (machines: MachineOption[]) => void;
   disabled?: boolean;
 }
 
 export const MachineContextFilter: React.FC<MachineContextFilterProps> = ({
   selectedMachineId,
   onSelectMachine,
+  onMachinesLoaded,
   disabled = false,
 }) => {
-  const [machines, setMachines] = useState<MachineOption[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const { data, isLoading: loading, isError } = useMachines();
+  const machines = selectableMachines(data?.items ?? []) as MachineOption[];
 
-  useEffect(() => {
-    let isMounted = true;
-    setLoading(true);
-
-    api
-      .get<{ items: MachineOption[] }>('/machines?page_size=100')
-      .then((res) => {
-        if (isMounted) {
-          setMachines(res.items || []);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        console.warn('[MachineContextFilter] Failed to fetch machines list:', err);
-        if (isMounted) setLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  React.useEffect(() => {
+    if (machines && machines.length > 0) {
+      onMachinesLoaded?.(machines);
+    }
+  }, [machines, onMachinesLoaded]);
 
   return (
     <div className="flex items-center space-x-2">
@@ -57,6 +45,8 @@ export const MachineContextFilter: React.FC<MachineContextFilterProps> = ({
           title="Filter RAG retrieval context by specific machine asset"
         >
           <option value="">Target: All Machines (General Shopfloor)</option>
+          {loading && <option value="__loading" disabled>Loading registered machines…</option>}
+          {!loading && !isError && machines.length === 0 && <option value="__empty" disabled>No active machines registered</option>}
           {machines.map((mach) => (
             <option key={mach.id} value={mach.id}>
               {mach.name} {mach.code ? `(${mach.code})` : ''}
@@ -65,6 +55,7 @@ export const MachineContextFilter: React.FC<MachineContextFilterProps> = ({
         </select>
         <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 pointer-events-none" />
       </div>
+      {isError && <span role="alert" className="text-[11px] text-rose-700">Registered machines could not be loaded.</span>}
     </div>
   );
 };

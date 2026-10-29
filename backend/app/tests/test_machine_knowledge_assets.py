@@ -498,6 +498,76 @@ def test_expert_creates_procedure_with_existing_same_machine_asset(client, db_se
         set_storage_service(None)
 
 
+def test_procedure_step_assets_and_notes_persist_without_copying_files(client, db_session, tmp_path):
+    storage = LocalStorageService(tmp_path / "step-procedure-assets")
+    set_storage_service(storage)
+    old_root = settings.MEDIA_ROOT
+    settings.MEDIA_ROOT = str(tmp_path / "step-procedure-assets")
+    try:
+        user = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+        machine = db_session.query(Machine).first()
+        first_asset = MediaService.upload(db_session, user, [PERM_KNOWLEDGE_CREATE], None,
+            io.BytesIO(PNG), "image", "image/png", "step-one.png", machine_id=machine.id,
+            title="Existing step one image", storage=storage)
+        second_asset = MediaService.upload(db_session, user, [PERM_KNOWLEDGE_CREATE], None,
+            io.BytesIO(PNG), "image", "image/png", "step-two.png", machine_id=machine.id,
+            title="Existing step two image", storage=storage)
+        first_storage_key, second_storage_key = first_asset.storage_key, second_asset.storage_key
+
+        login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
+        csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
+        response = client.post("/api/v1/procedures", headers={settings.CSRF_HEADER_NAME: csrf}, json={
+            "title": "Step-level reference procedure", "description": "A procedure with ordered machine references.", "machine_id": machine.id,
+            "steps": [
+                {"title": "Inspect", "instruction": "Inspect the visible surface.", "notes": "Use the approved checklist.", "asset_ids": [first_asset.id]},
+                {"title": "Confirm", "instruction": "Confirm the indicator state.", "asset_ids": [second_asset.id]},
+            ],
+        })
+        assert response.status_code == 201, response.text
+        procedure_id = response.json()["id"]
+        steps = response.json()["steps"]
+        assert [step["step_order"] for step in steps] == [1, 2]
+        assert steps[0]["details"] == {"asset_ids": [first_asset.id], "notes": "Use the approved checklist."}
+        assert steps[1]["details"]["asset_ids"] == [second_asset.id]
+
+        references = client.get(f"/api/v1/procedures/{procedure_id}/assets")
+        assert references.status_code == 200
+        assert {asset["id"] for asset in references.json()} == {first_asset.id, second_asset.id}
+        assert len(references.json()) == 2
+        assert all(asset["machine_id"] == machine.id for asset in references.json())
+        updated_references = client.put(f"/api/v1/procedures/{procedure_id}/assets",
+            headers={settings.CSRF_HEADER_NAME: csrf}, json={"asset_ids": []})
+        assert updated_references.status_code == 200, updated_references.text
+        assert set(updated_references.json()["asset_ids"]) == {first_asset.id, second_asset.id}
+        db_session.expire_all()
+        procedure = db_session.get(Procedure, procedure_id)
+        assert [step.step_order for step in procedure.steps] == [1, 2]
+        assert storage.exists(first_storage_key) and storage.exists(second_storage_key)
+        assert db_session.get(MediaAsset, first_asset.id).storage_key == first_storage_key
+        assert db_session.get(MediaAsset, second_asset.id).storage_key == second_storage_key
+    finally:
+        settings.MEDIA_ROOT = old_root
+        set_storage_service(None)
+
+
+def test_procedure_step_reference_rejects_asset_from_another_machine(client, db_session, tmp_path):
+    storage = LocalStorageService(tmp_path / "cross-machine-step-asset")
+    owner = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
+    machine_a, machine_b = db_session.query(Machine).order_by(Machine.id).limit(2).all()
+    asset = MediaService.upload(db_session, owner, [PERM_KNOWLEDGE_CREATE], None,
+        io.BytesIO(PNG), "image", "image/png", "other-machine.png", machine_id=machine_b.id,
+        storage=storage)
+    login = client.post("/api/v1/auth/login", json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD})
+    csrf = login.cookies.get(settings.CSRF_COOKIE_NAME)
+    response = client.post("/api/v1/procedures", headers={settings.CSRF_HEADER_NAME: csrf}, json={
+        "title": "Reject cross-machine reference", "description": "The asset must not cross machine boundaries.", "machine_id": machine_a.id,
+        "steps": [{"title": "Inspect", "instruction": "Use the matching-machine procedure.", "asset_ids": [asset.id]}],
+    })
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "machine_mismatch"
+    assert db_session.query(Procedure).filter(Procedure.title == "Reject cross-machine reference").count() == 0
+
+
 def test_authorized_procedure_delete_preserves_linked_machine_asset(client, db_session, tmp_path):
     storage = LocalStorageService(tmp_path / "procedure-delete")
     set_storage_service(storage)

@@ -55,6 +55,14 @@ class TutorHandoffStartResponse(BaseModel):
     resumed: bool = False
 
 
+class TutorAttachment(BaseModel):
+    media_id: str
+    filename: str
+    mime: str
+    size_bytes: int
+    url: str
+
+
 class ChatResponse(BaseModel):
     answer: str
     sources: List[SourceItem]
@@ -64,6 +72,7 @@ class ChatResponse(BaseModel):
     message_id: str
     audio_analysis: Optional[AudioAnalysisJobResponse] = None
     handoffs: List[TutorHandoffSuggestion] = Field(default_factory=list)
+    attachment: Optional[TutorAttachment] = None
 
 
 class MessageItem(BaseModel):
@@ -78,6 +87,7 @@ class MessageItem(BaseModel):
     created_at: datetime
     sources: List[SourceItem] = []
     audio_analysis: Optional[AudioAnalysisJobResponse] = None
+    attachment: Optional[TutorAttachment] = None
     conversation_id: Optional[str] = None
     handoffs: List[TutorHandoffSuggestion] = Field(default_factory=list)
 

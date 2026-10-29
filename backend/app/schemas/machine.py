@@ -23,6 +23,7 @@ class MachineBase(BaseModel):
     manufacturer: Optional[str] = Field(None, max_length=128)
     location: Optional[str] = Field(None, max_length=128)
     status: str = Field("ACTIVE", max_length=32)
+    is_active: bool = True
     specifications: Optional[str] = None
     is_demo: bool = False
 
@@ -36,10 +37,6 @@ class MachineBase(BaseModel):
                 data["model_number"] = data["code"]
             elif "model_number" in data and not data.get("code"):
                 data["code"] = data["model_number"]
-            if "category" in data and not data.get("category_id"):
-                data["category_id"] = data["category"]
-            elif "category_id" in data and not data.get("category"):
-                data["category"] = data["category_id"]
         return data
 
 
@@ -64,9 +61,6 @@ class MachineResponse(MachineBase):
         if hasattr(data, "code") and hasattr(data, "model_number"):
             if not getattr(data, "code", None) and getattr(data, "model_number", None):
                 setattr(data, "code", getattr(data, "model_number"))
-        if hasattr(data, "category") and hasattr(data, "category_id"):
-            if not getattr(data, "category", None) and getattr(data, "category_id", None):
-                setattr(data, "category", getattr(data, "category_id"))
         return data
 
 
@@ -76,6 +70,7 @@ class MachineCategoryResponse(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
+    is_active: bool = True
 
 
 class MachineListResponse(BaseModel):

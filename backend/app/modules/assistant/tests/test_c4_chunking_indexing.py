@@ -76,6 +76,45 @@ Check hydraulic pressure gauge reading 35 bar.
     assert any("Section 2" in (c.section_label or "") for c in chunks)
 
 
+def test_long_knowledge_chunks_preserve_multiline_and_paragraph_boundaries():
+    first_paragraph = " ".join(["calibration"] * 20) + "\n" + " ".join(["zero"] * 20)
+    second_paragraph = " ".join(["component"] * 20) + "\n" + " ".join(["coil"] * 20)
+    third_paragraph = " ".join(["maintenance"] * 40) + "\n" + " ".join(["reference"] * 40)
+    text = "\n\n".join([first_paragraph, second_paragraph, third_paragraph])
+
+    chunks = chunk_text(text, target_words=100, overlap_words=5)
+
+    assert len(chunks) > 1
+    assert "\n" in chunks[0].text
+    assert "\n\n" in chunks[0].text
+    assert "\n" in chunks[1].text
+
+
+def test_knowledge_chunks_include_document_page_citations_but_not_related_knowledge_refs():
+    chunks = chunk_knowledge_version(
+        title="Fixture source-attribution draft",
+        content="First verified fixture line.\n\nSecond verified fixture paragraph.",
+        source_refs=[
+            {
+                "type": "document",
+                "source_title": "Fixture manual",
+                "revision": "R3",
+                "pdf_pages": [8, 9],
+                "printed_pages": [4],
+                "section": "Test section",
+            },
+            {"type": "knowledge", "title": "Unrelated linked record", "version_no": 2},
+        ],
+    )
+
+    assert chunks
+    assert all("Source document: Fixture manual" in chunk.text for chunk in chunks)
+    assert all("PDF page(s) 8, 9" in chunk.text for chunk in chunks)
+    assert all("printed page(s) 4" in chunk.text for chunk in chunks)
+    assert all("Unrelated linked record" not in chunk.text for chunk in chunks)
+    assert all("Fixture manual" in (chunk.section_label or "") for chunk in chunks)
+
+
 def test_indexing_service_knowledge_version_crud_and_idempotency(db_session: Session):
     """
     Verify IndexingService creates KnowledgeSource and chunks in DB,

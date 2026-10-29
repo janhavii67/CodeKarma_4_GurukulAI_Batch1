@@ -8,6 +8,7 @@ import type { KnowledgeItemDetail, Step } from '../types';
 import type { Machine } from '../types';
 import type { EditorMode } from './deriveEditorMode';
 import { useMachines } from '../hooks';
+import { selectableMachines } from '../../machines/registeredMachines';
 
 // ─── Styling constants ────────────────────────────────────────────────────────
 
@@ -61,7 +62,7 @@ const MachineSelector: React.FC<{
   onChange: (machineId: string | null) => void;
 }> = ({ currentMachineId, currentMachine, isEditable, onChange }) => {
   const { data: machinesData, isLoading } = useMachines();
-  const machines = machinesData?.items ?? [];
+  const machines = selectableMachines(machinesData?.items ?? []);
 
   if (!isEditable) {
     return (

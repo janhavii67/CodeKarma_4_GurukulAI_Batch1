@@ -118,6 +118,11 @@ def submit_review_decision(
             message="A reviewer must acknowledge that this AI-generated draft was checked against its source before publishing.",
         )
 
+    if decision_lower == "approved" and latest_rev:
+        from app.services.source_verification import validate_sources_for_publication
+
+        validate_sources_for_publication(latest_rev, article, db)
+
     review_record = ReviewRecord(
         article_id=article.id,
         item_id=article.id,

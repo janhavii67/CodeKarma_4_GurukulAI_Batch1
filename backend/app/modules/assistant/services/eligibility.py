@@ -6,6 +6,7 @@ from app.models.knowledge import KnowledgeItem, KnowledgeVersion, STATUS_PUBLISH
 from app.modules.assistant.models import KnowledgeSource, KnowledgeChunk
 from app.repositories.user_repo import UserRepository
 from app.core.permissions import PERM_KNOWLEDGE_VIEW_PUBLISHED
+from app.services.synthetic_demo import synthetic_demo_environment_enabled
 
 
 class KnowledgeEligibilityPort(Protocol):
@@ -65,6 +66,8 @@ class DefaultKnowledgeEligibilityService:
             item = db.get(KnowledgeItem, kv.item_id) if kv else None
             if not kv or kv.status != STATUS_PUBLISHED or not item or item.current_published_version_id != kv.id:
                 return False
+            if item.is_demo and not synthetic_demo_environment_enabled(db):
+                return False
 
         return True
 
@@ -84,6 +87,8 @@ class DefaultKnowledgeEligibilityService:
             item = db.get(KnowledgeItem, kv.item_id) if kv else None
             if not kv or kv.status != STATUS_PUBLISHED or not item or item.current_published_version_id != kv.id:
                 return False
+            if item.is_demo and not synthetic_demo_environment_enabled(db):
+                return False
 
         return True
 
@@ -96,7 +101,7 @@ class DefaultKnowledgeEligibilityService:
             # User has no permission; return impossible condition
             return [KnowledgeChunk.id == "__NO_ACCESS__"]
 
-        return [
+        filters = [
             KnowledgeChunk.is_active == True,
             KnowledgeSource.status == "published",
             or_(
@@ -107,6 +112,14 @@ class DefaultKnowledgeEligibilityService:
                 ),
             ),
         ]
+        if not synthetic_demo_environment_enabled(db):
+            filters.append(
+                or_(
+                    KnowledgeSource.knowledge_version_id.is_(None),
+                    KnowledgeItem.is_demo.is_(False),
+                )
+            )
+        return filters
 
 
 _default_eligibility_service = DefaultKnowledgeEligibilityService()

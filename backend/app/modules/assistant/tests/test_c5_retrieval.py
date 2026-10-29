@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy.orm import Session
 from fastapi.testclient import TestClient
@@ -54,6 +56,76 @@ def test_retrieval_service_machine_context_boosting(db_session: Session):
     results_boosted = RetrievalService.retrieve_chunks(query_boosted, db_session)
     assert len(results_boosted) > 0
     assert any(r.machine_id == haas.id for r in results_boosted)
+
+
+def test_machine_sound_references_only_support_sound_or_audio_matched_queries(db_session: Session, monkeypatch):
+    """Sound-reference records must not ground general machine-purpose answers."""
+    monkeypatch.setattr("app.modules.assistant.services.retrieval_service.settings.RETRIEVAL_MODE", "keyword")
+    expert = db_session.query(User).filter(User.role_id == ROLE_EXPERT).first()
+    trainee = db_session.query(User).filter(User.role_id == ROLE_TRAINEE).first()
+    machine = Machine(id="test-sound-rag-filter", name="Sound Filter Machine", code="SOUND-RAG-FILTER-01", status="ACTIVE")
+    db_session.add(machine)
+    db_session.flush()
+
+    item = KnowledgeItem(
+        title="Sound Filter Machine Reference",
+        category="MACHINE_SOUND_REFERENCE",
+        machine_id=machine.id,
+        author_id=expert.id,
+    )
+    db_session.add(item)
+    db_session.flush()
+    version = KnowledgeVersion(
+        item_id=item.id,
+        version_no=1,
+        title=item.title,
+        machine_id=machine.id,
+        status=STATUS_PUBLISHED,
+        summary="Whirrproof machine recording reference.",
+        content="Whirrproof records a verified acoustic profile for this machine.",
+        created_by=expert.id,
+        author_id=expert.id,
+        published_at=datetime.now(timezone.utc),
+    )
+    db_session.add(version)
+    db_session.flush()
+    item.current_published_version_id = version.id
+    db_session.commit()
+    source = IndexingService.index_knowledge_version(version.id, db_session, user_id=expert.id)
+
+    general_results = RetrievalService.retrieve_chunks(
+        RetrievalQuery(
+            query="What does the whirrproof machine do?",
+            user_id=trainee.id,
+            machine_id=machine.id,
+            min_score=0.01,
+        ),
+        db_session,
+    )
+    assert all(result.source_id != source.id for result in general_results)
+
+    sound_results = RetrievalService.retrieve_chunks(
+        RetrievalQuery(
+            query="What sound does the whirrproof machine make?",
+            user_id=trainee.id,
+            machine_id=machine.id,
+            min_score=0.01,
+        ),
+        db_session,
+    )
+    assert any(result.source_id == source.id for result in sound_results)
+
+    audio_matched_results = RetrievalService.retrieve_chunks(
+        RetrievalQuery(
+            query="Explain the whirrproof profile.",
+            user_id=trainee.id,
+            machine_id=machine.id,
+            knowledge_item_id=item.id,
+            min_score=0.01,
+        ),
+        db_session,
+    )
+    assert any(result.source_id == source.id for result in audio_matched_results)
 
 
 def test_retrieval_strictly_excludes_draft_and_withdrawn_chunks(db_session: Session):

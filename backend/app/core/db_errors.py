@@ -1,4 +1,5 @@
 import logging
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from app.core.exceptions import (
     AppError,
     ConflictError,
@@ -14,6 +15,17 @@ def map_db_error(exc: Exception) -> AppError:
     Map lower-level SQLAlchemy / PostgreSQL / SQLite integrity errors and trigger exceptions
     to standard AppErrors without leaking raw SQL strings.
     """
+    # Driver/connection/schema failures are not governance conflicts. In
+    # particular, an unmigrated column on a local database must not be
+    # reported as an integrity constraint violation.
+    if isinstance(exc, DBAPIError) and not isinstance(exc, IntegrityError):
+        logger.error("Database operation failed (%s)", type(exc).__name__)
+        return AppError(
+            code="database_unavailable",
+            message="The database could not complete this request. Check database connectivity and apply pending migrations.",
+            status_code=503,
+        )
+
     err_str = str(exc).lower()
 
     # Trigger constraint: version content is frozen

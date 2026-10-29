@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 import pytest
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError, DBAPIError
+from sqlalchemy.exc import IntegrityError, DBAPIError, OperationalError
 from app.models import KnowledgeItem, KnowledgeVersion, ApprovalRecord, User
 from app.core.db_errors import map_db_error
 from app.core.exceptions import InvalidStateError, OpenVersionExistsError, ConflictError
@@ -189,3 +189,13 @@ def test_db_check_comment_required_on_rejection(db_session: Session, test_item_a
     mapped = map_db_error(exc_info.value)
     assert isinstance(mapped, InvalidStateError)
     assert "comment" in mapped.message.lower()
+
+
+def test_non_integrity_database_errors_are_not_reported_as_conflicts():
+    error = OperationalError("SELECT attachment_media_id", {}, Exception("no such column"))
+
+    mapped = map_db_error(error)
+
+    assert mapped.code == "database_unavailable"
+    assert mapped.status_code == 503
+    assert "no such column" not in mapped.message
