@@ -344,6 +344,7 @@ export const AssistantPage: React.FC = () => {
         provider_unavailable: result.provider_unavailable,
         sources: result.sources,
         handoffs: result.handoffs || [],
+        related_media: result.related_media || [],
       });
       fetchHistory();
     } catch (uploadError) {

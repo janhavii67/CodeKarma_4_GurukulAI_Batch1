@@ -37,13 +37,47 @@ import { StepEditor } from './StepEditor';
 import { MediaPanel } from './media/MediaPanel';
 import { Button } from '../../components/ui/Button';
 import { ApiClientError } from '../../lib/api/client';
-import type { Step, KnowledgeVersion } from './types';
+import type { Step, KnowledgeVersion, KnowledgeSourceReference } from './types';
 import { machineOptionLabel, selectableMachines } from '../machines/registeredMachines';
 import type { KnowledgeVersionComparison } from './types';
 import { fetchVersionComparison } from './knowledgeApi';
 import { isEditableStatus } from './types';
 import { MedicalHeroBanner } from './components/MedicalHeroBanner';
 import { DraftStatusBar } from './components/DraftStatusBar';
+
+interface KnowledgeSourceCandidatePreview {
+  title: string;
+  machine_id: string | null;
+  category: string;
+  tags?: string | null;
+  summary?: string | null;
+  content: string;
+  source_refs: KnowledgeSourceReference[];
+}
+
+interface SourceReferenceDraft {
+  source_title: string;
+  revision: string;
+  pdf_pages: string;
+  printed_pages: string;
+  section: string;
+  source_provenance: string;
+  source_manufacturer: string;
+  source_model: string;
+  machine_manufacturer: string;
+  machine_model: string;
+  machine_identity_basis: string;
+  machine_identity_reference: string;
+  audience_clearance: string;
+  verified: boolean;
+}
+
+const emptySourceReferenceDraft: SourceReferenceDraft = {
+  source_title: '', revision: '', pdf_pages: '', printed_pages: '', section: '',
+  source_provenance: '', source_manufacturer: '', source_model: '',
+  machine_manufacturer: '', machine_model: '', machine_identity_basis: '',
+  machine_identity_reference: '', audience_clearance: 'unknown', verified: false,
+};
 
 // ─── Version Switcher Component ───────────────────────────────────────────────
 
@@ -80,7 +114,7 @@ const VersionSwitcher: React.FC<VersionSwitcherProps> = ({
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [open]);
 
-  if (isLoading || !versions || versions.length <= 1) return null;
+  if (isLoading || !Array.isArray(versions) || versions.length <= 1) return null;
 
   const current = versions.find((v) => v.id === currentVersionId);
   const runCompare = async () => {
@@ -284,14 +318,20 @@ export const KnowledgeEditorPage: React.FC = () => {
 
   // Local editable state
   const [localTitle, setLocalTitle] = useState('');
+  const [localMachineId, setLocalMachineId] = useState('');
   const [localSummary, setLocalSummary] = useState('');
   const [localDescription, setLocalDescription] = useState('');
+  const [localContent, setLocalContent] = useState('');
   const [localOperatingConditions, setLocalOperatingConditions] = useState('');
   const [localSafetyWarnings, setLocalSafetyWarnings] = useState('');
   const [localPrerequisites, setLocalPrerequisites] = useState('');
+  const [localCommonMistakes, setLocalCommonMistakes] = useState('');
   const [localCorrectiveActions, setLocalCorrectiveActions] = useState('');
   const [localSteps, setLocalSteps] = useState<Step[]>([]);
   const [localRevisionReason, setLocalRevisionReason] = useState('');
+  const [localSourceRefs, setLocalSourceRefs] = useState<KnowledgeSourceReference[]>([]);
+  const [sourceReferenceDraft, setSourceReferenceDraft] = useState<SourceReferenceDraft>(emptySourceReferenceDraft);
+  const [sourceReferenceError, setSourceReferenceError] = useState('');
   const [isVerified, setIsVerified] = useState(false);
   const [showDetailsSection, setShowDetailsSection] = useState(false);
 
@@ -303,6 +343,12 @@ export const KnowledgeEditorPage: React.FC = () => {
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [showRevisionDialog, setShowRevisionDialog] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [ecgPreview, setEcgPreview] = useState<KnowledgeSourceCandidatePreview | null>(null);
+  const [ecgPreviewLoading, setEcgPreviewLoading] = useState(false);
+  const [ecgPreviewError, setEcgPreviewError] = useState('');
+  const [syntheticPreview, setSyntheticPreview] = useState<KnowledgeSourceCandidatePreview | null>(null);
+  const [syntheticPreviewLoading, setSyntheticPreviewLoading] = useState(false);
+  const [syntheticPreviewError, setSyntheticPreviewError] = useState('');
 
   // Reviewer Decision State (Module 06)
   const [reviewComments, setReviewComments] = useState('');
@@ -360,14 +406,20 @@ export const KnowledgeEditorPage: React.FC = () => {
     if (!data) return;
     const v = data.version;
     setLocalTitle(data.title);
+    setLocalMachineId(data.machine_id || '');
     setLocalSummary(v.summary ?? '');
     setLocalDescription(v.description ?? '');
+    setLocalContent(v.content ?? '');
     setLocalOperatingConditions(v.operating_conditions ?? '');
     setLocalSafetyWarnings(v.safety_warnings ?? '');
     setLocalPrerequisites(v.prerequisites ?? '');
+    setLocalCommonMistakes(v.common_mistakes ?? '');
     setLocalCorrectiveActions(v.corrective_actions ?? '');
     setLocalSteps(v.steps ?? []);
     setLocalRevisionReason(v.revision_reason ?? '');
+    setLocalSourceRefs(v.source_refs ?? []);
+    setSourceReferenceDraft(emptySourceReferenceDraft);
+    setSourceReferenceError('');
     setIsDirty(false);
     setSaveStatus('idle');
     setSaveError(null);
@@ -398,6 +450,54 @@ export const KnowledgeEditorPage: React.FC = () => {
       navigate(`/app/knowledge/${res.id}${captureKind ? `?capture=${encodeURIComponent(captureKind)}` : ''}`);
     } catch (err) {
       setCreateError(err instanceof ApiClientError ? err.message : 'Creation failed.');
+    }
+  };
+
+  const previewEcgSource = async () => {
+    setEcgPreviewError('');
+    setEcgPreviewLoading(true);
+    try {
+      setEcgPreview(await api.get<KnowledgeSourceCandidatePreview>('/knowledge/import-candidates/uganda-ecg-training-manual'));
+    } catch (err) {
+      setEcgPreviewError(err instanceof Error ? err.message : 'Could not load the ECG source excerpt.');
+    } finally {
+      setEcgPreviewLoading(false);
+    }
+  };
+
+  const saveEcgSourceDraft = async () => {
+    if (!ecgPreview) return;
+    setEcgPreviewError('');
+    try {
+      const saved = await api.post<{ id: string }>('/knowledge', ecgPreview);
+      navigate(`/app/knowledge/${saved.id}`);
+    } catch (err) {
+      setEcgPreviewError(err instanceof Error ? err.message : 'Could not save the ECG review draft.');
+    }
+  };
+
+  const previewSyntheticExample = async () => {
+    const selectedMachine = machineOptions.find((machine) => machine.id === newMachineId);
+    if (!selectedMachine?.is_demo) return;
+    setSyntheticPreviewError('');
+    setSyntheticPreviewLoading(true);
+    try {
+      setSyntheticPreview(await api.get<KnowledgeSourceCandidatePreview>(`/knowledge/synthetic-demo/templates/${encodeURIComponent(selectedMachine.id)}`));
+    } catch (err) {
+      setSyntheticPreviewError(err instanceof Error ? err.message : 'Could not load the synthetic example.');
+    } finally {
+      setSyntheticPreviewLoading(false);
+    }
+  };
+
+  const saveSyntheticDraft = async () => {
+    if (!syntheticPreview) return;
+    setSyntheticPreviewError('');
+    try {
+      const saved = await api.post<{ id: string }>('/knowledge', syntheticPreview);
+      navigate(`/app/knowledge/${saved.id}`);
+    } catch (err) {
+      setSyntheticPreviewError(err instanceof Error ? err.message : 'Could not save the synthetic draft.');
     }
   };
 
@@ -445,6 +545,68 @@ export const KnowledgeEditorPage: React.FC = () => {
     markDirty();
   };
 
+  const handleMachineAssociationChange = (machineId: string) => {
+    setLocalMachineId(machineId);
+    if (machineId !== localMachineId) {
+      setLocalSourceRefs((references) => references.map((reference) => {
+        if (reference.type !== 'document' || !reference.verification) return reference;
+        return {
+          ...reference,
+          verification: { status: 'unverified', audience_clearance: 'unknown' },
+        };
+      }));
+    }
+    markDirty();
+  };
+
+  const addSourceReference = () => {
+    setSourceReferenceError('');
+    if (!sourceReferenceDraft.source_title.trim()) {
+      setSourceReferenceError('Enter a source document title before adding it.');
+      return;
+    }
+    const pdfPages = sourceReferenceDraft.pdf_pages.split(/[\s,]+/).map((page) => page.trim()).filter(Boolean);
+    const printedPages = sourceReferenceDraft.printed_pages.split(/[\s,]+/).map((page) => page.trim()).filter(Boolean);
+    if (sourceReferenceDraft.verified && (!sourceReferenceDraft.revision.trim() || (!pdfPages.length && !sourceReferenceDraft.section.trim()))) {
+      setSourceReferenceError('A verified source needs its revision and an exact page or section.');
+      return;
+    }
+    const verification: Record<string, string> = {
+      status: sourceReferenceDraft.verified ? 'verified' : 'unverified',
+      audience_clearance: sourceReferenceDraft.audience_clearance || 'unknown',
+    };
+    const verificationFields: Array<[keyof SourceReferenceDraft, string]> = [
+      ['source_provenance', 'source_provenance'],
+      ['source_manufacturer', 'source_manufacturer'],
+      ['source_model', 'source_model'],
+      ['machine_manufacturer', 'machine_manufacturer'],
+      ['machine_model', 'machine_model'],
+      ['machine_identity_basis', 'machine_identity_basis'],
+      ['machine_identity_reference', 'machine_identity_reference'],
+    ];
+    for (const [draftField, verificationField] of verificationFields) {
+      const value = sourceReferenceDraft[draftField];
+      if (typeof value === 'string' && value.trim()) verification[verificationField] = value.trim();
+    }
+    const reference: KnowledgeSourceReference = {
+      type: 'document',
+      source_title: sourceReferenceDraft.source_title.trim(),
+      revision: sourceReferenceDraft.revision.trim() || undefined,
+      pdf_pages: pdfPages.length ? pdfPages : undefined,
+      printed_pages: printedPages.length ? printedPages : undefined,
+      section: sourceReferenceDraft.section.trim() || undefined,
+      verification: verification as unknown as KnowledgeSourceReference['verification'],
+    };
+    setLocalSourceRefs((references) => [...references, reference]);
+    setSourceReferenceDraft(emptySourceReferenceDraft);
+    markDirty();
+  };
+
+  const removeSourceReference = (index: number) => {
+    setLocalSourceRefs((references) => references.filter((_, currentIndex) => currentIndex !== index));
+    markDirty();
+  };
+
   const handleSave = async () => {
     if (!version || !isEditable) return;
     setSaveStatus('saving');
@@ -452,12 +614,16 @@ export const KnowledgeEditorPage: React.FC = () => {
     try {
       await updateMutation.mutateAsync({
         title: localTitle.trim() || undefined,
+        machine_id: localMachineId || null,
         summary: localSummary.trim() || null,
         description: localDescription.trim() || null,
+        content: localContent || null,
         operating_conditions: localOperatingConditions.trim() || null,
         safety_warnings: localSafetyWarnings.trim() || null,
         prerequisites: localPrerequisites.trim() || null,
+        common_mistakes: localCommonMistakes.trim() || null,
         corrective_actions: localCorrectiveActions.trim() || null,
+        source_refs: localSourceRefs,
         steps: localSteps,
         revision_reason: localRevisionReason.trim() || null,
         version_id: version.id,
@@ -483,12 +649,16 @@ export const KnowledgeEditorPage: React.FC = () => {
       if (isDirty) {
         await updateMutation.mutateAsync({
           title: localTitle.trim() || undefined,
+          machine_id: localMachineId || null,
           summary: localSummary.trim() || null,
           description: localDescription.trim() || null,
+          content: localContent || null,
           operating_conditions: localOperatingConditions.trim() || null,
           safety_warnings: localSafetyWarnings.trim() || null,
           prerequisites: localPrerequisites.trim() || null,
+          common_mistakes: localCommonMistakes.trim() || null,
           corrective_actions: localCorrectiveActions.trim() || null,
+          source_refs: localSourceRefs,
           steps: localSteps,
           revision_reason: localRevisionReason.trim() || null,
           version_id: version.id,
@@ -584,6 +754,35 @@ export const KnowledgeEditorPage: React.FC = () => {
                   Link this knowledge to registered equipment when relevant.
                 </p>
               </div>
+
+              {canCreate && (
+                <div className="space-y-3 border-t border-[#DCE8F5] pt-4">
+                  <h3 className="text-sm font-bold">Source review candidates</h3>
+                  <button type="button" onClick={previewEcgSource} disabled={ecgPreviewLoading} className="px-3 py-2 rounded-lg border text-xs font-semibold disabled:opacity-50">
+                    {ecgPreviewLoading ? 'Loading ECG source…' : 'Review ECG source excerpt'}
+                  </button>
+                  {ecgPreviewError && <p role="alert" className="text-xs text-rose-700">{ecgPreviewError}</p>}
+                  {ecgPreview && <div className="space-y-2 rounded-lg bg-[#F7FAFE] p-3 text-xs">
+                    <strong>{ecgPreview.title}</strong>
+                    <p className="whitespace-pre-wrap">{ecgPreview.content}</p>
+                    <p>PDF page(s) {ecgPreview.source_refs.flatMap((ref) => ref.pdf_pages ?? []).join(', ')}</p>
+                    <p>Not saved yet</p>
+                    <button type="button" onClick={saveEcgSourceDraft} className="px-3 py-2 rounded-lg bg-[#1473E6] text-white">Save unassigned ECG review draft</button>
+                  </div>}
+                  {machineOptions.find((machine) => machine.id === newMachineId)?.is_demo && <div className="space-y-2">
+                    <button type="button" onClick={previewSyntheticExample} disabled={syntheticPreviewLoading} className="px-3 py-2 rounded-lg border text-xs font-semibold disabled:opacity-50">
+                      {syntheticPreviewLoading ? 'Loading synthetic example…' : 'Preview synthetic example'}
+                    </button>
+                    {syntheticPreviewError && <p role="alert" className="text-xs text-rose-700">{syntheticPreviewError}</p>}
+                    {syntheticPreview && <div className="space-y-2 rounded-lg bg-amber-50 p-3 text-xs">
+                      <strong>{syntheticPreview.title}</strong>
+                      <p className="whitespace-pre-wrap">{syntheticPreview.content}</p>
+                      <p>Not saved · Machine linked · Saving creates a draft only</p>
+                      <button type="button" onClick={saveSyntheticDraft} className="px-3 py-2 rounded-lg bg-[#1473E6] text-white">Save synthetic draft</button>
+                    </div>}
+                  </div>}
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#DCE8F5]">
                 <button
@@ -703,7 +902,7 @@ export const KnowledgeEditorPage: React.FC = () => {
           onSubmit={handleSubmitForReview}
           isSubmitting={submitMutation.isPending}
           onAskAssistant={v.status === 'published' ? () => navigate(`/app/assistant?q=${encodeURIComponent(data.title)}`) : undefined}
-          canApproveReview={hasPermission('knowledge.approve') && (data.author_id !== user?.id || user?.role_id === 'ADMIN')}
+          canApproveReview={hasPermission('knowledge.approve')}
           onApproveReview={() => handleReviewDecision('APPROVED')}
           isApprovingReview={reviewActionLoading}
         />
@@ -803,7 +1002,7 @@ export const KnowledgeEditorPage: React.FC = () => {
               </div>
             )}
 
-            {data.author_id === user?.id && user?.role_id !== 'ADMIN' ? (
+            {data.author_id === user?.id && !hasPermission('knowledge.approve') ? (
               /* Author Self-Review Guard with 1-Click Allow Option */
               <div className="p-4 rounded-xl bg-amber-50/90 border border-amber-300 space-y-3">
                 <div className="flex items-start gap-3">
@@ -968,16 +1167,10 @@ export const KnowledgeEditorPage: React.FC = () => {
 
               {/* Machine Field */}
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#536780] mb-1.5">
-                  Machine <span className="text-rose-500">*</span>
-                </label>
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#F7FAFE] border border-[#DCE8F5] text-xs font-semibold text-[#12345A]">
-                  <Cpu className="w-3.5 h-3.5 text-[#1473E6] shrink-0" />
-                  <span className="truncate">{data.machine ? `${data.machine.name}` : machineName}</span>
-                </div>
-                <p className="text-[10px] text-[#536780] mt-1 italic">
-                  Machine linkage cannot be changed after creation.
-                </p>
+                <label htmlFor="machine-association" className="block text-[11px] font-semibold uppercase tracking-wider text-[#536780] mb-1.5">Machine association</label>
+                {isEditable ? <select id="machine-association" aria-label="Machine association" value={localMachineId} onChange={(e) => handleMachineAssociationChange(e.target.value)} className="w-full rounded-lg border border-[#DCE8F5] bg-white px-3 py-2 text-xs">
+                  <option value="">Unassigned</option>{machineOptions.map((machine) => <option key={machine.id} value={machine.id}>{machineOptionLabel(machine)}</option>)}
+                </select> : <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#F7FAFE] border border-[#DCE8F5] text-xs font-semibold text-[#12345A]"><Cpu className="w-3.5 h-3.5 text-[#1473E6] shrink-0" /><span className="truncate">{data.machine ? `${data.machine.name}` : machineName}</span></div>}
               </div>
 
               {/* Origin Badge */}
@@ -1037,6 +1230,11 @@ export const KnowledgeEditorPage: React.FC = () => {
 
                 {showDetailsSection && (
                   <div className="pt-3 space-y-3.5 animate-in fade-in">
+                    <div>
+                      <label htmlFor="common-mistakes" className="block text-[10px] uppercase font-semibold text-[#536780] mb-1">Common mistakes, symptoms and verified causes</label>
+                      {isEditable ? <textarea id="common-mistakes" aria-label="Common mistakes, symptoms and verified causes" value={localCommonMistakes} onChange={(e) => { setLocalCommonMistakes(e.target.value); markDirty(); }} rows={3} className="w-full bg-white border border-[#DCE8F5] rounded-lg p-2 text-xs text-[#12345A]" /> : <p className="whitespace-pre-wrap text-xs">{localCommonMistakes || '—'}</p>}
+                    </div>
+
                     <div>
                       <label className="block text-[10px] uppercase font-semibold text-[#536780] mb-1">
                         Operating Conditions &amp; Environment
@@ -1159,6 +1357,39 @@ export const KnowledgeEditorPage: React.FC = () => {
 
           {/* ════════════ CENTER COLUMN: SUMMARY & MEDIA (lg:col-span-5) ════════════ */}
           <div className="lg:col-span-5 space-y-6">
+            <div className="bg-white rounded-2xl border border-[#DCE8F5] p-5 shadow-xs space-y-3">
+              <h2 className="text-sm font-bold text-[#12345A]">Machine-specific technical knowledge</h2>
+              {isEditable ? <textarea aria-label="Machine-specific technical knowledge" value={localContent} onChange={(event) => { setLocalContent(event.target.value); markDirty(); }} rows={7} className="w-full bg-white border border-[#DCE8F5] rounded-xl p-3 text-sm" /> : <p className="whitespace-pre-wrap text-sm">{localContent || '—'}</p>}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-[#DCE8F5] p-5 shadow-xs space-y-4">
+              <h2 className="text-sm font-bold text-[#12345A]">Source references</h2>
+              <ul className="space-y-2 text-xs">
+                {localSourceRefs.map((reference, index) => <li key={`${reference.source_title ?? reference.title ?? 'source'}-${index}`} className="flex items-center justify-between gap-2 rounded-lg bg-[#F7FAFE] p-2">
+                  <span>{reference.source_title ?? reference.title ?? 'Related knowledge'}{reference.revision ? ` · ${reference.revision}` : ''}</span>
+                  {isEditable && <button type="button" aria-label={`Remove source reference ${index + 1}`} onClick={() => removeSourceReference(index)} className="text-rose-700">Remove</button>}
+                </li>)}
+              </ul>
+              {isEditable && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <label className="space-y-1">Source document title<input aria-label="Source document title" value={sourceReferenceDraft.source_title} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, source_title: e.target.value })} className="w-full rounded border p-2" /></label>
+                <label className="space-y-1">Revision / date<input aria-label="Revision / date" value={sourceReferenceDraft.revision} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, revision: e.target.value })} className="w-full rounded border p-2" /></label>
+                <label className="space-y-1">PDF page(s)<input aria-label="PDF page(s)" value={sourceReferenceDraft.pdf_pages} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, pdf_pages: e.target.value })} className="w-full rounded border p-2" /></label>
+                <label className="space-y-1">Printed page(s)<input aria-label="Printed page(s)" value={sourceReferenceDraft.printed_pages} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, printed_pages: e.target.value })} className="w-full rounded border p-2" /></label>
+                <label className="space-y-1">Section<input aria-label="Section" value={sourceReferenceDraft.section} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, section: e.target.value })} className="w-full rounded border p-2" /></label>
+                <label className="space-y-1">Source provenance<input aria-label="Source provenance" value={sourceReferenceDraft.source_provenance} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, source_provenance: e.target.value })} className="w-full rounded border p-2" /></label>
+                <label className="space-y-1">Source manufacturer<input aria-label="Source manufacturer" value={sourceReferenceDraft.source_manufacturer} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, source_manufacturer: e.target.value })} className="w-full rounded border p-2" /></label>
+                <label className="space-y-1">Source exact model<input aria-label="Source exact model" value={sourceReferenceDraft.source_model} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, source_model: e.target.value })} className="w-full rounded border p-2" /></label>
+                <label className="space-y-1">Verified machine manufacturer<input aria-label="Verified machine manufacturer" value={sourceReferenceDraft.machine_manufacturer} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, machine_manufacturer: e.target.value })} className="w-full rounded border p-2" /></label>
+                <label className="space-y-1">Verified machine exact model<input aria-label="Verified machine exact model" value={sourceReferenceDraft.machine_model} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, machine_model: e.target.value })} className="w-full rounded border p-2" /></label>
+                <label className="space-y-1">Machine identity basis<select aria-label="Machine identity basis" value={sourceReferenceDraft.machine_identity_basis} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, machine_identity_basis: e.target.value })} className="w-full rounded border p-2"><option value="">Unverified</option><option value="asset_plate">Asset plate</option><option value="trusted_registry">Trusted registry</option></select></label>
+                <label className="space-y-1">Identity evidence reference<input aria-label="Identity evidence reference" value={sourceReferenceDraft.machine_identity_reference} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, machine_identity_reference: e.target.value })} className="w-full rounded border p-2" /></label>
+                <label className="space-y-1">Source audience clearance<select aria-label="Source audience clearance" value={sourceReferenceDraft.audience_clearance} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, audience_clearance: e.target.value })} className="w-full rounded border p-2"><option value="unknown">Unknown</option><option value="trainee_authorized">Trainee authorized</option><option value="expert_only">Expert only</option><option value="restricted">Restricted</option><option value="demo_only">Demo only</option></select></label>
+                <label className="flex items-center gap-2"><input type="checkbox" aria-label="Mark source verified" checked={sourceReferenceDraft.verified} onChange={(e) => setSourceReferenceDraft({ ...sourceReferenceDraft, verified: e.target.checked })} />Mark source verified</label>
+                {sourceReferenceError && <p role="alert" className="sm:col-span-2 text-rose-700">{sourceReferenceError}</p>}
+                <button type="button" onClick={addSourceReference} className="sm:col-span-2 justify-self-start rounded-lg bg-[#1473E6] px-3 py-2 font-semibold text-white">Add source reference</button>
+              </div>}
+            </div>
+
             {/* Card 1: Procedure Summary */}
             <div className="bg-white rounded-2xl border border-[#DCE8F5] p-5 shadow-xs space-y-3">
               <div className="flex items-center gap-2 pb-3 border-b border-[#DCE8F5]">

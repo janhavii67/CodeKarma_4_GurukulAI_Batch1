@@ -200,14 +200,15 @@ def test_machine_library_summary_uses_real_counts_and_hides_private_assets(clien
     assert library.status_code == 200, library.text
     assert len(library.json()) == 1
     assert library.json()[0]["id"] == machine_a.id
-    assert library.json()[0]["counts"]["image"] == 0
-    assert library.json()[0]["counts"]["total"] == 0
+    # Trainees see the same shared machine library as experts.
+    assert library.json()[0]["counts"]["image"] == 1
+    assert library.json()[0]["counts"]["total"] == 1
 
-    hidden_library = client.get(f"/api/v1/machine-knowledge/library?machine_id={machine_b.id}")
-    assert hidden_library.status_code == 200, hidden_library.text
-    assert hidden_library.json()[0]["counts"]["image"] == 0
-    assert client.get(f"/api/v1/machine-knowledge/{machine_a.id}/media?kind=image").json() == []
-    assert client.get(f"/api/v1/machine-knowledge/{machine_b.id}/media?kind=image").json() == []
+    other_library = client.get(f"/api/v1/machine-knowledge/library?machine_id={machine_b.id}")
+    assert other_library.status_code == 200, other_library.text
+    assert other_library.json()[0]["counts"]["image"] == 1
+    assert [row["id"] for row in client.get(f"/api/v1/machine-knowledge/{machine_a.id}/media?kind=image").json()] == [owned.id]
+    assert [row["id"] for row in client.get(f"/api/v1/machine-knowledge/{machine_b.id}/media?kind=image").json()] == [private.id]
     assert db_session.get(MediaAsset, private.id) is not None
 
 
@@ -347,7 +348,7 @@ def test_transcript_edit_persists_and_keeps_original_audio_and_machine_link(clie
         set_storage_service(None)
 
 
-def test_transcript_is_not_visible_to_unassigned_user(client, db_session, tmp_path):
+def test_machine_transcript_is_visible_to_trainees_in_the_shared_library(client, db_session, tmp_path):
     user = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
     machine = db_session.query(Machine).first()
     audio = MediaService.upload(db_session, user, [PERM_KNOWLEDGE_CREATE], None,
@@ -359,12 +360,14 @@ def test_transcript_is_not_visible_to_unassigned_user(client, db_session, tmp_pa
     response = client.get(f"/api/v1/voice/transcripts/{transcript.id}")
     machine_listing = client.get(f"/api/v1/machine-knowledge/{machine.id}/media?kind=transcript")
     assert trainee.status_code == 200
-    assert response.status_code == 403
-    assert machine_listing.status_code == 200 and machine_listing.json() == []
+    assert response.status_code == 200, response.text
+    assert machine_listing.status_code == 200
+    assert [row["id"] for row in machine_listing.json()] == [transcript.id]
 
 
-def test_private_machine_asset_cannot_be_listed_downloaded_or_referenced_by_trainee(client, db_session, tmp_path):
+def test_trainee_can_view_but_not_edit_or_reference_machine_library_assets(client, db_session, tmp_path):
     storage = LocalStorageService(tmp_path / "private-machine-media")
+    set_storage_service(storage)
     author = db_session.query(User).filter(User.email == settings.EXPERT_A_EMAIL).first()
     machine = db_session.query(Machine).first()
     asset = MediaService.upload(db_session, author, [PERM_KNOWLEDGE_CREATE], None,
@@ -382,13 +385,17 @@ def test_private_machine_asset_cannot_be_listed_downloaded_or_referenced_by_trai
         "steps": [{"title": "Inspect", "instruction": "Inspect safely."}], "asset_ids": [asset.id],
     })
 
+    edit = client.patch(f"/api/v1/media/{asset.id}", headers=headers, json={"title": "Renamed by trainee"})
+
     assert login.status_code == 200
-    assert listing.status_code == 200 and all(row["id"] != asset.id for row in listing.json())
-    assert download.status_code == 403
-    assert voice_listing.status_code == 200 and all(row["id"] != asset.id for row in voice_listing.json())
-    assert voice_detail.status_code == 403
+    assert listing.status_code == 200 and any(row["id"] == asset.id for row in listing.json())
+    assert download.status_code == 200 and download.content == PNG
+    assert voice_listing.status_code == 200 and all(row["id"] != asset.id for row in voice_listing.json())  # audio only
+    assert voice_detail.status_code == 200 and voice_detail.json()["id"] == asset.id
     assert reference.status_code == 403
+    assert edit.status_code == 403
     assert db_session.get(MediaAsset, asset.id) is not None
+    set_storage_service(None)
 
 
 def test_trainee_cannot_upload_machine_audio(client, db_session, tmp_path):
@@ -496,8 +503,9 @@ def test_trainee_views_published_procedure_assets_only_while_published(client, d
         assert [asset["id"] for asset in references.json()] == [used.id]
         assert used_download.status_code == 200, used_download.text
         assert used_download.content == PNG
-        assert unused_download.status_code == 403
-        assert archived_download.status_code == 403
+        # Library files are part of the shared knowledge base, independent of the procedure's state.
+        assert unused_download.status_code == 200
+        assert archived_download.status_code == 200
     finally:
         settings.MEDIA_ROOT = old_root
         set_storage_service(None)

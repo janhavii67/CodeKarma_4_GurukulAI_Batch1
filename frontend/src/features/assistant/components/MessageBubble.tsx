@@ -8,7 +8,38 @@ import { FeedbackButtons } from './FeedbackButtons';
 import { AudioTutorResult } from './AudioTutorResult';
 import { TutorHandoffActions } from './TutorHandoffActions';
 import { getApiUrl } from '../../../lib/api/client';
-import type { Message } from '../types';
+import type { Message, RelatedMedia } from '../types';
+
+const MEDIA_ICONS: Record<string, typeof FileText> = { image: ImageIcon, audio: FileAudio, video: FileVideo, document: FileText };
+
+/** Files attached to the knowledge this answer cites, listed as citations that open the file on demand. */
+const RelatedMediaPanel: React.FC<{ items: RelatedMedia[] }> = ({ items }) => (
+  <section aria-label="Related media from cited knowledge" className="mt-3 border-t border-slate-100 pt-3">
+    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Related media from cited knowledge</p>
+    <ol className="mt-2 flex flex-wrap gap-2">
+      {items.map((item, index) => {
+        const Icon = MEDIA_ICONS[item.kind] || FileText;
+        return (
+          <li key={item.id}>
+            <a
+              href={getApiUrl(item.url)}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Open ${item.kind} citation ${index + 1}: ${item.title}, from ${item.source_title}`}
+              title={`From ${item.source_title}`}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 transition hover:border-blue-300 hover:bg-blue-50"
+            >
+              <span className="font-mono text-[10px] font-bold text-blue-700">[{index + 1}]</span>
+              <Icon className="h-3.5 w-3.5 shrink-0 text-blue-700" />
+              <span className="truncate font-semibold">{item.title}</span>
+              <span className="shrink-0 text-[10px] uppercase text-slate-400">{item.kind}</span>
+            </a>
+          </li>
+        );
+      })}
+    </ol>
+  </section>
+);
 
 interface MessageBubbleProps {
   message: Message;
@@ -205,6 +236,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             {/* Source Citations */}
             {message.sources && message.sources.length > 0 && (
               <SourceCitations sources={message.sources} onSelectSource={onSelectSource} />
+            )}
+
+            {!isStreaming && !isInsufficient && !isProviderUnavailable && message.related_media && message.related_media.length > 0 && (
+              <RelatedMediaPanel items={message.related_media} />
             )}
 
             {!isStreaming && !isInsufficient && !isProviderUnavailable && !message.audio_analysis && (

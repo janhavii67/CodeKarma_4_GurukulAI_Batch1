@@ -230,9 +230,10 @@ class MediaService:
         """Enforce visibility rules for media assets.
 
         - Version-attached assets: governed by the knowledge version's publication status.
-        - Machine library assets (machine_id set, no version_id): private to the uploader
-          and approvers until they are attached to a published knowledge version, except
-          that operators may view them while a currently published procedure uses them.
+        - Machine library assets (machine_id set, no version_id): the shared machine knowledge
+          base, readable by anyone who can view published knowledge (experts and trainees see
+          the same library), plus operators running a published procedure that uses them.
+          Editing stays limited to the uploader and approvers.
         - Orphan assets (no version_id, no machine_id): private to the uploader and approvers.
         """
         if asset.version_id:
@@ -245,6 +246,7 @@ class MediaService:
             KnowledgeService.ensure_can_view_version(user, permissions, version, item)
         elif asset.machine_id:
             if (asset.uploaded_by != user.id and PERM_KNOWLEDGE_APPROVE not in permissions
+                    and PERM_KNOWLEDGE_VIEW_PUBLISHED not in permissions
                     and not cls._is_used_by_published_procedure(db, permissions, asset)):
                 raise ForbiddenError(code="forbidden", message="You may only access your own machine knowledge assets or assets assigned for review.")
         elif asset.uploaded_by != user.id and PERM_KNOWLEDGE_APPROVE not in permissions:

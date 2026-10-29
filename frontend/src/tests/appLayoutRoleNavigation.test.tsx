@@ -70,10 +70,13 @@ describe('AppLayout role navigation', () => {
 
   it('shows the expert authoring and review links only when the permissions are granted', () => {
     authState.role = 'EXPERT';
-    authState.permissions = ['knowledge.create', 'knowledge.approve', 'assistant.use', 'procedure.execute'];
+    authState.permissions = ['knowledge.create', 'knowledge.approve', 'assistant.use', 'procedure.execute', 'audio.analyze'];
     renderLayout();
 
     expect(screen.getByRole('link', { name: 'Capture Knowledge' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Sound AI' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle navigation menu' }));
+    expect(screen.queryByRole('link', { name: /Sound Analysis/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Open profile menu' }));
     const menu = screen.getByRole('menu', { name: 'Profile menu' });
     expect(within(menu).getAllByRole('menuitem')).toHaveLength(1);

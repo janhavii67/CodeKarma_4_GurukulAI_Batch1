@@ -4,6 +4,7 @@ import type {
   ChatState,
   Conversation,
   Message,
+  RelatedMedia,
   SourceRef,
   TutorHandoffSuggestion,
 } from './types';
@@ -145,6 +146,7 @@ export function useAssistantChat(
       let accumulatedText = '';
       let receivedSources: SourceRef[] = [];
       let receivedHandoffs: TutorHandoffSuggestion[] = [];
+      let receivedRelatedMedia: RelatedMedia[] = [];
       let isInsufficient = false;
       let finalConvId = conversationId;
       let finalMsgId = assistantPlaceholderId;
@@ -169,7 +171,8 @@ export function useAssistantChat(
               : m));
           },
           onStatus: setProgressMessage,
-          onSources: (srcs, insufficient, cId, mId, providerUnavailable, audioAnalysis, handoffs) => {
+          onSources: (srcs, insufficient, cId, mId, providerUnavailable, audioAnalysis, handoffs, relatedMedia) => {
+            receivedRelatedMedia = relatedMedia || [];
             receivedSources = srcs;
             receivedHandoffs = handoffs || [];
             isInsufficient = insufficient;
@@ -189,6 +192,7 @@ export function useAssistantChat(
                       provider_unavailable: providerUnavailable,
                       audio_analysis: audioAnalysis ?? null,
                       handoffs: receivedHandoffs,
+                      related_media: receivedRelatedMedia,
                     }
                   : m
               )
@@ -217,6 +221,7 @@ export function useAssistantChat(
           sources: streamRes.provider_unavailable ? [] : streamRes.sources?.length ? streamRes.sources : receivedSources,
           audio_analysis: streamRes.audio_analysis ?? null,
           handoffs: streamRes.handoffs || receivedHandoffs,
+          related_media: streamRes.related_media?.length ? streamRes.related_media : receivedRelatedMedia,
           created_at: new Date().toISOString(),
         };
 
@@ -271,6 +276,7 @@ export function useAssistantChat(
             sources: fallbackRes.sources,
             audio_analysis: fallbackRes.audio_analysis ?? null,
             handoffs: fallbackRes.handoffs || [],
+            related_media: fallbackRes.related_media || [],
             created_at: new Date().toISOString(),
           };
 

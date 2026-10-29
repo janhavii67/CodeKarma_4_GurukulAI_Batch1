@@ -74,7 +74,7 @@ def test_decoded_log_mel_profile_and_similarity_are_deterministic():
     same = extract_features(_wav(440))
     other = extract_features(_wav(1_200))
     assert left["version"] == FEATURE_VERSION
-    assert len(left["vector"]) == 48
+    assert len(left["vector"]) == 48 + 16  # mel bands + rhythm (modulation) bands
     assert left["normalized_sample_rate"] == 16_000
     result = compare_features(left, [
         {"feature_version": FEATURE_VERSION, "features_json": json.dumps(same), "title": "same"},
@@ -427,3 +427,28 @@ def test_permissions_block_reference_authoring_for_trainees(client, audio_storag
         headers={settings.CSRF_HEADER_NAME: csrf},
     )
     assert response.status_code == 403
+
+
+def test_rhythm_features_prevent_false_match_between_similar_spectra():
+    """The noisy turbine-blade chip used to MATCH the syringe pump step skip on spectrum alone (0.918)."""
+    from pathlib import Path
+    from app.services.audio_service import compare_features, extract_features, FEATURE_VERSION
+
+    samples = Path(__file__).resolve().parents[2] / "test_audio_samples"
+    references = []
+    for path in sorted(samples.glob("[0-9][0-9]_*.wav")):
+        features = extract_features(path.read_bytes(), path.name)
+        references.append({"id": path.name[:2], "feature_version": FEATURE_VERSION,
+                           "features_json": json.dumps({"version": features["version"], "vector": features["vector"]})})
+
+    def match(name):
+        path = next(samples.glob(f"{name}_*.wav"))
+        return compare_features(extract_features(path.read_bytes(), path.name), references)
+
+    turbine = match("T14")
+    assert turbine["status"] != "MATCHED"
+    assert [candidate["id"] for candidate in turbine["candidates"]].index("14") <= 1
+    for query, expected in (("T01", "01"), ("T04", "04"), ("T06", "06")):
+        result = match(query)
+        assert result["status"] == "MATCHED", (query, result["reason_code"])
+        assert result["matched_reference"]["id"] == expected

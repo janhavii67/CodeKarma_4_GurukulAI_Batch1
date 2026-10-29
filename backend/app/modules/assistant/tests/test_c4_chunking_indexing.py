@@ -160,6 +160,36 @@ def test_indexing_service_knowledge_version_crud_and_idempotency(db_session: Ses
     assert len(chunks_after) == 3  # Not 6! Clean replacement
 
 
+def test_indexing_service_stores_configured_embeddings(db_session: Session, monkeypatch):
+    class Provider:
+        def embed_texts(self, request):
+            return type("EmbeddingResponse", (), {"embeddings": [[0.25, 0.75] for _ in request.texts]})()
+
+    monkeypatch.setattr(
+        "app.modules.assistant.services.indexing_service.get_embedding_provider",
+        lambda: Provider(),
+    )
+    user = db_session.query(User).filter(User.role_id == ROLE_EXPERT).first()
+    item = KnowledgeItem(title="Embedding index check", author_id=user.id)
+    db_session.add(item)
+    db_session.flush()
+    version = KnowledgeVersion(
+        item_id=item.id,
+        version_no=1,
+        status=STATUS_PUBLISHED,
+        summary="A focused index test for embedding storage.",
+        created_by=user.id,
+    )
+    db_session.add(version)
+    db_session.commit()
+
+    source = IndexingService.index_knowledge_version(version.id, db_session, user_id=user.id)
+    chunks = db_session.query(KnowledgeChunk).filter(KnowledgeChunk.source_id == source.id).all()
+
+    assert chunks
+    assert all(chunk.metadata_json["embedding"] == [0.25, 0.75] for chunk in chunks)
+
+
 def test_indexing_service_deactivate_lifecycle(db_session: Session):
     """
     Verify deactivating a source sets is_active=False on all chunks immediately.

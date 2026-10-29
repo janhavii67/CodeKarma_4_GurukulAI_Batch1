@@ -21,7 +21,8 @@ export interface StreamChatCallbacks {
     messageId: string,
     providerUnavailable?: boolean,
     audioAnalysis?: import('./types').AudioAnalysisResult | null,
-    handoffs?: TutorHandoffSuggestion[]
+    handoffs?: TutorHandoffSuggestion[],
+    relatedMedia?: import('./types').RelatedMedia[]
   ) => void;
   onFailure?: (answer: string) => void;
   signal?: AbortSignal;
@@ -36,6 +37,7 @@ export interface StreamChatResult {
   provider_unavailable?: boolean;
   audio_analysis?: import('./types').AudioAnalysisResult | null;
   handoffs: TutorHandoffSuggestion[];
+  related_media: import('./types').RelatedMedia[];
 }
 
 /**
@@ -52,6 +54,7 @@ export async function sendChat(req: ChatRequest): Promise<ChatResponse> {
     message_id: raw.message_id,
     audio_analysis: raw.audio_analysis ?? null,
     handoffs: raw.handoffs || [],
+    related_media: Array.isArray(raw.related_media) ? raw.related_media : [],
   };
 }
 
@@ -108,6 +111,7 @@ export async function streamChat(
   let finalMessageId = '';
   let finalAudioAnalysis: StreamChatResult['audio_analysis'] = null;
   let finalHandoffs: TutorHandoffSuggestion[] = [];
+  let finalRelatedMedia: import('./types').RelatedMedia[] = [];
 
   let buffer = '';
 
@@ -184,7 +188,8 @@ export async function streamChat(
               }
               finalAudioAnalysis = parsed.audio_analysis ?? null;
               finalHandoffs = Array.isArray(parsed.handoffs) ? parsed.handoffs : [];
-              callbacks?.onSources?.(normalized, isInsufficient, finalConversationId, finalMessageId, providerUnavailable, finalAudioAnalysis, finalHandoffs);
+              finalRelatedMedia = Array.isArray(parsed.related_media) ? parsed.related_media : [];
+              callbacks?.onSources?.(normalized, isInsufficient, finalConversationId, finalMessageId, providerUnavailable, finalAudioAnalysis, finalHandoffs, finalRelatedMedia);
             } catch (err) {
               console.warn('[streamChat] Failed to parse sources payload:', err);
             }
@@ -207,6 +212,7 @@ export async function streamChat(
     provider_unavailable: providerUnavailable,
     audio_analysis: finalAudioAnalysis,
     handoffs: finalHandoffs,
+    related_media: finalRelatedMedia,
   };
 }
 
@@ -228,6 +234,7 @@ export async function getConversation(conversationId: string): Promise<Conversat
       ...m,
       sources: (m.sources || []).map(normalizeSourceRef),
       handoffs: Array.isArray(m.handoffs) ? m.handoffs : [],
+      related_media: Array.isArray(m.related_media) ? m.related_media : [],
     })),
   };
 }

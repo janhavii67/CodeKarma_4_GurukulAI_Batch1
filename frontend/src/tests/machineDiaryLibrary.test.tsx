@@ -194,6 +194,9 @@ describe('Machine diary library', () => {
     mockGet.mockImplementation((path: string) => {
       if (path === '/machine-knowledge/library?machine_id=machine-mri') return Promise.resolve([machine]);
       if (path === '/machine-knowledge/machine-mri/media') return Promise.resolve([
+        asset('shared-note', 'notes', 'Expert shared field note', { content: 'Added to the machine library.', machine_id: machine.id }),
+        asset('shared-image', 'image', 'Expert shared photo', { machine_id: machine.id, mime: 'image/png' }),
+        asset('shared-document', 'document', 'Expert shared document', { machine_id: machine.id, mime: 'application/pdf' }),
         asset('note-1', 'notes', 'Bearing temperature note', { content: 'Warm after the second cycle.', version_id: 'version-published' }),
         asset('image-1', 'image', 'Motor plate photo', { version_id: 'version-published', mime: 'image/png' }),
         asset('audio-1', 'audio', 'Shift recording'),
@@ -209,6 +212,10 @@ describe('Machine diary library', () => {
     });
 
     renderRouter('/app/knowledge/machine/machine-mri');
+    expect(await screen.findByText('Expert shared photo')).toBeInTheDocument();
+    expect(screen.getByText('Expert shared document')).toBeInTheDocument();
+    expect(screen.getByText('Expert shared field note')).toBeInTheDocument();
+    expect(screen.getAllByText('Shared machine library').length).toBeGreaterThan(0);
     expect(await screen.findByText('Bearing temperature note')).toBeInTheDocument();
     expect(screen.getByText('Motor plate photo')).toBeInTheDocument();
     expect(screen.getByText('Coolant video')).toBeInTheDocument();

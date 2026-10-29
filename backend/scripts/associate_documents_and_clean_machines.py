@@ -1,6 +1,8 @@
 import os
 import shutil
+import uuid
 from pathlib import Path
+from app.integrations.storage.local import KEY_REGEX
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.core.config import settings
@@ -111,13 +113,6 @@ def associate_documents(db: Session):
         # 2. Ensure MediaAsset exists for this document on the machine
         src_file = kb_dir / filename
         if src_file.exists():
-            storage_key = f"documents/{machine_id}/{filename}"
-            dest_file = media_upload_dir / storage_key
-            dest_file.parent.mkdir(parents=True, exist_ok=True)
-            if not dest_file.exists():
-                shutil.copy2(src_file, dest_file)
-                print(f"  [OK] Copied file to media storage: {dest_file}")
-                
             existing_asset = (
                 db.query(MediaAsset)
                 .filter(
@@ -126,6 +121,18 @@ def associate_documents(db: Session):
                 )
                 .first()
             )
+            # Storage only serves fan-out keys (ab/cd/<32-hex>.ext); any other shape reads as "not found on disk".
+            if existing_asset and KEY_REGEX.match(existing_asset.storage_key or ""):
+                storage_key = existing_asset.storage_key
+            else:
+                raw_uuid = uuid.uuid4().hex
+                storage_key = f"{raw_uuid[:2]}/{raw_uuid[2:4]}/{raw_uuid}.pdf"
+            dest_file = media_upload_dir / storage_key
+            dest_file.parent.mkdir(parents=True, exist_ok=True)
+            if not dest_file.exists():
+                shutil.copy2(src_file, dest_file)
+                print(f"  [OK] Copied file to media storage: {dest_file}")
+
             file_size = src_file.stat().st_size
             doc_title = DOC_TITLES.get(filename, f"{machine.name} Operation Manual ({filename})")
             

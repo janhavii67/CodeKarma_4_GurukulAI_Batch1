@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowDown,
   ArrowLeft,
@@ -117,6 +117,49 @@ export const ProcedureCreatePage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [uploadingStepId, setUploadingStepId] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [operation, setOperation] = useState('');
+  const [searchParams] = useSearchParams();
+  const sourceWorkflowId = searchParams.get('from');
+  const [sourceTitle, setSourceTitle] = useState('');
+  const [sourceArchived, setSourceArchived] = useState(false);
+
+  // "Edit steps" opens an existing workflow here; saving creates a new workflow so in-progress runs keep their steps.
+  useEffect(() => {
+    if (!sourceWorkflowId) return;
+    let active = true;
+    Promise.all([
+      api.get<{ title: string; description: string; machine_id: string; operation?: string | null; prerequisites?: string | null; safety_warnings?: string | null; steps: { title: string; instruction: string; expected_observation?: string | null; safety_warning?: string | null; is_critical: boolean; details?: Record<string, unknown> }[] }>(`/procedures/${encodeURIComponent(sourceWorkflowId)}`),
+      api.get<{ id: string }[]>(`/procedures/${encodeURIComponent(sourceWorkflowId)}/assets`),
+    ]).then(([source, sourceAssets]) => {
+      if (!active) return;
+      const stepIds = (step: { details?: Record<string, unknown> }) => Array.isArray(step.details?.asset_ids) ? (step.details?.asset_ids as unknown[]).filter((id): id is string => typeof id === 'string') : [];
+      const stepAssetIds = new Set(source.steps.flatMap(stepIds));
+      setSourceTitle(source.title);
+      setMachineId(source.machine_id);
+      setTitle(source.title);
+      setDescription(source.description);
+      setOperation(source.operation || '');
+      setPrerequisites(source.prerequisites || '');
+      setSafetyWarnings(source.safety_warnings || '');
+      setAssetIds(sourceAssets.map(asset => asset.id).filter(id => !stepAssetIds.has(id)));
+      setSteps(source.steps.map(step => ({
+        ...newStep(),
+        title: step.title, instruction: step.instruction, expected_observation: step.expected_observation || '',
+        safety_warning: step.safety_warning || '', is_critical: step.is_critical,
+        notes: typeof step.details?.notes === 'string' ? step.details.notes : '', asset_ids: stepIds(step),
+      })));
+    }).catch(cause => { if (active) setError(`The workflow to edit could not be loaded: ${cause instanceof Error ? cause.message : 'unknown error'}`); });
+    return () => { active = false; };
+  }, [sourceWorkflowId]);
+
+  const archiveSource = async () => {
+    if (!sourceWorkflowId) return;
+    try {
+      await api.post(`/procedures/${encodeURIComponent(sourceWorkflowId)}/archive`, {});
+      setSourceArchived(true);
+      setStatus('The original workflow is archived. Trainees now see only the new version.');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'The original workflow could not be archived.'); }
+  };
 
   const selectedMachine = useMemo(() => machines.find(machine => machine.id === machineId), [machineId, machines]);
 
@@ -264,6 +307,7 @@ export const ProcedureCreatePage: React.FC = () => {
         machine_id: machineId,
         prerequisites: prerequisites.trim() || undefined,
         safety_warnings: safetyWarnings.trim() || undefined,
+        operation: operation.trim() || undefined,
         steps: steps.map(step => ({
           title: step.title.trim(),
           instruction: step.instruction.trim(),
@@ -283,7 +327,7 @@ export const ProcedureCreatePage: React.FC = () => {
 
   const startAnotherProcedure = () => {
     setSavedProcedureId(null);
-    setMachineId(''); setTitle(''); setDescription(''); setPrerequisites(''); setSafetyWarnings('');
+    setMachineId(''); setTitle(''); setDescription(''); setPrerequisites(''); setSafetyWarnings(''); setOperation('');
     setAssetIds([]); setSteps([]); setEditorStage('edit'); setEditingStepId('');
     setError('');
     setStatus('Procedure created. Start another one here.');
@@ -307,6 +351,10 @@ export const ProcedureCreatePage: React.FC = () => {
     </header>
 
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+    {sourceWorkflowId && sourceTitle && <div className="rounded-xl border border-[#C8DCE7] bg-[#F4F8FA] p-3 text-sm text-[#17324D]">
+      <p>Editing a copy of <span className="font-bold">{sourceTitle}</span>. Saving publishes it as a new workflow; the original stays available until you archive it.</p>
+      {savedProcedureId && !sourceArchived && <button type="button" onClick={() => void archiveSource()} className="mt-2 rounded-full bg-[#176E8A] px-4 py-2 text-xs font-bold text-white">Archive the original workflow</button>}
+    </div>}
     {status && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{status}</p>}
 
     {editorStage === 'edit' ? <>
@@ -321,6 +369,7 @@ export const ProcedureCreatePage: React.FC = () => {
         {machineQuery.isError && <p role="alert" className="text-xs text-red-700">Could not load registered machines. Retry the page before creating a procedure.</p>}
         {!machineQuery.isLoading && !machineQuery.isError && machines.length === 0 && <p role="status" className="text-xs text-slate-600">No active equipment is registered. <Link className="font-semibold text-[#1976C9] underline" to="/app/machines">Register equipment</Link> before creating a procedure.</p>}
         <label className="block text-sm font-semibold">Procedure title<input className="mt-2 w-full rounded-lg border border-[#C8D6E4] p-3 font-normal" placeholder="e.g. CT-Scan startup inspection" value={title} onChange={event => setTitle(event.target.value)} /></label>
+        <label className="block text-sm font-semibold">Category <span className="font-normal text-[#536779]">(optional)</span><input className="mt-2 w-full rounded-lg border border-[#C8D6E4] p-3 font-normal" placeholder="e.g. Startup, Calibration, Shutdown" maxLength={120} value={operation} onChange={event => setOperation(event.target.value)} /></label>
         <label className="block text-sm font-semibold">Summary<textarea className="mt-2 w-full rounded-lg border border-[#C8D6E4] p-3 font-normal" placeholder="Describe the scope and intended outcome" rows={3} value={description} onChange={event => setDescription(event.target.value)} /></label>
         <label className="block text-sm font-semibold">Prerequisites <span className="font-normal text-[#536779]">(optional)</span><textarea className="mt-2 w-full rounded-lg border border-[#C8D6E4] p-3 font-normal" placeholder="Required preparation or conditions" rows={2} value={prerequisites} onChange={event => setPrerequisites(event.target.value)} /></label>
         <label className="block text-sm font-semibold">Procedure-wide safety warnings <span className="font-normal text-[#536779]">(optional)</span><textarea className="mt-2 w-full rounded-lg border border-[#C8D6E4] p-3 font-normal" placeholder="Safety cautions for the full procedure" rows={2} value={safetyWarnings} onChange={event => setSafetyWarnings(event.target.value)} /></label>

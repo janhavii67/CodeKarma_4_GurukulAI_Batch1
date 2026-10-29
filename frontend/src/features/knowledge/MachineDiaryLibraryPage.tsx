@@ -295,8 +295,16 @@ export const MachineDiaryPage: React.FC = () => {
       // Treat the backend association as authoritative and retain a client-side
       // guard so a malformed response cannot leak another machine's assets.
       const visibleKinds = new Set(['video', 'image', 'document', 'notes']);
-      setAssets(machineAssets.filter(asset => asset.machine_id === machineId && visibleKinds.has(asset.kind)
-        && (!isTrainee || (!!asset.version_id && itemsByVersion.has(asset.version_id)))));
+      setAssets(machineAssets.filter(asset => {
+        if (asset.machine_id !== machineId || !visibleKinds.has(asset.kind)) return false;
+        if (!isTrainee) return true;
+
+        // Standalone assets in the shared machine library have no knowledge
+        // version. The backend already enforces trainee visibility for these;
+        // only version-attached assets need a published-version check here.
+        const isSharedMachineAsset = !asset.version_id;
+        return isSharedMachineAsset || itemsByVersion.has(asset.version_id || '');
+      }));
     }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Could not load this machine diary.'))
       .finally(() => setLoading(false));
   };
@@ -387,7 +395,7 @@ export const MachineDiaryPage: React.FC = () => {
             <div className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><button type="button" onClick={() => setSelected(asset)} className="block max-w-full truncate text-left text-sm font-semibold text-[#173B5E] hover:text-[#1976C9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1976C9]">{asset.title || asset.original_name}</button><p className="mt-1 truncate text-xs text-[#536779]">{asset.original_name}</p></div><span className="shrink-0 rounded-full border border-[#DCE6F0] bg-[#F8FAFC] px-2 py-1 text-[.65rem] capitalize text-[#536779]">{asset.kind === 'image' ? 'photo' : asset.kind}</span></div>
               {asset.description && <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#536779]">{asset.description}</p>}
               {asset.kind === 'notes' && asset.content && <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-xs leading-5 text-[#173B5E]">{asset.content}</p>}
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#E2E8F0] pt-3 text-[.68rem] text-[#536779]"><span className="inline-flex items-center gap-1"><CalendarDays size={12} />{assetDate(asset)}</span><span>{publishedItemsByVersion.has(asset.version_id || '') ? `v${publishedItemsByVersion.get(asset.version_id || '')?.version_no} · Published` : asset.verification_status || 'Pending review'}</span></div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#E2E8F0] pt-3 text-[.68rem] text-[#536779]"><span className="inline-flex items-center gap-1"><CalendarDays size={12} />{assetDate(asset)}</span><span>{publishedItemsByVersion.has(asset.version_id || '') ? `v${publishedItemsByVersion.get(asset.version_id || '')?.version_no} · Published` : !asset.version_id && asset.machine_id === machineId ? 'Shared machine library' : asset.verification_status || 'Pending review'}</span></div>
             </div>
           </article>)}
         </div>}

@@ -12,6 +12,7 @@ from app.modules.assistant.models import (
     SOURCE_TYPE_KNOWLEDGE_VERSION,
     SOURCE_TYPE_TRANSCRIPT,
 )
+from app.modules.assistant.providers.embedding_base import EmbeddingRequest, get_embedding_provider
 from app.modules.assistant.chunking.chunker import (
     chunk_knowledge_version,
     chunk_transcript_segments,
@@ -100,9 +101,33 @@ class IndexingService:
             source_refs=getattr(version, "source_refs", None),
         )
 
+        # Knowledge-version indexing is the primary review/publish pipeline.
+        # Keep it aligned with folder ingestion so hybrid retrieval can use
+        # the configured embedding provider when available, while preserving
+        # keyword-only retrieval when a provider is offline or unavailable.
+        embeddings = [None] * len(payloads)
+        try:
+            provider = get_embedding_provider()
+            # The deterministic fake provider is useful for exercising the
+            # embedding interface, but its hash vectors are not semantic
+            # evidence. Persisting them makes hybrid retrieval surface noise.
+            if provider.__class__.__name__ != "FakeEmbeddingProvider":
+                response = provider.embed_texts(EmbeddingRequest(texts=[p.text for p in payloads]))
+                if response and response.embeddings and len(response.embeddings) == len(payloads):
+                    embeddings = response.embeddings
+        except Exception as exc:
+            logger.warning(
+                "Embedding generation unavailable for knowledge version %s (%s); continuing keyword-only.",
+                version_id,
+                type(exc).__name__,
+            )
+
         # 3. Insert chunks
         is_active = (version.status == STATUS_PUBLISHED)
-        for p in payloads:
+        for index, p in enumerate(payloads):
+            metadata = dict(p.metadata)
+            if embeddings[index]:
+                metadata["embedding"] = embeddings[index]
             chunk = KnowledgeChunk(
                 source_id=source.id,
                 chunk_index=p.chunk_index,
@@ -112,7 +137,7 @@ class IndexingService:
                 timestamp_end=p.timestamp_end,
                 token_count=p.token_count,
                 search_vector=p.search_vector,
-                metadata_json=p.metadata,
+                metadata_json=metadata,
                 is_active=is_active,
             )
             db.add(chunk)

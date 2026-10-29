@@ -173,7 +173,7 @@ export const AppLayout: React.FC = () => {
               )}
             </NavLink>}
 
-            {hasPermission('audio.analyze') && <NavLink
+            {user?.role_id !== 'EXPERT' && hasPermission('audio.analyze') && <NavLink
               to="/app/sound-inference"
               className={({ isActive }) =>
                 `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${
@@ -310,7 +310,7 @@ export const AppLayout: React.FC = () => {
             </NavLink>}
             {canReadMachines && <NavLink to="/app/machines" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Machine Assets (M00)</span></NavLink>}
             {hasPermission('knowledge.create') && <NavLink to="/app/voice-capture" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Voice-to-Knowledge (M04)</span></NavLink>}
-            {hasPermission('audio.analyze') && <NavLink to="/app/sound-analysis" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Sound Analysis (M07)</span></NavLink>}
+            {user?.role_id !== 'EXPERT' && hasPermission('audio.analyze') && <NavLink to="/app/sound-analysis" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Sound Analysis (M07)</span></NavLink>}
             {hasPermission('troubleshoot.use') && <NavLink to="/app/troubleshooting" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Troubleshooting (M05)</span></NavLink>}
             {hasPermission('simulation.attempt') && <NavLink to="/app/failure-simulator" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Failure Simulator (M09)</span></NavLink>}
             {canUseLearning && <NavLink to="/app/learning" onClick={closeMobileMenu} className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#536779] hover:bg-slate-50"><span>Learning Portal (M10)</span></NavLink>}

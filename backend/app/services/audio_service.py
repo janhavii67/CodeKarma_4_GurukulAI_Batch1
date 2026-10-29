@@ -19,7 +19,9 @@ from scipy.signal import resample_poly
 from app.core.config import settings
 
 
-FEATURE_VERSION = "log_mel_mean_v1"
+FEATURE_VERSION = "log_mel_modulation_v2"
+MODULATION_BANDS = 16
+MODULATION_WEIGHT = 0.5
 TARGET_SAMPLE_RATE = 16_000
 FRAME_SIZE = 2_048
 FRAME_HOP = 1_024
@@ -201,6 +203,11 @@ def extract_features(data: bytes, filename: Optional[str] = None) -> Dict[str, A
         if not math.isfinite(norm) or norm <= 1e-12:
             raise AudioInputError("unsuitable_audio", "The recording does not contain enough changing acoustic detail to compare.")
         profile /= norm
+        # The averaged spectrum cannot tell rhythms apart (a blade chip per turn vs. pump clicks),
+        # so append how the loudness envelope pulses, weighted equally with the spectrum.
+        modulation = _modulation_profile(frames)
+        profile = np.concatenate([profile * math.sqrt(1 - MODULATION_WEIGHT), modulation * math.sqrt(MODULATION_WEIGHT)])
+        profile /= float(np.linalg.norm(profile))
         return {
             "version": FEATURE_VERSION,
             "vector": [round(float(value), 8) for value in profile],
@@ -214,6 +221,24 @@ def extract_features(data: bytes, filename: Optional[str] = None) -> Dict[str, A
         raise
     except Exception as exc:
         raise AudioProcessingError("Audio feature extraction failed.") from exc
+
+
+def _modulation_profile(frames: np.ndarray) -> np.ndarray:
+    """Normalized log energy of loudness-envelope modulation in 0.5–40 Hz bands (zeros if flat)."""
+    envelope = np.log(np.sqrt(np.mean(np.square(frames, dtype=np.float64), axis=1)) + 1e-6)
+    envelope -= envelope.mean()
+    frames_per_second = TARGET_SAMPLE_RATE / FRAME_HOP
+    spectrum = np.abs(np.fft.rfft(envelope * np.hanning(len(envelope)))) ** 2
+    frequencies = np.fft.rfftfreq(len(envelope), d=1.0 / frames_per_second)
+    edges = np.geomspace(0.5, min(40.0, frames_per_second / 2), MODULATION_BANDS + 1)
+    bands = []
+    for lower, upper in zip(edges[:-1], edges[1:]):
+        selected = (frequencies >= lower) & (frequencies < upper)
+        bands.append(float(spectrum[selected].mean()) if np.any(selected) else 0.0)
+    values = np.log1p(np.asarray(bands, dtype=np.float64))
+    values -= values.mean()
+    norm = float(np.linalg.norm(values))
+    return values / norm if math.isfinite(norm) and norm > 1e-12 else np.zeros(MODULATION_BANDS)
 
 
 def _cosine_similarity(left: Iterable[float], right: Iterable[float]) -> Optional[float]:

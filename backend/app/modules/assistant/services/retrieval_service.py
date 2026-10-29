@@ -40,6 +40,17 @@ _SOUND_QUERY_TERMS = {
     "whining",
 }
 
+# Words that carry no subject matter; they are dropped before keyword matching.
+_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "can", "could", "do", "does", "for", "from",
+    "how", "i", "in", "is", "it", "its", "me", "my", "of", "on", "or", "please", "should", "tell",
+    "that", "the", "this", "to", "was", "we", "what", "when", "where", "which", "who", "why",
+    "will", "with", "would", "you", "your", "about", "any", "there", "their", "them", "then",
+}
+
+# Cosine similarity a chunk needs when it shares no keyword with the question.
+MIN_SEMANTIC_RELEVANCE = 0.35
+
 
 def _requests_sound_evidence(query: str) -> bool:
     """Return whether a query explicitly asks about machine acoustics."""
@@ -99,8 +110,9 @@ class RetrievalService:
         eligibility = get_eligibility_service()
         sql_filters = eligibility.get_sql_filter(query_params.user_id, db)
 
-        # 2. Extract significant query keywords
-        tokens = [w.lower() for w in re.sub(r"[^\w\s]", " ", clean_q).split() if len(w) > 1]
+        # 2. Extract significant query keywords. Function words ("what", "is", "the") match almost every
+        # chunk as substrings, which let unrelated questions "find" evidence; they are not search terms.
+        tokens = [w.lower() for w in re.sub(r"[^\w\s]", " ", clean_q).split() if len(w) > 1 and w.lower() not in _STOPWORDS]
         if not tokens:
             return []
 
@@ -194,6 +206,9 @@ class RetrievalService:
                 qnorm = math.sqrt(sum(float(v) ** 2 for v in query_vector)) or 1.0
                 dnorm = math.sqrt(sum(float(v) ** 2 for v in stored_vector)) or 1.0
                 semantic_score = sum(float(a) * float(b) for a, b in zip(query_vector, stored_vector)) / (qnorm * dnorm)
+            # Without any content relevance a chunk is not evidence, whatever machine it belongs to.
+            if matched_tokens == 0 and semantic_score < MIN_SEMANTIC_RELEVANCE:
+                continue
             total_score = round((0.55 * keyword_score + 0.45 * max(0.0, semantic_score)) if query_vector else keyword_score, 4)
             if query_params.machine_id and src.machine_id == query_params.machine_id:
                 total_score = min(1.0, total_score + 0.1)

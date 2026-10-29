@@ -29,6 +29,8 @@ def get_job_status(
 
     if not job.media:
         raise NotFoundError(code="media_not_found", message="The recording for this job was not found.")
+    if job.user_id != auth_ctx.user.id and PERM_KNOWLEDGE_APPROVE not in auth_ctx.permissions:
+        raise ForbiddenError(code="forbidden", message="You may only view your own processing jobs or jobs assigned for review.")
     MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, job.media)
 
     response = ProcessingJobResponse.model_validate(job)

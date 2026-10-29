@@ -106,6 +106,7 @@ from app.services.audit_service import AuditService
 from app.services.ai_orchestrator import AIRequest, AICapability, ai_orchestrator
 from app.api.v1.endpoints.audio import _audio_analysis_response
 from app.services.assistant_handoff_service import get_tutor_handoffs, start_tutor_handoff, _latest_question
+from app.services.assistant_related_media import get_related_media
 from app.services.assistant_media_service import MAX_MEDIA_BYTES, PreparedAttachment, prepare_attachment
 
 router = APIRouter(prefix="/assistant", tags=["Assistant"])
@@ -827,6 +828,8 @@ async def chat_media_endpoint(
         attachment=_tutor_attachment_payload(attachment_asset),
         handoffs=(get_tutor_handoffs(db, auth_ctx, req.message, sources, machine_id=req.machine_id or conv.machine_id)
                   if not insufficient_evidence and not provider_unavailable and not audio_analysis else []),
+        related_media=(get_related_media(db, auth_ctx, sources)
+                       if not insufficient_evidence and not provider_unavailable else []),
     )
 
 
@@ -921,6 +924,8 @@ def chat_endpoint(
         audio_analysis=audio_analysis,
         handoffs=(get_tutor_handoffs(db, auth_ctx, req.message, sources, machine_id=req.machine_id or conv.machine_id)
                   if not insufficient_evidence and not provider_unavailable and not audio_analysis else []),
+        related_media=(get_related_media(db, auth_ctx, sources)
+                       if not insufficient_evidence and not provider_unavailable else []),
     )
 
 
@@ -1370,6 +1375,9 @@ def chat_stream_endpoint(
             "message_id": assistant_msg.id,
             "audio_analysis": audio_analysis.model_dump(mode="json") if audio_analysis else None,
             "handoffs": [handoff.model_dump() for handoff in handoffs],
+            "related_media": [item.model_dump() for item in (
+                get_related_media(db, auth_ctx, sources) if not insufficient_evidence and not provider_unavailable else []
+            )],
         })
         yield f"event: sources\ndata: {sources_payload}\n\n"
         yield "event: done\ndata: [DONE]\n\n"
@@ -1516,6 +1524,12 @@ def get_conversation_detail(
                     and not audio_source_unavailable
                     and not (audio_result and audio_result.reason_code == "REFERENCE_REVISION_CHANGED")
                     and not audio_result
+                    and msg.evidence_status == EVIDENCE_STATUS_SUFFICIENT
+                    else []
+                ),
+                related_media=(
+                    get_related_media(db, auth_ctx, msg_sources)
+                    if msg.role == MESSAGE_ROLE_ASSISTANT and not evidence_unavailable
                     and msg.evidence_status == EVIDENCE_STATUS_SUFFICIENT
                     else []
                 ),

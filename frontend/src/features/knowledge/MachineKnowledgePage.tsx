@@ -6,9 +6,9 @@ import { useMachines } from '../knowledge-capture/hooks';
 import { machineOptionLabel, selectableMachines } from '../machines/registeredMachines';
 import { uploadWithProgress } from '../knowledge-capture/media/uploadWithProgress';
 import { MediaAsset } from '../knowledge-capture/media/types';
-import { getApiUrl } from '../../lib/api/client';
 import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
+import { MediaShowcase } from '../workflows/MediaShowcase';
 
 type Kind = 'video' | 'image' | 'audio' | 'document' | 'notes';
 const accepts: Record<Exclude<Kind, 'notes'>, string> = {
@@ -48,6 +48,7 @@ export const MachineKnowledgePage: React.FC = () => {
   const [verificationFilter, setVerificationFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
+  const [failedPreviewIds, setFailedPreviewIds] = useState<Set<string>>(() => new Set());
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
   const [deletingAsset, setDeletingAsset] = useState<MediaAsset | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -337,7 +338,14 @@ export const MachineKnowledgePage: React.FC = () => {
             }}>Open original recording</Button>}
             <Button type="button" onClick={async () => { try { const updated = await api.patch<any>(`/voice/transcripts/${selectedAsset.transcript_id}`, { full_text: selectedAsset.content }); setSelectedAsset(current => current ? { ...current, content: updated.full_text, transcript_status: updated.status } : current); setStatus('Transcript updated.'); } catch (e) { setError(e instanceof Error ? e.message : 'Could not update transcript.'); } }}>Save transcript edit</Button>
           </>}
-        </> : selectedAsset.kind === 'video' ? <video controls className="w-full max-h-96" src={getApiUrl(`/media/${selectedAsset.id}`)}/> : selectedAsset.kind === 'audio' ? <audio controls className="w-full" src={getApiUrl(`/media/${selectedAsset.id}`)}/> : selectedAsset.kind === 'image' ? <img alt={selectedAsset.title || 'Knowledge image'} src={getApiUrl(`/media/${selectedAsset.id}`)} className="max-h-96 mx-auto"/> : <a href={getApiUrl(`/media/${selectedAsset.id}`)} target="_blank" rel="noreferrer" className="text-blue-700 underline">Open document</a>}
+        </> : <MediaShowcase
+          assets={[{ id: selectedAsset.id, title: selectedAsset.title || selectedAsset.original_name, kind: selectedAsset.kind, machine_id: selectedAsset.machine_id ?? null, url: `/media/${selectedAsset.id}`, mime: selectedAsset.mime, filename: selectedAsset.original_name, size_bytes: selectedAsset.size_bytes }]}
+          failedIds={failedPreviewIds}
+          onMediaError={(id) => setFailedPreviewIds(current => new Set(current).add(id))}
+          onRetry={(id) => setFailedPreviewIds(current => { const next = new Set(current); next.delete(id); return next; })}
+          reducedMotion={false}
+          showStatus={false}
+        />}
         {selectedAsset.kind === 'audio' && <div className="space-y-2"><p className="text-xs text-slate-600">Transcription: {transcriptStatus || selectedAsset.transcript_status || 'not_configured'}</p>{selectedAsset.transcript_error && <p role="alert" className="text-sm text-red-700">{selectedAsset.transcript_error}</p>}{selectedAsset.transcript_id && <Button type="button" variant="secondary" onClick={() => void loadTranscript(selectedAsset)}>Open transcript</Button>}{(!selectedAsset.transcript_id && ['not_configured', 'failed'].includes(selectedAsset.transcript_status || 'not_configured')) && <Button type="button" disabled={busy} onClick={() => void requestTranscription(selectedAsset)}>{selectedAsset.transcript_status === 'failed' ? 'Retry transcription' : 'Transcribe audio'}</Button>}</div>}
         {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
         {status && <p role="status" className="text-sm text-emerald-700">{status}</p>}

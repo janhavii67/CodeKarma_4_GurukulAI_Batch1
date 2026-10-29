@@ -36,6 +36,19 @@ class SourceItem(BaseModel):
     machine_id: Optional[str] = None
 
 
+class RelatedMediaItem(BaseModel):
+    """A file attached to knowledge the answer cites (never generated)."""
+    id: str
+    title: str
+    kind: str
+    mime: Optional[str] = None
+    filename: Optional[str] = None
+    size_bytes: Optional[int] = None
+    url: str
+    source_id: str
+    source_title: str
+
+
 class TutorHandoffSuggestion(BaseModel):
     kind: Literal["workflow", "troubleshooting"]
     target_id: str = Field(..., min_length=1, max_length=36)
@@ -72,6 +85,7 @@ class ChatResponse(BaseModel):
     message_id: str
     audio_analysis: Optional[AudioAnalysisJobResponse] = None
     handoffs: List[TutorHandoffSuggestion] = Field(default_factory=list)
+    related_media: List[RelatedMediaItem] = Field(default_factory=list)
     attachment: Optional[TutorAttachment] = None
 
 
@@ -90,6 +104,7 @@ class MessageItem(BaseModel):
     attachment: Optional[TutorAttachment] = None
     conversation_id: Optional[str] = None
     handoffs: List[TutorHandoffSuggestion] = Field(default_factory=list)
+    related_media: List[RelatedMediaItem] = Field(default_factory=list)
 
 
 class ConversationSummary(BaseModel):

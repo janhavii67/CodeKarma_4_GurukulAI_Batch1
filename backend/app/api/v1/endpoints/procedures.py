@@ -1,3 +1,4 @@
+import copy as copy_module
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Response, status, Query
 from pydantic import BaseModel, Field
@@ -168,8 +169,21 @@ class ProcedureCreatePayload(BaseModel):
     prerequisites: Optional[str] = None
     required_tools: Optional[str] = None
     safety_warnings: Optional[str] = None
+    # Stored in the existing `operation` column; shown to trainees as the workflow category.
+    operation: Optional[str] = Field(None, max_length=120)
     steps: List[ProcedureStepInput] = Field(min_length=1)
     asset_ids: List[str] = Field(default_factory=list)
+
+
+class ProcedureDetailsUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=256)
+    description: Optional[str] = Field(None, min_length=1)
+    operation: Optional[str] = Field(None, max_length=120)
+
+
+def _ensure_procedure_owner(procedure: Procedure, auth_ctx: AuthenticatedContext, action: str) -> None:
+    if procedure.author_id != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN":
+        raise ForbiddenError(code="forbidden", message=f"You may only {action} your own workflows.")
 
 
 @router.post("", response_model=ProcedureResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(csrf_protect)])
@@ -190,7 +204,8 @@ def create_procedure(payload: ProcedureCreatePayload,
     # in guided workflows the moment it is authored.
     procedure = Procedure(title=payload.title, description=payload.description, machine_id=payload.machine_id,
         author_id=auth_ctx.user.id, status="APPROVED", prerequisites=payload.prerequisites,
-        required_tools=payload.required_tools, safety_warnings=payload.safety_warnings)
+        required_tools=payload.required_tools, safety_warnings=payload.safety_warnings,
+        operation=(payload.operation or "").strip() or None)
     procedure.media_assets = assets
     procedure.steps = [ProcedureStep(step_order=i, title=s.title, instruction=s.instruction,
         expected_observation=s.expected_observation, safety_warning=s.safety_warning, is_critical=s.is_critical,
@@ -218,6 +233,9 @@ def list_procedure_assets(procedure_id: str, auth_ctx: AuthenticatedContext = De
         "machine_id": _effective_asset_machine_id(db, a),
         "url": f"/api/v1/media/{a.id}",
         "mime": a.mime,
+        "filename": a.original_name,
+        "size_bytes": a.size_bytes,
+        "duration_seconds": a.duration_seconds,
         # A media file is verified only when it belongs to an approved/published
         # knowledge version. Standalone uploads remain pending review.
         "verification_status": a.version.status if a.version else "pending_review",
@@ -257,6 +275,110 @@ def list_my_procedure_drafts(
         .filter(Procedure.author_id == auth_ctx.user.id, Procedure.status == "DRAFT")
         .order_by(Procedure.updated_at.desc()).all())
     return [_procedure_snapshot(db, procedure) for procedure in procedures]
+
+
+@router.get("/mine/all", response_model=List[ProcedureResponse])
+def list_my_workflows(
+    machine_id: Optional[str] = None,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_CREATE)),
+    db: Session = Depends(get_db),
+):
+    """Every workflow the caller authored, archived ones included, for workflow management."""
+    query = db.query(Procedure).filter(Procedure.author_id == auth_ctx.user.id)
+    if machine_id:
+        query = query.filter(Procedure.machine_id == machine_id)
+    return [_procedure_snapshot(db, procedure) for procedure in query.order_by(Procedure.updated_at.desc()).all()]
+
+
+@router.patch("/{procedure_id}", response_model=ProcedureResponse, dependencies=[Depends(csrf_protect)])
+def update_workflow_details(procedure_id: str, payload: ProcedureDetailsUpdate,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_CREATE)), db: Session = Depends(get_db)):
+    """Rename or recategorize a workflow. Steps and safety content change only through a new workflow."""
+    procedure = db.get(Procedure, procedure_id)
+    if not procedure:
+        raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
+    _ensure_procedure_owner(procedure, auth_ctx, "edit")
+    if procedure.status == "ARCHIVED":
+        raise ConflictError(code="procedure_archived", message="Restore this workflow before editing it.")
+    if payload.title is not None:
+        procedure.title = payload.title.strip()
+    if payload.description is not None:
+        procedure.description = payload.description.strip()
+    if payload.operation is not None:
+        procedure.operation = payload.operation.strip() or None
+    db.commit()
+    from app.services.audit_service import AuditService
+    AuditService.log(db, "workflow.details_updated", "procedure", procedure.id, auth_ctx.user.id,
+                     payload.model_dump(exclude_none=True), commit=True)
+    db.refresh(procedure)
+    return _procedure_snapshot(db, procedure)
+
+
+@router.post("/{procedure_id}/duplicate", response_model=ProcedureResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(csrf_protect)])
+def duplicate_workflow(procedure_id: str,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_CREATE)), db: Session = Depends(get_db)):
+    """Copy a workflow's steps and references into a new, independent workflow for the same machine."""
+    from app.services.procedure_service import is_workflow_currently_published
+    source = db.get(Procedure, procedure_id)
+    if not source:
+        raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
+    if source.author_id != auth_ctx.user.id and auth_ctx.user.role_id != "ADMIN" and not is_workflow_currently_published(db, source):
+        raise ForbiddenError(code="forbidden", message="You may only duplicate your own or published workflows.")
+    for asset in source.media_assets:
+        MediaService.ensure_can_view_asset(db, auth_ctx.user, auth_ctx.permissions, asset)
+    # Procedures publish directly on create; a copy follows the same rule as a new workflow.
+    copy = Procedure(title=f"{source.title} (copy)"[:256], description=source.description, machine_id=source.machine_id,
+        author_id=auth_ctx.user.id, status="APPROVED", version=1, prerequisites=source.prerequisites,
+        required_tools=source.required_tools, safety_warnings=source.safety_warnings,
+        operating_conditions=source.operating_conditions, operation=source.operation,
+        troubleshooting_guidance=source.troubleshooting_guidance, source_refs=list(source.source_refs or []))
+    copy.media_assets = list(source.media_assets)
+    copy.steps = [ProcedureStep(step_order=step.step_order, title=step.title, instruction=step.instruction,
+        expected_observation=step.expected_observation, safety_warning=step.safety_warning,
+        is_critical=step.is_critical, details=copy_module.deepcopy(step.details or {}))
+        for step in sorted(source.steps, key=lambda item: item.step_order)]
+    db.add(copy); db.commit(); db.refresh(copy)
+    from app.services.audit_service import AuditService
+    AuditService.log(db, "workflow.duplicated", "procedure", copy.id, auth_ctx.user.id, {"source_id": source.id}, commit=True)
+    return _procedure_snapshot(db, copy)
+
+
+@router.post("/{procedure_id}/archive", response_model=ProcedureResponse, dependencies=[Depends(csrf_protect)])
+def archive_workflow(procedure_id: str,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_CREATE)), db: Session = Depends(get_db)):
+    """Hide a workflow from trainees while keeping its runs and history."""
+    procedure = db.get(Procedure, procedure_id)
+    if not procedure:
+        raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
+    _ensure_procedure_owner(procedure, auth_ctx, "archive")
+    if procedure.status != "ARCHIVED":
+        procedure.status = "ARCHIVED"
+        db.commit()
+        from app.services.audit_service import AuditService
+        AuditService.log(db, "workflow.archived", "procedure", procedure.id, auth_ctx.user.id, {}, commit=True)
+        db.refresh(procedure)
+    return _procedure_snapshot(db, procedure)
+
+
+@router.post("/{procedure_id}/restore", response_model=ProcedureResponse, dependencies=[Depends(csrf_protect)])
+def restore_workflow(procedure_id: str,
+    auth_ctx: AuthenticatedContext = Depends(require_permission(PERM_PROCEDURE_CREATE)), db: Session = Depends(get_db)):
+    """Return an archived, manually authored workflow to guided workflows."""
+    procedure = db.get(Procedure, procedure_id)
+    if not procedure:
+        raise NotFoundError(code="procedure_not_found", message=f"Procedure '{procedure_id}' not found.")
+    _ensure_procedure_owner(procedure, auth_ctx, "restore")
+    if procedure.status != "ARCHIVED":
+        return _procedure_snapshot(db, procedure)
+    # Knowledge-derived workflows are archived when a newer revision replaces them; keep that rule.
+    if procedure.knowledge_version_id:
+        raise ConflictError(code="procedure_superseded", message="This workflow was replaced by a newer knowledge revision and cannot be restored.")
+    procedure.status = "APPROVED"
+    db.commit()
+    from app.services.audit_service import AuditService
+    AuditService.log(db, "workflow.restored", "procedure", procedure.id, auth_ctx.user.id, {}, commit=True)
+    db.refresh(procedure)
+    return _procedure_snapshot(db, procedure)
 
 
 @router.delete("/{procedure_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(csrf_protect)])
