@@ -24,6 +24,8 @@ export interface ProcessingJob {
   status: 'queued' | 'processing' | 'needs_review' | 'completed' | 'failed' | 'cancelled';
   progress: number;
   error_safe?: string;
+  transcript_saved?: boolean;
+  can_resume_structuring?: boolean;
   attempts: number;
   created_by: string;
   created_at: string;

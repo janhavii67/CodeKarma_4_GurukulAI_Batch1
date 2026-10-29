@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
 import { getProcessingJob, ProcessingJob } from './voiceApi';
 
-export function useJobPolling(jobId: string | null, onCompleted?: (job: ProcessingJob) => void) {
+export function useJobPolling(
+  jobId: string | null,
+  onCompleted?: (job: ProcessingJob) => void,
+  restartKey: number = 0,
+) {
   const [job, setJob] = useState<ProcessingJob | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +29,7 @@ export function useJobPolling(jobId: string | null, onCompleted?: (job: Processi
         setError(null);
 
         // Check if finished
-        if (data.status === 'completed' || data.status === 'needs_review') {
+        if (data.status === 'completed' || data.status === 'needs_review' || (data.status === 'failed' && data.transcript_saved)) {
           setIsLoading(false);
           if (onCompleted) {
             onCompleted(data);
@@ -53,7 +57,7 @@ export function useJobPolling(jobId: string | null, onCompleted?: (job: Processi
       isMounted = false;
       if (timer) clearTimeout(timer);
     };
-  }, [jobId]);
+  }, [jobId, restartKey]);
 
   return { job, isLoading, error, refetch: () => jobId && getProcessingJob(jobId).then(setJob) };
 }

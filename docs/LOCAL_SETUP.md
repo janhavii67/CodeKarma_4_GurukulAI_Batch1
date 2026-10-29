@@ -65,6 +65,17 @@ The backend requirements pin PyAV below version 19 because `faster-whisper` 1.2.
 
 The optional paid OpenAI provider remains available only when explicitly selected with `STT_PROVIDER=whisper_api` (or `openai`) and `OPENAI_API_KEY` is set. The provider factory never falls back to OpenAI when another or unknown provider is selected. Keep any API key only in `backend/.env`; do not add it to frontend variables or commit the file.
 
+### Gemini procedure structuring
+Local Whisper transcribes the recording, but generating structured procedure steps uses the configured LLM provider. The default is Gemini. To enable it, put the following in `backend/.env` (replace the placeholder locally; never commit the real key), then restart FastAPI:
+
+```dotenv
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your-gemini-api-key
+ALLOW_EXTERNAL_LLM=true
+```
+
+Only enable external LLM calls if your organization's data policy permits sending transcript text to Gemini. If structuring failed after the transcript was saved, open that failed job and choose **Resume structuring** after configuration is ready. The resume uses the existing saved transcript and does not re-record or re-transcribe the audio. If Gemini is unavailable or misconfigured, the job remains failed and the audio/transcript remain available for review.
+
 ---
 
 ## 2. Pre-Configured Seed Demo Credentials

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import Boolean, String, Text, ForeignKey, DateTime, true
+from sqlalchemy import Boolean, String, Text, ForeignKey, DateTime, UniqueConstraint, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
 
@@ -18,6 +18,9 @@ class MachineCategory(Base):
 
 class Machine(Base, TimestampMixin):
     __tablename__ = "machines"
+    # Preserve the invariant established by migration 002. Without this ORM
+    # declaration, Alembic autogenerate proposes dropping the live constraint.
+    __table_args__ = (UniqueConstraint("code", name="uq_machines_code"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     name: Mapped[str] = mapped_column(String(128), index=True, nullable=False)

@@ -19,6 +19,11 @@ def _login(client: TestClient, email: str, password: str):
     return csrf
 
 
+def test_machine_orm_metadata_preserves_migrated_unique_code_constraint():
+    constraint_names = {constraint.name for constraint in Machine.__table__.constraints}
+    assert "uq_machines_code" in constraint_names
+
+
 def test_list_machines_unauthenticated_401(client: TestClient):
     resp = client.get("/api/v1/machines")
     assert resp.status_code == 401

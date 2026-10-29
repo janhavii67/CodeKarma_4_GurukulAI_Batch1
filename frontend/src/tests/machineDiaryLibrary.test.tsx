@@ -133,6 +133,25 @@ describe('Machine diary library', () => {
     expect(await screen.findByRole('heading', { name: 'MRI' })).toBeInTheDocument();
     expect(await screen.findByText('Coolant inspection')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Knowledge Library' })).toHaveAttribute('href', '/app/knowledge');
+    fireEvent.click(screen.getByRole('link', { name: 'Knowledge Library' }));
+    expect(await screen.findByRole('button', { name: 'Open knowledge diary for MRI' })).toBeInTheDocument();
+  });
+
+  it('reloads the authenticated-library API on a fresh visit and renders the returned counts', async () => {
+    mockGet.mockImplementation((path: string) => {
+      if (path === '/machine-knowledge/library') return Promise.resolve([machine]);
+      return Promise.resolve([]);
+    });
+
+    const firstVisit = renderRouter('/app/knowledge');
+    expect(await screen.findByRole('button', { name: 'Open knowledge diary for MRI' })).toBeInTheDocument();
+    expect(screen.getByText('4 entries')).toBeInTheDocument();
+    firstVisit.unmount();
+
+    renderRouter('/app/knowledge');
+    expect(await screen.findByRole('button', { name: 'Open knowledge diary for MRI' })).toBeInTheDocument();
+    expect(screen.getByText('4 entries')).toBeInTheDocument();
+    expect(mockGet).toHaveBeenCalledTimes(2);
   });
 
   it('shows only Videos, Photos, Documents, and Notes, filtering those categories and isolating machine assets', async () => {

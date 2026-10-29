@@ -27,6 +27,7 @@ from app.services.vector_service import (
     search_vector_knowledge,
 )
 from app.services.voice_service import (
+    can_resume_structuring,
     create_voice_capture_job,
     retry_voice_job,
     update_transcript_segment,
@@ -207,6 +208,35 @@ def test_transcription_retry_is_owner_only_and_does_not_duplicate_jobs_or_transc
     assert db_session.query(Transcript).filter(Transcript.media_id == media.id).one().full_text == "Keep reviewed text"
 
 
+def test_processing_job_status_reports_whether_transcript_is_already_saved(client, db_session: Session):
+    _, media, job = _make_failed_audio_job(db_session)
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": settings.EXPERT_A_EMAIL, "password": settings.EXPERT_A_PASSWORD},
+    )
+    assert login.status_code == 200
+
+    status_url = f"/api/v1/processing-jobs/{job.id}"
+    without_transcript = client.get(status_url)
+    assert without_transcript.status_code == 200
+    assert without_transcript.json()["transcript_saved"] is False
+    assert without_transcript.json()["can_resume_structuring"] is False
+
+    job.progress = 75
+    db_session.add(Transcript(
+        media_id=media.id,
+        full_text="Private transcript body is not included in job status.",
+        status="completed",
+        provider="test",
+    ))
+    db_session.commit()
+    with_transcript = client.get(status_url)
+    assert with_transcript.status_code == 200
+    assert with_transcript.json()["transcript_saved"] is True
+    assert with_transcript.json()["can_resume_structuring"] is True
+    assert "full_text" not in with_transcript.json()
+
+
 def test_processing_runner_skips_duplicate_nonqueued_execution(db_session: Session, monkeypatch):
     _, _, job = _make_failed_audio_job(db_session, status="processing", attempts=2)
     monkeypatch.setattr("app.services.job_runner.get_speech_provider", lambda: pytest.fail("duplicate runner must not call provider"))
@@ -342,6 +372,212 @@ def test_transcript_database_failure_persists_failed_job_after_rollback(threadsa
     assert db_session.query(Transcript).filter(Transcript.media_id == media.id).count() == 0
 
 
+def test_ai_structuring_failure_preserves_transcript_and_reports_saved_result(threadsafe_env, tmp_path, monkeypatch):
+    import app.services.job_runner as job_runner
+    from app.modules.assistant.services.indexing_service import IndexingService
+
+    _, db_session = threadsafe_env
+    _, media, job = _make_failed_audio_job(db_session, status="queued", attempts=0)
+    storage_root = tmp_path / "media-ai-structuring"
+    audio_path = storage_root / media.storage_key
+    audio_path.parent.mkdir(parents=True)
+    audio_path.write_bytes(b"original audio bytes")
+    monkeypatch.setattr(settings, "MEDIA_ROOT", str(storage_root))
+    monkeypatch.setattr(job_runner, "extract_audio_wav", lambda source, target: Path(target).write_bytes(b"normalized audio"))
+    monkeypatch.setattr(job_runner, "probe_duration", lambda path: 1.0)
+    monkeypatch.setattr(job_runner, "index_voice_transcript", lambda **kwargs: None)
+    monkeypatch.setattr(IndexingService, "index_transcript", staticmethod(lambda *args, **kwargs: None))
+
+    class SuccessfulLocalProvider:
+        model = "local_whisper:base"
+        language = "en"
+        detected_language = "en"
+
+        async def transcribe(self, path):
+            return [Segment(idx=1, start_s=0.0, end_s=1.0, text="Inspect the scanner housing.")]
+
+    async def unavailable_structuring(**kwargs):
+        raise ValidationError(
+            code="structuring_provider_not_configured",
+            message=(
+                "The transcript is saved, but procedure structuring needs Gemini credentials. "
+                "Set GEMINI_API_KEY in backend/.env or the backend process environment, keep "
+                "LLM_PROVIDER=gemini, and restart FastAPI. The recording and transcript are unchanged."
+            ),
+        )
+
+    monkeypatch.setattr(job_runner, "get_speech_provider", SuccessfulLocalProvider)
+    monkeypatch.setattr(job_runner, "structure_transcript_with_ai", unavailable_structuring)
+    asyncio.run(asyncio.wait_for(execute_voice_processing_job(job.id, db=db_session), timeout=3))
+
+    db_session.refresh(job)
+    transcript = db_session.query(Transcript).filter(Transcript.media_id == media.id).one()
+    assert job.status == "failed"
+    assert job.progress == 75
+    assert "transcript is saved" in job.error_safe.lower()
+    assert "GEMINI_API_KEY" in job.error_safe
+    assert "backend/.env" in job.error_safe
+    assert "structuring" in job.error_safe.lower()
+    assert transcript.language == "en"
+    assert transcript.provider == "local_whisper:base"
+    assert audio_path.read_bytes() == b"original audio bytes"
+    assert db_session.query(Transcript).filter(Transcript.media_id == media.id).count() == 1
+    assert can_resume_structuring(db_session, job) is True
+
+    import app.services.voice_service as voice_service
+    monkeypatch.setattr(voice_service, "get_llm_provider", lambda: object())
+    retried = retry_voice_job(db_session, job.id, job.created_by)
+    assert retried.id == job.id
+    assert retried.status == "queued"
+    assert retried.progress == 75
+    assert db_session.query(Transcript).filter(Transcript.media_id == media.id).count() == 1
+    with pytest.raises(ValidationError):
+        retry_voice_job(db_session, job.id, job.created_by)
+
+
+def test_resume_structuring_requires_provider_configuration_without_changing_saved_data(db_session: Session, monkeypatch, tmp_path):
+    import app.services.voice_service as voice_service
+    from app.modules.assistant.providers.llm_base import LLMAuthenticationError
+
+    owner, media, job = _make_failed_audio_job(db_session, status="failed", attempts=1)
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "gemini")
+    job.progress = 75
+    audio_root = tmp_path / "resume-config"
+    audio_path = audio_root / media.storage_key
+    audio_path.parent.mkdir(parents=True)
+    audio_path.write_bytes(b"original recording")
+    media.file_path = str(audio_path)
+    transcript = Transcript(media_id=media.id, full_text="Saved English text", raw_text="Saved English text", status="completed", provider="local_whisper:base")
+    db_session.add(transcript)
+    db_session.flush()
+    db_session.add(TranscriptSegment(
+        transcript_id=transcript.id, idx=1, start_s=0, end_s=2,
+        original_text="Saved English text", text="Saved English text",
+    ))
+    db_session.commit()
+
+    def missing_provider():
+        raise LLMAuthenticationError("GEMINI_API_KEY is not configured. Sensitive data must never be returned.")
+
+    monkeypatch.setattr(voice_service, "get_llm_provider", missing_provider)
+    with pytest.raises(ConflictError) as raised:
+        retry_voice_job(db_session, job.id, owner.id)
+
+    assert "GEMINI_API_KEY" in raised.value.message
+    assert "backend/.env" in raised.value.message
+    assert "Sensitive data" not in raised.value.message
+    db_session.refresh(job)
+    db_session.refresh(transcript)
+    assert job.status == "failed"
+    assert job.attempts == 1
+    assert job.progress == 75
+    assert transcript.full_text == "Saved English text"
+    assert audio_path.read_bytes() == b"original recording"
+    assert db_session.query(Transcript).filter(Transcript.media_id == media.id).count() == 1
+
+
+def test_initial_structuring_configuration_failure_has_safe_gemini_setup_message(monkeypatch):
+    from types import SimpleNamespace
+    import app.services.structuring_service as structuring_service
+
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "gemini")
+    monkeypatch.setattr(
+        structuring_service.ai_orchestrator,
+        "execute",
+        lambda _request: SimpleNamespace(
+            status="failed", result=None, error_code="LLMAuthenticationError",
+        ),
+    )
+
+    with pytest.raises(ValidationError) as raised:
+        asyncio.run(structuring_service.structure_transcript_with_ai(
+            [Segment(idx=1, start_s=0, end_s=1, text="Inspect the machine.")],
+            machine_name="MRI",
+        ))
+
+    assert raised.value.code == "structuring_provider_not_configured"
+    assert "GEMINI_API_KEY" in raised.value.message
+    assert "backend/.env" in raised.value.message
+    assert "The recording and transcript are unchanged" in raised.value.message
+
+
+def test_saved_transcript_resume_structures_reviewed_segments_without_audio_or_stt(db_session: Session, tmp_path, monkeypatch):
+    import app.services.job_runner as job_runner
+    from app.services.structuring_service import StructuredDraftResponse
+
+    owner, media, job = _make_failed_audio_job(db_session, status="queued", attempts=1)
+    job.progress = 75
+    original_audio = tmp_path / "original.webm"
+    original_audio.write_bytes(b"keep audio unchanged")
+    media.file_path = str(original_audio)
+    transcript = Transcript(media_id=media.id, full_text="Original full text", raw_text="Original raw text", status="completed", provider="local_whisper:base")
+    db_session.add(transcript)
+    db_session.flush()
+    segment = TranscriptSegment(
+        transcript_id=transcript.id, idx=1, start_s=0.1, end_s=1.5,
+        original_text="Original words", edited_text="Expert reviewed words", text="Original words",
+    )
+    db_session.add(segment)
+    db_session.commit()
+
+    monkeypatch.setattr(job_runner, "get_speech_provider", lambda: pytest.fail("resume must not run speech-to-text"))
+    monkeypatch.setattr(job_runner, "extract_audio_wav", lambda *args: pytest.fail("resume must not decode audio"))
+    monkeypatch.setattr(job_runner, "index_voice_transcript", lambda **kwargs: pytest.fail("resume must not duplicate vector indexing"))
+
+    async def structure_saved_text(segments, machine_name=None):
+        assert machine_name
+        assert [segment.text for segment in segments] == ["Expert reviewed words"]
+        return StructuredDraftResponse(summary="Structured from saved reviewed transcript")
+
+    monkeypatch.setattr(job_runner, "structure_transcript_with_ai", structure_saved_text)
+    asyncio.run(asyncio.wait_for(execute_voice_processing_job(job.id, db=db_session), timeout=3))
+
+    db_session.refresh(job)
+    db_session.refresh(transcript)
+    db_session.refresh(segment)
+    assert job.status == "needs_review"
+    assert job.progress == 100
+    assert job.attempts == 2
+    assert transcript.full_text == "Original full text"
+    assert transcript.raw_text == "Original raw text"
+    assert segment.original_text == "Original words"
+    assert segment.edited_text == "Expert reviewed words"
+    assert db_session.query(Transcript).filter(Transcript.media_id == media.id).count() == 1
+    assert original_audio.read_bytes() == b"keep audio unchanged"
+
+
+def test_failed_saved_transcript_resume_is_terminal_and_preserves_original_audio(threadsafe_env, tmp_path, monkeypatch):
+    import app.services.job_runner as job_runner
+    _, db_session = threadsafe_env
+
+    _, media, job = _make_failed_audio_job(db_session, status="queued", attempts=1)
+    job.progress = 75
+    audio_path = tmp_path / "protected-audio.webm"
+    audio_path.write_bytes(b"do not modify")
+    media.file_path = str(audio_path)
+    transcript = Transcript(media_id=media.id, full_text="Transcript to keep", raw_text="Transcript to keep", status="completed", provider="local_whisper:base")
+    db_session.add(transcript)
+    db_session.flush()
+    db_session.add(TranscriptSegment(transcript_id=transcript.id, idx=1, start_s=0, end_s=1, original_text="Words", text="Words"))
+    db_session.commit()
+
+    async def structure_fails(**kwargs):
+        raise RuntimeError("temporary mocked structuring failure")
+
+    monkeypatch.setattr(job_runner, "get_speech_provider", lambda: pytest.fail("resume must not transcribe"))
+    monkeypatch.setattr(job_runner, "structure_transcript_with_ai", structure_fails)
+    asyncio.run(asyncio.wait_for(execute_voice_processing_job(job.id, db=db_session), timeout=3))
+
+    db_session.refresh(job)
+    db_session.refresh(transcript)
+    assert job.status == "failed"
+    assert job.progress == 75
+    assert job.error_safe and "transcript is saved" in job.error_safe.lower()
+    assert transcript.full_text == "Transcript to keep"
+    assert db_session.query(Transcript).filter(Transcript.media_id == media.id).count() == 1
+    assert audio_path.read_bytes() == b"do not modify"
+
+
 def test_processing_job_status_and_retry_enforce_asset_access_and_csrf(client, db_session: Session, monkeypatch):
     owner, media, job = _make_failed_audio_job(db_session)
     import app.api.v1.endpoints.jobs as jobs_endpoint
@@ -374,6 +610,47 @@ def test_processing_job_status_and_retry_enforce_asset_access_and_csrf(client, d
         headers={settings.CSRF_HEADER_NAME: other_csrf},
     )
     assert forbidden_retry.status_code == 403
+
+
+def test_saved_transcript_resume_api_is_single_request_and_reports_status(client, db_session: Session, monkeypatch):
+    import app.api.v1.endpoints.jobs as jobs_endpoint
+    import app.services.voice_service as voice_service
+
+    _, media, job = _make_failed_audio_job(db_session, status="failed", attempts=1)
+    job.progress = 75
+    transcript = Transcript(
+        media_id=media.id, full_text="Existing transcript", raw_text="Existing transcript",
+        status="completed", provider="local_whisper:base",
+    )
+    db_session.add(transcript)
+    db_session.commit()
+
+    queued_ids = []
+
+    async def no_op_job(job_id):
+        queued_ids.append(job_id)
+
+    monkeypatch.setattr(jobs_endpoint, "execute_voice_processing_job", no_op_job)
+    monkeypatch.setattr(voice_service, "get_llm_provider", lambda: object())
+    csrf = get_expert_credentials(client)
+
+    initial = client.get(f"/api/v1/processing-jobs/{job.id}")
+    assert initial.status_code == 200
+    assert initial.json()["transcript_saved"] is True
+    assert initial.json()["can_resume_structuring"] is True
+
+    headers = {settings.CSRF_HEADER_NAME: csrf}
+    first = client.post(f"/api/v1/processing-jobs/{job.id}/retry", headers=headers)
+    second = client.post(f"/api/v1/processing-jobs/{job.id}/retry", headers=headers)
+
+    assert first.status_code == 200, first.text
+    assert first.json()["status"] == "queued"
+    assert first.json()["progress"] == 75
+    assert first.json()["transcript_saved"] is True
+    assert second.status_code in (409, 422), second.text
+    assert queued_ids == [job.id]
+    assert db_session.query(ProcessingJob).filter(ProcessingJob.media_id == media.id).count() == 1
+    assert db_session.query(Transcript).filter(Transcript.media_id == media.id).count() == 1
 
 
 @pytest.mark.asyncio
