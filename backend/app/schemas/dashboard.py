@@ -25,6 +25,10 @@ class DashboardStatsResponse(BaseModel):
     procedures_count: int
     pending_reviews: int
     audio_references: int
+    video_assets: int = 0
+    audio_assets: int = 0
+    image_assets: int = 0
+    document_assets: int = 0
     active_simulations: int
     recent_articles: List[RecentActivityItem]
 

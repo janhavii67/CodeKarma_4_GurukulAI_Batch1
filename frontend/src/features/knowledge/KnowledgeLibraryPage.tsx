@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -51,7 +51,6 @@ interface KnowledgeDetail extends KnowledgeItem {
 }
 
 export const KnowledgeLibraryPage: React.FC = () => {
-  const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const canCreate = hasPermission('knowledge.create');
 
@@ -355,18 +354,6 @@ export const KnowledgeLibraryPage: React.FC = () => {
 
             <div className="pt-3 border-t border-[#DCE6F0] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => {
-                    navigate(`/app/assistant?q=${encodeURIComponent(`How do I execute ${selectedArticle.title}?`)}`);
-                  }}
-                  className="bg-brand-600 hover:bg-brand-500 text-white flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Ask AI Assistant
-                </Button>
-
                 {canCreate && (
                   <Button
                     variant="secondary"

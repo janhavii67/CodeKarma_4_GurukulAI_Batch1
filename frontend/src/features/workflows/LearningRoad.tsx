@@ -123,10 +123,10 @@ export function LearningRoad({ items, activeIndex, nextIndex, completedCount, co
         const celebrating = celebrateStepId === item.step.id && !reducedMotion;
         const contentText = item.kinds.length ? `, includes ${item.kinds.map((kind) => CONTENT_KIND_LABELS[kind]).join(', ')}` : '';
         const circle = item.done
-          ? 'bg-[#36B3A8] text-white shadow-[0_10px_24px_-12px_rgba(54,179,168,0.9)] hover:bg-[#2FA096]'
+          ? 'bg-[#4C8DFF] text-white shadow-[0_10px_24px_-12px_rgba(76,141,255,0.55)] hover:bg-[#2675E8]'
           : item.locked
             ? 'bg-[#23415F] text-[#7F95AB] ring-2 ring-inset ring-[#2F4E6E]'
-            : 'bg-white text-[#176E8A] shadow-[0_12px_30px_-12px_rgba(255,255,255,0.55)]';
+            : 'bg-white text-[#2478F5] shadow-[0_12px_30px_-12px_rgba(255,255,255,0.55)]';
 
         return <motion.li
           key={item.step.id}
@@ -143,10 +143,10 @@ export function LearningRoad({ items, activeIndex, nextIndex, completedCount, co
             onClick={() => onSelect(index)}
             aria-current={isSelected ? 'step' : undefined}
             aria-label={`Step ${item.step.step_order}: ${item.step.title}, ${item.status}${contentText}`}
-            className="group relative grid h-full w-full place-items-center rounded-full text-lg font-extrabold focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#8FD3CF]/70 disabled:cursor-not-allowed"
+            className="group relative grid h-full w-full place-items-center rounded-full text-lg font-extrabold focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#AFCBFF]/70 disabled:cursor-not-allowed"
           >
             {isNext && !reducedMotion && <motion.span aria-hidden="true" className="absolute inset-[-10px] rounded-full border-2 border-white/40" animate={{ scale: [1, 1.08, 1], opacity: [0.7, 0.2, 0.7] }} transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }} />}
-            {isSelected && <span aria-hidden="true" className="absolute inset-[-7px] rounded-full ring-[3px] ring-[#8FD3CF]" />}
+            {isSelected && <span aria-hidden="true" className="absolute inset-[-7px] rounded-full ring-[3px] ring-[#AFCBFF]" />}
             <motion.span
               key={celebrating ? 'celebrate' : 'rest'}
               aria-hidden="true"
@@ -157,10 +157,10 @@ export function LearningRoad({ items, activeIndex, nextIndex, completedCount, co
             >
               {item.done ? <Check size={30} strokeWidth={3} /> : item.locked ? <LockKeyhole size={22} /> : <span>{item.step.step_order}</span>}
             </motion.span>
-            {celebrating && <motion.span aria-hidden="true" className="absolute inset-0 rounded-full border-4 border-[#36B3A8]" initial={{ scale: 1, opacity: 0.8 }} animate={{ scale: 1.9, opacity: 0 }} transition={{ duration: 0.7, ease: 'easeOut' }} />}
+            {celebrating && <motion.span aria-hidden="true" className="absolute inset-0 rounded-full border-4 border-[#4C8DFF]" initial={{ scale: 1, opacity: 0.8 }} animate={{ scale: 1.9, opacity: 0 }} transition={{ duration: 0.7, ease: 'easeOut' }} />}
             {item.step.is_critical && <span aria-hidden="true" className="absolute -right-1 -top-1 grid h-6 w-6 place-items-center rounded-full bg-amber-400 text-amber-950 ring-2 ring-[#17324D]"><ShieldCheck size={13} /></span>}
             {isNext && <span aria-hidden="true" className="absolute bottom-[calc(100%+12px)] left-1/2 -translate-x-1/2">
-              <motion.span initial={reducedMotion ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="relative block whitespace-nowrap rounded-full bg-white px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#176E8A] shadow-md after:absolute after:left-1/2 after:top-full after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-white after:content-['']">{completedCount === 0 ? 'Start' : 'Up next'}</motion.span>
+              <motion.span initial={reducedMotion ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="relative block whitespace-nowrap rounded-full bg-white px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#2478F5] shadow-md after:absolute after:left-1/2 after:top-full after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-white after:content-['']">{completedCount === 0 ? 'Start' : 'Up next'}</motion.span>
             </span>}
             <span aria-hidden="true" className={`absolute top-1/2 -translate-y-1/2 ${labelOnRight ? 'left-[calc(100%+14px)] text-left' : 'right-[calc(100%+14px)] text-right'}`} style={{ width: labelWidth }}>
               <span
@@ -179,7 +179,7 @@ export function LearningRoad({ items, activeIndex, nextIndex, completedCount, co
         initial={false}
         animate={complete && !reducedMotion ? { scale: [1, 1.12, 1] } : { scale: 1 }}
         transition={{ duration: 0.6, ease: 'easeOut' }}
-        className={`grid h-14 w-14 place-items-center rounded-full ${complete ? 'bg-white text-[#176E8A] shadow-[0_12px_30px_-12px_rgba(255,255,255,0.6)]' : 'bg-[#23415F] text-[#7F95AB] ring-2 ring-inset ring-[#2F4E6E]'}`}
+        className={`grid h-14 w-14 place-items-center rounded-full ${complete ? 'bg-white text-[#2478F5] shadow-[0_12px_30px_-12px_rgba(255,255,255,0.6)]' : 'bg-[#23415F] text-[#7F95AB] ring-2 ring-inset ring-[#2F4E6E]'}`}
       ><Trophy size={24} /></motion.span>
     </div>
     <p className={`absolute text-xs font-bold ${geometry.finish.x < width / 2 ? 'text-left' : 'text-right'} ${complete ? 'text-white' : 'text-[#9AAEC2]'}`} style={geometry.finish.x < width / 2 ? { left: geometry.finish.x + 40, top: geometry.finish.y - 9 } : { right: width - geometry.finish.x + 40, top: geometry.finish.y - 9 }}>

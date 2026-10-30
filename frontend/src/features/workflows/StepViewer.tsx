@@ -23,7 +23,7 @@ import { StepNarrator } from './StepNarrator';
 
 function SectionHeading({ icon, children, id }: { icon: ReactNode; children: ReactNode; id?: string }) {
   return <h4 id={id} className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#536779]">
-    <span className="grid h-6 w-6 place-items-center rounded-lg bg-[#E8F1F4] text-[#176E8A]">{icon}</span>{children}
+    <span className="grid h-6 w-6 place-items-center rounded-lg bg-[#E8F1FF] text-[#2478F5]">{icon}</span>{children}
   </h4>;
 }
 
@@ -73,12 +73,12 @@ export function StepViewerBody({
       <p className="mt-3 max-w-[68ch] whitespace-pre-line text-[15px] leading-7 text-[#344B60]">{step.instruction}</p>
     </section>
 
-    {sources.length > 0 && <section aria-label="Verified guidance sources" className="rounded-2xl border border-[#C8DCE7] bg-[#F4F8FA] p-4">
+    {sources.length > 0 && <section aria-label="Verified guidance sources" className="rounded-2xl border border-[#C8D9F0] bg-[#F4F8FA] p-4">
       <SectionHeading icon={<BookOpen size={13} />}>Verified guidance</SectionHeading>
       <p className="mt-2 text-xs leading-5 text-[#536779]">Use these references with the installed machine manual and local approved procedure.</p>
       <ul className="mt-3 space-y-2">
         {sources.map((source) => <li key={`${source.url}-${source.title}`}>
-          <a href={source.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-start gap-2 text-sm font-semibold text-[#176E8A] underline decoration-[#A8CCD7] underline-offset-2 hover:text-[#125C74]">
+          <a href={source.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-start gap-2 text-sm font-semibold text-[#2478F5] underline decoration-[#B9D2F7] underline-offset-2 hover:text-[#1768DF]">
             <ExternalLink size={14} className="mt-0.5 shrink-0" />
             <span>{source.title}{source.publisher ? <span className="font-normal text-[#536779]"> · {source.publisher}</span> : null}</span>
           </a>
@@ -115,15 +115,15 @@ export function StepViewerBody({
     {checklist.length > 0 && <section aria-labelledby={`checklist-${step.id}`} className="rounded-2xl border border-[#DCE6F0] p-4">
       <div className="flex items-center justify-between gap-3">
         <SectionHeading id={`checklist-${step.id}`} icon={<ClipboardList size={13} />}>Checklist</SectionHeading>
-        <span className="font-mono text-xs font-bold text-[#176E8A]">{checkedCount}/{checklist.length}</span>
+        <span className="font-mono text-xs font-bold text-[#2478F5]">{checkedCount}/{checklist.length}</span>
       </div>
       <ul className="mt-3 space-y-2">
         {checklist.map((item, index) => {
           const checked = checklistReadOnly || Boolean(checklistChecked[index]);
           return <li key={`${index}-${item}`}>
-            <label className={`flex min-h-11 items-start gap-3 rounded-xl px-3 py-2.5 text-sm leading-6 transition-colors motion-reduce:transition-none ${checked ? 'bg-[#EEF6F5] text-[#17324D]' : 'bg-[#FAFBFC] text-[#344B60] hover:bg-[#F4F8FA]'} ${checklistReadOnly ? '' : 'cursor-pointer'}`}>
+            <label className={`flex min-h-11 items-start gap-3 rounded-xl px-3 py-2.5 text-sm leading-6 transition-colors motion-reduce:transition-none ${checked ? 'bg-[#EEF4FF] text-[#17324D]' : 'bg-[#FAFBFC] text-[#344B60] hover:bg-[#F4F8FA]'} ${checklistReadOnly ? '' : 'cursor-pointer'}`}>
               <input type="checkbox" className="peer sr-only" checked={checked} disabled={checklistReadOnly} onChange={() => onToggleCheck(index)} />
-              <span aria-hidden="true" className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border-2 transition-colors peer-focus-visible:ring-4 peer-focus-visible:ring-[#176E8A]/20 motion-reduce:transition-none ${checked ? 'border-[#176E8A] bg-[#176E8A] text-white' : 'border-[#B7CDD7] bg-white'}`}>
+              <span aria-hidden="true" className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border-2 transition-colors peer-focus-visible:ring-4 peer-focus-visible:ring-[#2478F5]/20 motion-reduce:transition-none ${checked ? 'border-[#2478F5] bg-[#2478F5] text-white' : 'border-[#B9CDEA] bg-white'}`}>
                 {checked && <motion.span initial={reducedMotion ? false : { scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.18 }}><Check size={13} strokeWidth={3.5} /></motion.span>}
               </span>
               <span className={checked ? 'font-medium' : ''}>{item}</span>
@@ -133,14 +133,14 @@ export function StepViewerBody({
       </ul>
     </section>}
 
-    {note && <section aria-labelledby={`note-${step.id}`} className="rounded-2xl border-l-4 border-[#176E8A] bg-[#F4F8FA] p-4">
+    {note && <section aria-labelledby={`note-${step.id}`} className="rounded-2xl border-l-4 border-[#2478F5] bg-[#F4F8FA] p-4">
       <SectionHeading id={`note-${step.id}`} icon={<Lightbulb size={13} />}>Expert note</SectionHeading>
       <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#344B60]">{note}</p>
     </section>}
 
     {procedureReferences.length > 0 && <section aria-labelledby="reference-heading">
       <div className="flex items-end justify-between gap-2">
-        <div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#176E8A]">Approved learning materials</p><h4 id="reference-heading" className="mt-1 text-sm font-bold text-[#17324D]">Shared procedure materials</h4></div>
+        <div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#2478F5]">Approved learning materials</p><h4 id="reference-heading" className="mt-1 text-sm font-bold text-[#17324D]">Shared procedure materials</h4></div>
         <span className="text-[10px] text-[#708196]">{procedureReferences.length} item{procedureReferences.length === 1 ? '' : 's'}</span>
       </div>
       <div className="mt-3"><MediaShowcase assets={procedureReferences} failedIds={failedReferenceIds} onMediaError={onMediaError} onRetry={onRetryMedia} reducedMotion={reducedMotion} /></div>

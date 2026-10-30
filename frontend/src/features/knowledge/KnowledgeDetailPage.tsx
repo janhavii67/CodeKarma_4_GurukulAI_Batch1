@@ -10,7 +10,6 @@ import {
   FileText,
   Edit3,
   GitBranch,
-  Sparkles,
   ExternalLink,
   Wrench,
   Info,
@@ -179,25 +178,6 @@ export const KnowledgeDetailPage: React.FC = () => {
 
           {/* Action Controls for Experts / Trainees */}
           <div className="flex items-center gap-2.5">
-            {/* Ask AI Tutor */}
-            {isPublished && (
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(
-                    `/app/assistant?q=Explain%20steps%20and%20safety%20precautions%20for%20${encodeURIComponent(
-                      data.title
-                    )}`
-                  )
-                }
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                title="Ask AI Knowledge Assistant about this procedure"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-teal-600" />
-                <span>Ask AI Tutor</span>
-              </button>
-            )}
-
             {/* Expert Editing Controls (Hidden for Trainees & Operators) */}
             {(canCreate || isAdmin) && (
               <>
@@ -301,12 +281,6 @@ export const KnowledgeDetailPage: React.FC = () => {
               <span>Published / Updated: {formatDate(v.published_at || v.updated_at)}</span>
             </div>
 
-            {data.rag_indexed && (
-              <div className="flex items-center gap-1 text-teal-800 font-semibold bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200 text-[11px]">
-                <Sparkles className="w-3 h-3 text-teal-600" />
-                <span>Indexed for AI Tutor ({data.rag_chunks_count ?? 1} chunks)</span>
-              </div>
-            )}
           </div>
         </div>
 
@@ -786,29 +760,6 @@ export const KnowledgeDetailPage: React.FC = () => {
               </div>
             )}
 
-            {/* AI Assistant Help Callout */}
-            <div className="bg-gradient-to-br from-teal-500/10 via-emerald-500/5 to-white rounded-2xl border border-teal-200 p-5 shadow-xs space-y-3">
-              <div className="flex items-center gap-2 text-teal-900 font-bold text-xs uppercase tracking-wider">
-                <Sparkles className="w-4 h-4 text-teal-700" />
-                AI Knowledge Assistant
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Have questions regarding calibration tolerances or safety checks in this protocol? Consult the AI Tutor for grounded explanations.
-              </p>
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(
-                    `/app/assistant?q=Explain%20steps%20and%20safety%20precautions%20for%20${encodeURIComponent(
-                      data.title
-                    )}`
-                  )
-                }
-                className="w-full py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer text-center"
-              >
-                Launch AI Tutor Consultation →
-              </button>
-            </div>
           </div>
         </div>
       </main>

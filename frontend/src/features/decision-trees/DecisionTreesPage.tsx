@@ -86,8 +86,8 @@ export const DecisionTreesPage: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <header className="relative overflow-hidden rounded-3xl bg-[#14171c] px-6 py-7 text-white shadow-xl sm:px-8">
-        <div className="pointer-events-none absolute inset-0 opacity-60" style={{ backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.18) 1px, transparent 1.3px)', backgroundSize: '22px 22px' }} />
+      <header className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0f2a4a] via-[#123a66] to-[#1d4f8f] px-6 py-7 text-white shadow-xl sm:px-8">
+        <div className="pointer-events-none absolute inset-0 opacity-60" style={{ backgroundImage: 'radial-gradient(circle, rgba(147,197,253,0.2) 1px, transparent 1.3px)', backgroundSize: '22px 22px' }} />
         <div className="relative flex flex-wrap items-end gap-6">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-300">Expert workspace</p>
@@ -102,8 +102,8 @@ export const DecisionTreesPage: React.FC = () => {
           {[['Trees', counts.total, Layers], ['Published', counts.published, GitBranch], ['Pending approval', counts.pending, Clock3], ['Trainee sessions', counts.sessions, Users]].map(([label, value, Icon]) => {
             const I = Icon as React.ElementType;
             return (
-              <div key={label as string} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400"><I className="h-3.5 w-3.5" />{label as string}</dt>
+              <div key={label as string} className="rounded-2xl border border-white/15 bg-white/[0.08] px-4 py-3">
+                <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-blue-100"><I className="h-3.5 w-3.5" />{label as string}</dt>
                 <dd className="mt-1 text-2xl font-bold">{value as number}</dd>
               </div>
             );
@@ -192,10 +192,10 @@ export const DecisionTreesPage: React.FC = () => {
               {guides.map((guide) => (
                 <li key={guide.id} className="group relative flex flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg">
                   <Link to={`/app/decision-trees/${guide.id}`} className="absolute inset-0 z-0" aria-label={`Open ${guide.title}`} />
-                  <div className="relative h-24 bg-gradient-to-br from-[#1b2230] to-[#0f141b]">
+                  <div className="relative h-24 bg-gradient-to-br from-[#2478f5] via-[#1558a6] to-[#0b2545]">
                     {guide.cover_media && <img src={getApiUrl(`${guide.cover_media.url}?inline=true`)} alt="" className="absolute inset-0 h-full w-full object-cover opacity-80" />}
                     <span className={`absolute left-3 top-3 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ring-1 ${STATUS[guide.status].className}`}>{STATUS[guide.status].label}</span>
-                    <span className="absolute right-3 top-3 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-bold uppercase text-white">{guide.difficulty.toLowerCase()}</span>
+                    <span className="absolute right-3 top-3 rounded-full bg-[#0b2545]/80 px-2 py-0.5 text-[10px] font-bold uppercase text-white">{guide.difficulty.toLowerCase()}</span>
                   </div>
                   <div className="flex flex-1 flex-col p-4">
                     <h3 className="text-base font-semibold text-slate-900">{guide.title}</h3>

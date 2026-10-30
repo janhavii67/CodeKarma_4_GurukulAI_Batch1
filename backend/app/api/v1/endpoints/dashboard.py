@@ -52,6 +52,10 @@ def get_dashboard_stats(
         or 0
     )
     audio_references = db.query(func.count(AudioReference.id)).scalar() or 0
+    media_counts = {
+        kind: db.query(func.count(MediaAsset.id)).filter(MediaAsset.kind == kind).scalar() or 0
+        for kind in ("video", "audio", "image", "document")
+    }
     active_simulations = db.query(func.count(SimulationScenario.id)).scalar() or 0
 
     # User-scoped contribution metrics (authoritative real data)
@@ -205,6 +209,10 @@ def get_dashboard_stats(
         procedures_count=procedures_count,
         pending_reviews=pending_reviews,
         audio_references=audio_references,
+        video_assets=media_counts["video"],
+        audio_assets=media_counts["audio"],
+        image_assets=media_counts["image"],
+        document_assets=media_counts["document"],
         active_simulations=active_simulations,
         recent_articles=recent_items,
         user_sops_created=user_sops_created,

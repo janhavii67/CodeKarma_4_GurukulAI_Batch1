@@ -63,6 +63,9 @@ export const DashboardPage: React.FC = () => {
       ) : isExpert ? (
         <StitchExpertDashboard
           hasPermission={hasPermission}
+          stats={stats}
+          loading={loading}
+          userName={user?.name || ''}
         />
       ) : (
         <>

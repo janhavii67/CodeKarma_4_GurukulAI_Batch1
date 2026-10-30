@@ -23,6 +23,10 @@ const mockExpertStats = {
   procedures_count: 5,
   pending_reviews: 2,
   audio_references: 3,
+  video_assets: 12,
+  audio_assets: 8,
+  image_assets: 24,
+  document_assets: 15,
   active_simulations: 1,
   user_sops_created: 4,
   user_sops_approved: 3,
@@ -133,29 +137,29 @@ describe('Redesigned Operational Dashboard Tests', () => {
     );
 
     // Primary headline and editorial messaging
-    expect(screen.getByText(/Your Experience./i)).toBeInTheDocument();
-    expect(screen.getByText(/Their Future./i)).toBeInTheDocument();
+    expect(screen.getByText(/Preserve Experience./i)).toBeInTheDocument();
+    expect(screen.getByText(/Empower the Next Generation./i)).toBeInTheDocument();
 
     // Primary action buttons for expert
     expect(screen.getAllByText(/Capture Knowledge/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Explore My Knowledge/i)).toBeInTheDocument();
+    expect(screen.getByText(/Explore Knowledge Library/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Capture Knowledge/i })).toHaveAttribute(
       'href',
       '/app/knowledge-assets?kind=notes'
     );
-    expect(screen.getByRole('link', { name: /Video$/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Video Capture$/ })).toHaveAttribute(
       'href',
       '/app/knowledge-assets?kind=video'
     );
-    expect(screen.getByRole('link', { name: /Audio$/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Audio Capture$/ })).toHaveAttribute(
       'href',
       '/app/knowledge-assets?kind=audio'
     );
-    expect(screen.getByRole('link', { name: /Notes$/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Document Capture$/ })).toHaveAttribute(
       'href',
       '/app/knowledge-assets?kind=notes'
     );
-    expect(screen.getByRole('link', { name: /Photos$/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Photo Capture$/ })).toHaveAttribute(
       'href',
       '/app/knowledge-assets?kind=image'
     );
@@ -174,12 +178,14 @@ describe('Redesigned Operational Dashboard Tests', () => {
     expect(screen.queryByText(/Pending peer evaluations/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/View History/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No Knowledge Entries Recorded/i)).not.toBeInTheDocument();
-    expect(container.querySelectorAll('section')).toHaveLength(4);
+    expect(container.querySelectorAll('section')).toHaveLength(5);
     expect(Array.from(container.querySelectorAll('div')).some((element) =>
-      element.className.includes('w-full') && element.className.includes('space-y-7'),
+      element.className.includes('expert-dashboard'),
     )).toBe(true);
-    expect(screen.getByRole('link', { name: /Explore My Knowledge/i })).toHaveAttribute('href', '/app/knowledge');
+    expect(screen.getByRole('link', { name: /Explore Knowledge Library/i })).toHaveAttribute('href', '/app/knowledge');
     expect(screen.queryByText(/Ask Assistant/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Recent Activity')).toBeInTheDocument();
+    expect(await screen.findByText('Centrifuge High-Speed Calibration SOP')).toBeInTheDocument();
 
     // MANDATORY REMOVALS: Verify the 6 legacy metrics are completely ABSENT from DOM
     expect(screen.queryByText('SOPs Created')).not.toBeInTheDocument();
@@ -198,8 +204,7 @@ describe('Redesigned Operational Dashboard Tests', () => {
     expect(screen.queryByText(/Role-Based Access \(RBAC\)/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Grounded Industrial Assets/i)).not.toBeInTheDocument();
 
-    expect(screen.queryByText(/Centrifuge High-Speed Calibration SOP/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Spectrophotometer Alignment Protocol/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Your Experience./i)).not.toBeInTheDocument();
   });
 
   it('renders Trainee dashboard with trainee-scoped metrics and safe guided actions', async () => {
@@ -359,6 +364,6 @@ describe('Redesigned Operational Dashboard Tests', () => {
     expect(screen.queryByText(/Review & Verify Knowledge/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Continue a Draft/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Recently Shared/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/No Knowledge Entries Recorded/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/No recent knowledge activity yet./i)).toBeInTheDocument();
   });
 });

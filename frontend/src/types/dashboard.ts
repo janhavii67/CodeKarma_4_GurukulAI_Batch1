@@ -15,6 +15,10 @@ export interface DashboardStats {
   procedures_count: number;
   pending_reviews: number;
   audio_references: number;
+  video_assets?: number;
+  audio_assets?: number;
+  image_assets?: number;
+  document_assets?: number;
   active_simulations: number;
   recent_articles: RecentActivityItem[];
   user_sops_created: number;

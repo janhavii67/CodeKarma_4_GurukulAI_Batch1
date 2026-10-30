@@ -39,7 +39,7 @@ export function StepNarrator({ text }: StepNarratorProps) {
     aria-label={speaking ? 'Stop step narration' : 'Listen to step instructions'}
     aria-pressed={speaking}
     onClick={toggleNarration}
-    className="inline-flex min-h-9 shrink-0 items-center gap-2 rounded-full border border-[#C8DCE7] bg-white px-3 text-xs font-bold text-[#176E8A] transition hover:bg-[#E8F1F4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#176E8A] motion-reduce:transition-none"
+    className="inline-flex min-h-9 shrink-0 items-center gap-2 rounded-full border border-[#C8D9F0] bg-white px-3 text-xs font-bold text-[#2478F5] transition hover:bg-[#E8F1FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2478F5] motion-reduce:transition-none"
   >
     {speaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
     {speaking ? 'Stop audio' : 'Listen to step'}
