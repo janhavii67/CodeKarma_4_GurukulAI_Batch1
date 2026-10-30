@@ -81,6 +81,14 @@ export interface AudioAnalysisResult {
   similarity_score?: number | null;
   reason_code: string;
   message: string;
+  audio_observation?: string | null;
+  processing_metadata?: {
+    input_format: string;
+    duration_seconds: number;
+    decoded_sample_rate: number;
+    normalized_sample_rate: number;
+    channels: number;
+  } | null;
   limitation: string;
   requires_expert_review: boolean;
   candidate_matches: AudioMatchCandidate[];
@@ -143,6 +151,7 @@ export interface ChatResponse {
   provider_unavailable?: boolean;
   conversation_id: string;
   message_id: string;
+  audio_transcript?: string | null;
   audio_analysis?: AudioAnalysisResult | null;
   attachment?: TutorAttachment | null;
   handoffs?: TutorHandoffSuggestion[];
@@ -154,6 +163,26 @@ export interface TutorHandoffStartResponse {
   session_id: string;
   title: string;
   resumed: boolean;
+}
+
+export type TutorMemoryCategory =
+  | 'learning_goal'
+  | 'explanation_preference'
+  | 'experience'
+  | 'machine_context'
+  | 'other';
+
+export interface TutorMemory {
+  id: string;
+  category: TutorMemoryCategory;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TutorMemoryList {
+  items: TutorMemory[];
+  max_items: number;
 }
 
 export interface SourceChunkItem {

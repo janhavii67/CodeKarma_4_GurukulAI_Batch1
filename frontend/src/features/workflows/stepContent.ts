@@ -36,6 +36,22 @@ export function stepNeedsReview(step: ProcedureStep): boolean {
   return step.details?.needs_review === true;
 }
 
+export function stepNarrationText(step: ProcedureStep): string {
+  const saved = text(step.details?.narration_text);
+  return saved ?? `${step.title}. ${step.instruction}`;
+}
+
+export function stepSourceReferences(step: ProcedureStep): Array<{ title: string; publisher?: string; url: string }> {
+  const refs = step.details?.source_refs;
+  if (!Array.isArray(refs)) return [];
+  return refs.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const ref = item as Record<string, unknown>;
+    if (typeof ref.title !== 'string' || typeof ref.url !== 'string' || !ref.url.startsWith('https://')) return [];
+    return [{ title: ref.title, url: ref.url, ...(typeof ref.publisher === 'string' ? { publisher: ref.publisher } : {}) }];
+  });
+}
+
 export function requiresVerification(step: ProcedureStep): boolean {
   return Boolean(step.is_critical || step.expected_observation || step.safety_warning);
 }
@@ -46,7 +62,7 @@ export function stepContentKinds(step: ProcedureStep, stepReferences: ProcedureR
   const kinds: StepContentKind[] = [];
   if (step.safety_warning || stepStopCondition(step)) kinds.push('safety');
   MEDIA_ORDER.forEach((kind) => {
-    if (stepReferences.some((asset) => asset.kind === kind)) kinds.push(kind);
+    if ((kind === 'audio' && stepNarrationText(step).trim()) || stepReferences.some((asset) => asset.kind === kind)) kinds.push(kind);
   });
   if (stepChecklist(step).length) kinds.push('checklist');
   return kinds;

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -44,7 +45,10 @@ function explainError(error: unknown): string {
 }
 
 export function GuidedWorkflowsPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const prefersReducedMotion = Boolean(useReducedMotion());
+  const canManage = hasPermission('procedure.create');
   const [stage, setStage] = useState<Stage>(1);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machinesLoading, setMachinesLoading] = useState(true);
@@ -398,7 +402,7 @@ export function GuidedWorkflowsPage() {
 
   return (
     <main className={`${theme.page} min-h-[100dvh] px-4 py-6 sm:px-6 lg:px-10`}>
-      <div className="w-full space-y-6 sm:space-y-8">
+      <div className="mx-auto max-w-7xl space-y-6 sm:space-y-8">
         <header className="grid gap-5 border-b border-[#DCE6F0] pb-6 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:pb-8">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-[#C8DCE7] bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#176E8A]">
@@ -498,26 +502,17 @@ export function GuidedWorkflowsPage() {
                 </button>
               </div> : loadingMission ? <div className="h-44 animate-pulse rounded-2xl bg-[#17324D]/90 motion-reduce:animate-none" /> : null}
             </div>
-            {procedure && <div className="rounded-2xl bg-[#F4F8FA] p-4 sm:p-5">
-              <div className="flex items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#708196]">Your progress</p><p className="mt-1 text-sm font-semibold text-[#17324D]">{completedCount} of {stepCount} checkpoints</p></div><span className="font-mono text-2xl font-bold tracking-tight text-[#176E8A]">{stepCount ? Math.round((completedCount / stepCount) * 100) : 0}%</span></div>
-              <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[#DCE6F0]" role="progressbar" aria-label="Procedure progress" aria-valuemin={0} aria-valuemax={stepCount} aria-valuenow={completedCount}><div className="h-full rounded-full bg-[#1677F8] transition-all duration-300" style={{ width: `${stepCount ? (completedCount / stepCount) * 100 : 0}%` }} /></div>
-              <p className="mt-2 text-[11px] text-[#536779]">{serverConfirmedComplete ? 'All checkpoints have been recorded.' : `Step ${Math.min(activeIndex + 1, stepCount)} of ${stepCount} · future steps unlock in order.`}</p>
-            </div>}
           </div>
 
-          {loadingMission && <div className={`${theme.panel} grid gap-5 p-5 sm:grid-cols-[0.8fr_1.5fr] sm:p-7`} aria-label="Loading approved procedure" aria-busy="true"><div className="space-y-3"><div className="h-5 w-2/3 animate-pulse rounded bg-[#E8EEF3] motion-reduce:animate-none" />{[1, 2, 3, 4].map((row) => <div key={row} className="h-12 animate-pulse rounded-xl bg-[#F0F3F6] motion-reduce:animate-none" />)}</div><div className="space-y-4"><div className="h-8 w-1/3 animate-pulse rounded bg-[#E8EEF3] motion-reduce:animate-none" /><div className="h-36 animate-pulse rounded-2xl bg-[#F0F3F6] motion-reduce:animate-none" /><div className="h-20 animate-pulse rounded-2xl bg-[#F0F3F6] motion-reduce:animate-none" /></div></div>}
-          {!loadingMission && !missionError && selectedMachine && !procedure && <div className={`${theme.panel} p-7 sm:p-9`}>
-            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#E8F1F4] text-[#176E8A]"><ClipboardCheck size={24} /></div>
-            <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#176E8A]">No path published yet</p>
-            <h3 className="mt-2 text-xl font-bold tracking-tight text-[#17324D]">No approved procedure is available for {selectedMachine.name}</h3>
-            <p className="mt-2 max-w-[62ch] text-sm leading-6 text-[#536779]">The learning path will appear after an Expert publishes an approved procedure for this machine. This screen only displays verified content; it does not create training instructions.</p>
-            {hasPermission('procedure.create') && <Link to="/app/procedures/new" className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#1677F8] px-5 text-sm font-bold text-white transition hover:bg-[#125EA3] active:translate-y-px motion-reduce:transition-none"><FileText size={16} />Create a procedure</Link>}
+          {loadingMission && <div className="grid gap-5 lg:grid-cols-[minmax(320px,440px)_minmax(0,1fr)]" aria-label="Loading approved procedure" aria-busy="true">
+            <div className="rounded-[1.8rem] bg-[#17324D] p-5"><LearningRoadSkeleton /></div>
+            <div className={`${theme.panel} space-y-4 p-5 sm:p-7`}><div className="h-8 w-1/3 animate-pulse rounded bg-[#E8EEF3] motion-reduce:animate-none" /><div className="h-36 animate-pulse rounded-2xl bg-[#F0F3F6] motion-reduce:animate-none" /><div className="h-20 animate-pulse rounded-2xl bg-[#F0F3F6] motion-reduce:animate-none" /></div>
           </div>}
 
           {!loadingMission && !run && <div className={`${theme.panel} p-6`}>
             <h3 className="font-bold text-[#173B5E]">The procedure run could not be opened</h3>
             <p className={`mt-1 text-sm ${theme.muted}`}>Retry to resume an existing run or start the approved procedure.</p>
-            <button type="button" onClick={() => selectedMachine && void selectMachine(selectedMachine)} className="mt-4 rounded-lg bg-[#1677F8] px-4 py-2 text-sm font-semibold text-white hover:bg-[#125EA3]">Retry</button>
+            <button type="button" onClick={() => selectedMachine && void openWorkflow(procedure, selectedMachine, myRuns)} className="mt-4 rounded-lg bg-[#1976C9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#125EA3]">Retry</button>
           </div>}
 
           {!loadingMission && run && currentStep && <>
@@ -528,65 +523,74 @@ export function GuidedWorkflowsPage() {
               {procedure.operating_conditions && <div className={`${theme.panel} p-4`}><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#708196]">Operating conditions</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#344B60]">{procedure.operating_conditions}</p></div>}
             </div>}
 
-            <div className="grid gap-5 lg:grid-cols-[minmax(250px,0.8fr)_minmax(0,1.6fr)]">
-              <section aria-labelledby="path-heading" className={`${theme.panel} overflow-hidden p-4 sm:p-6`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#1677F8]">Your checkpoints</p><h3 id="path-heading" className="mt-1 text-lg font-bold tracking-tight text-[#17324D]">Learning path</h3></div>
-                  <span className="rounded-full bg-[#F4F8FA] px-3 py-1.5 text-[10px] font-semibold text-[#536779]">{completedCount}/{stepCount} done</span>
+            <div className="grid items-start gap-5 lg:grid-cols-[minmax(320px,440px)_minmax(0,1fr)]">
+              <section aria-labelledby="path-heading" className={`overflow-hidden rounded-[1.8rem] bg-[#17324D] shadow-[0_24px_50px_-30px_rgba(23,50,77,0.8)] lg:sticky lg:top-4 ${mobileView === 'step' ? 'hidden lg:block' : ''}`}>
+                <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4 sm:px-6">
+                  <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8FD3CF]">Your checkpoints</p><h3 id="path-heading" className="mt-1 text-lg font-bold tracking-tight text-white">Learning path</h3></div>
+                  <span className="rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-semibold text-[#CFE0EC]">{completedCount}/{stepCount} done</span>
                 </div>
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#F4F8FA] p-3">
-                  <div><p className="text-xs font-bold text-[#17324D]">{serverConfirmedComplete ? 'Path completed' : `Up next · Step ${furthestAvailableIndex + 1}`}</p><p className="mt-0.5 text-[11px] text-[#536779]">{serverConfirmedComplete ? 'Revisit a completed checkpoint any time.' : 'Continue with the next eligible checkpoint.'}</p></div>
-                  <button type="button" onClick={() => moveToStep(serverConfirmedComplete ? Math.max(0, stepCount - 1) : furthestAvailableIndex)} disabled={!stepCount || savingStep} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#1677F8] px-4 text-xs font-bold text-white transition hover:bg-[#125EA3] active:translate-y-px disabled:opacity-50 motion-reduce:transition-none">{serverConfirmedComplete ? 'Review last step' : 'Continue'} <ArrowRight size={14} /></button>
+                <div ref={roadScrollRef} className="px-3 pb-2 pt-4 sm:px-5 lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto lg:overscroll-contain">
+                  <LearningRoad
+                    items={roadItems}
+                    activeIndex={activeIndex}
+                    nextIndex={furthestAvailableIndex}
+                    completedCount={completedCount}
+                    complete={serverConfirmedComplete}
+                    disabled={savingStep}
+                    reducedMotion={prefersReducedMotion}
+                    celebrateStepId={celebrateStepId}
+                    onSelect={openStep}
+                  />
                 </div>
-                <div className="relative mx-auto mt-6 max-w-xl" style={{ height: `${stepCount * 160}px` }}>
-                  {stepCount > 1 && <>
-                    <svg aria-hidden="true" className="absolute inset-0 hidden h-full w-full sm:block" viewBox={`0 0 100 ${stepCount * 160}`} preserveAspectRatio="none"><path d={curvePath(stepCount)} fill="none" stroke="#D6E2E9" strokeWidth="1.5" strokeDasharray="3 2" vectorEffect="non-scaling-stroke" /></svg>
-                    <div aria-hidden="true" className="absolute left-1/2 top-8 w-px -translate-x-1/2 border-l-2 border-dashed border-[#D6E2E9] sm:hidden" style={{ height: `${(stepCount - 1) * 160}px` }} />
-                  </>}
-                  <ol aria-label="Procedure learning steps" className="relative h-full">
-                    {procedure.steps.map((step, index) => {
-                      const done = Boolean(stepExecutions.get(step.id)?.is_completed);
-                      const isCurrent = index === activeIndex;
-                      const locked = index > furthestAvailableIndex;
-                      const requiresVerification = Boolean(step.is_critical || step.expected_observation || step.safety_warning);
-                      const status = done ? 'Completed' : locked ? 'Locked' : isCurrent && requiresVerification ? 'Current · verification required' : isCurrent ? 'Current' : 'Available';
-                      const blurb = step.instruction.replace(/\s+/g, ' ').trim();
-                      return <li key={step.id} style={{ top: `${index * 160}px` }} className={`absolute left-1/2 -translate-x-1/2 sm:left-[70%] transition-opacity duration-300 ${index % 2 === 1 ? 'sm:left-[30%]' : ''}`}>
-                        <button type="button" disabled={locked || savingStep} onClick={() => moveToStep(index)} aria-current={isCurrent ? 'step' : undefined} aria-label={`Step ${step.step_order}: ${step.title}, ${status}`} className={`group relative grid h-16 w-16 place-items-center rounded-full border-[3px] text-sm font-extrabold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#1677F8]/20 disabled:cursor-not-allowed motion-reduce:transition-none ${done ? 'border-[#1677F8] bg-[#1677F8] text-white shadow-[0_8px_20px_-12px_rgba(22,119,248,0.65)] hover:bg-[#125EA3]' : isCurrent ? 'border-[#1677F8] bg-white text-[#1677F8] shadow-[0_0_0_7px_rgba(22,119,248,0.09)]' : locked ? 'border-[#D8E0E6] bg-[#F4F6F8] text-[#9AA7B2]' : 'border-[#B7CDD7] bg-white text-[#1677F8] hover:border-[#1677F8]'} ${locked ? 'opacity-75' : ''}`}>
-                          {done ? <Check size={25} aria-hidden="true" /> : locked ? <LockKeyhole size={20} aria-hidden="true" /> : <span>{step.step_order}</span>}
-                          {isCurrent && <span aria-hidden="true" className="absolute inset-[-8px] rounded-full border border-[#1677F8]/25 animate-pulse" />}
-                          <span className={`absolute top-[4.5rem] left-1/2 w-[min(250px,76vw)] -translate-x-1/2 text-center sm:top-1/2 sm:w-56 sm:-translate-y-1/2 sm:translate-x-0 ${index % 2 === 0 ? 'sm:right-[calc(100%+1rem)] sm:left-auto sm:text-right' : 'sm:left-[calc(100%+1rem)] sm:right-auto sm:text-left'}`}>
-                            <span className={`block text-xs font-bold leading-4 ${isCurrent ? 'text-[#102844]' : done ? 'text-[#1677F8]' : locked ? 'text-[#8292A0]' : 'text-[#344B60]'}`}>{step.title}</span>
-                            <span className="mt-1 block line-clamp-2 text-[10px] leading-4 text-[#647A96]">{blurb}</span>
-                            <span className={`mt-1 inline-block text-[9px] font-bold uppercase tracking-[0.12em] ${done || isCurrent ? 'text-[#1677F8]' : 'text-[#8292A0]'}`}>{status}</span>
-                          </span>
-                        </button>
-                      </li>;
-                    })}
-                  </ol>
-                </div>
-                <p className="mt-4 border-t border-[#E7EDF1] pt-3 text-[11px] leading-5 text-[#536779]">Earlier completed checkpoints stay open for review. Later steps unlock only after this procedure records the current checkpoint complete.</p>
+                <p className="border-t border-white/10 px-5 py-3 text-[11px] leading-5 text-[#9AAEC2] sm:px-6">Completed checkpoints stay open for review. Later steps unlock only after this procedure records the current checkpoint complete.</p>
               </section>
 
-              <article className={`${theme.panel} overflow-hidden`}>
-                <div className="border-b border-[#E7EDF1] bg-[#F8FAFB] p-5 sm:p-7">
-                  <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#1677F8] px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white">STEP {activeIndex + 1} OF {stepCount}</span>{currentStep.is_critical && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-900"><ShieldCheck size={13} />Critical checkpoint</span>}{currentStepComplete && <span className="inline-flex items-center gap-1 rounded-full border border-[#C8DCE7] bg-white px-3 py-1 text-[10px] font-bold text-[#1677F8]"><CheckCircle2 size={13} />Saved</span>}</div>
-                  <h3 className="mt-4 text-2xl font-bold tracking-tight text-[#102844] sm:text-3xl">{currentStep.title}</h3>
-                  <p className="mt-3 max-w-[68ch] whitespace-pre-line text-sm leading-7 text-[#344B60]">{currentStep.instruction}</p>
+              <article ref={stepViewerRef} aria-labelledby="step-heading" className={`${theme.panel} scroll-mt-4 overflow-hidden ${mobileView === 'path' ? 'hidden lg:block' : ''}`}>
+                <div className="border-b border-[#E7EDF1] bg-gradient-to-br from-[#F8FAFB] to-[#EEF5F7] p-5 sm:p-7">
+                  <button type="button" onClick={() => setMobileView('path')} className="mb-4 inline-flex min-h-10 items-center gap-2 rounded-full border border-[#DCE6F0] bg-white px-3.5 text-xs font-bold text-[#17324D] transition hover:bg-[#F4F8FA] motion-reduce:transition-none lg:hidden"><MapIcon size={14} />Back to learning path</button>
+                  <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#176E8A] px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white">STEP {activeIndex + 1} OF {stepCount}</span>{currentStep.is_critical && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-900"><ShieldCheck size={13} />Critical checkpoint</span>}{currentStepComplete && <span className="inline-flex items-center gap-1 rounded-full border border-[#C8DCE7] bg-white px-3 py-1 text-[10px] font-bold text-[#176E8A]"><CheckCircle2 size={13} />Saved</span>}</div>
+                  <h3 id="step-heading" className="mt-4 text-2xl font-bold tracking-tight text-[#17324D] sm:text-3xl">{currentStep.title}</h3>
+                  <div aria-hidden="true" className="mt-5 flex gap-1.5">
+                    {roadItems.map((item, index) => <span key={item.step.id} className={`h-1.5 flex-1 rounded-full transition-colors duration-300 motion-reduce:transition-none ${index === activeIndex ? 'bg-[#17324D]' : item.done ? 'bg-[#36B3A8]' : item.locked ? 'bg-[#DCE6F0]' : 'bg-[#9CC9D6]'}`} />)}
+                  </div>
+                  <button type="button" aria-expanded={navigatorOpen} aria-controls="step-navigator" onClick={() => setNavigatorOpen((open) => !open)} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-full border border-[#DCE6F0] bg-white px-3.5 text-xs font-bold text-[#17324D] transition hover:bg-[#F4F8FA] motion-reduce:transition-none">
+                    <ListOrdered size={14} />All steps ({stepCount})<ChevronDown size={14} className={`transition-transform duration-200 motion-reduce:transition-none ${navigatorOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {navigatorOpen && <motion.ol id="step-navigator" aria-label="Step navigator" initial={prefersReducedMotion ? false : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, height: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="mt-3 max-h-72 space-y-1 overflow-y-auto rounded-2xl border border-[#DCE6F0] bg-white p-2">
+                      {roadItems.map((item, index) => <li key={item.step.id}>
+                        <button type="button" disabled={item.locked || savingStep} onClick={() => { setNavigatorOpen(false); openStep(index); }} aria-current={index === activeIndex ? 'step' : undefined} className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition motion-reduce:transition-none disabled:cursor-not-allowed ${index === activeIndex ? 'bg-[#E8F1F4] font-bold text-[#17324D]' : item.locked ? 'text-[#8292A0]' : 'text-[#344B60] hover:bg-[#F4F8FA]'}`}>
+                          <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-bold ${item.done ? 'bg-[#36B3A8] text-white' : item.locked ? 'bg-[#EEF2F5] text-[#8292A0]' : 'bg-[#176E8A] text-white'}`}>{item.done ? <Check size={14} /> : item.locked ? <LockKeyhole size={12} /> : item.step.step_order}</span>
+                          <span className="min-w-0 flex-1 truncate">{item.step.title}</span>
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-[#708196]">{item.done ? 'Done' : item.locked ? 'Locked' : 'Open'}</span>
+                        </button>
+                      </li>)}
+                    </motion.ol>}
+                  </AnimatePresence>
                 </div>
-                <div className="space-y-4 p-5 sm:p-7">
-                  {currentStep.safety_warning && <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><AlertTriangle size={18} className="mt-0.5 shrink-0" /><div><p className="font-bold">Safety warning</p><p className="mt-1 whitespace-pre-line leading-6">{currentStep.safety_warning}</p></div></div>}
-                  {currentStep.expected_observation && <div className="rounded-2xl border border-[#DCE6F0] bg-[#F6F9FA] p-4"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#708196]">Expected observation</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#17324D]">{currentStep.expected_observation}</p></div>}
-                  {stringList(currentStep.details?.tools ?? currentStep.details?.materials).length > 0 && <div><h4 className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#708196]">Tools and materials</h4><ul className="mt-2 flex flex-wrap gap-2">{stringList(currentStep.details?.tools ?? currentStep.details?.materials).map((tool) => <li key={tool} className="rounded-full bg-[#F1F5F7] px-3 py-1.5 text-xs font-medium text-[#344B60]">{tool}</li>)}</ul></div>}
-                  {stringList(currentStep.details?.quality_checkpoints).length > 0 && <div className="rounded-2xl border border-[#DCE6F0] p-4"><h4 className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#708196]">Checks listed for this step</h4><ul className="mt-2 space-y-2">{stringList(currentStep.details?.quality_checkpoints).map((check) => <li key={check} className="flex items-start gap-2 text-sm leading-6 text-[#344B60]"><Check size={15} className="mt-1 shrink-0 text-[#1677F8]" />{check}</li>)}</ul></div>}
-                  {typeof currentStep.details?.note === 'string' && currentStep.details.note.trim() && <div className="rounded-2xl border-l-4 border-[#1677F8] bg-[#F4F8FA] p-4"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#708196]">Step note</p><p className="mt-1 whitespace-pre-line text-sm leading-6 text-[#344B60]">{currentStep.details.note}</p></div>}
-                  {references.length > 0 && <section aria-labelledby="reference-heading">
-                    <div className="flex items-end justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#1677F8]">Approved learning materials</p><h4 id="reference-heading" className="mt-1 text-sm font-bold text-[#102844]">Verified references for this procedure</h4></div><span className="text-[10px] text-[#708196]">{references.length} item{references.length === 1 ? '' : 's'}</span></div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">{references.map((asset) => <ProcedureReferenceCard key={asset.id} asset={asset} failed={failedReferenceIds.has(asset.id)} onMediaError={() => setFailedReferenceIds((current) => new Set(current).add(asset.id))} />)}</div>
-                  </section>}
-                  {referenceNotice && <p className="text-xs text-[#536779]">{referenceNotice}</p>}
+                <motion.div key={currentStep.id} initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, ease: 'easeOut' }} className="space-y-6 p-5 sm:p-7">
+                  <StepViewerBody
+                    step={currentStep}
+                    stepReferences={currentStepReferences}
+                    missingAttachmentCount={missingAttachmentCount}
+                    procedureReferences={procedureReferences}
+                    referenceState={referenceState}
+                    referenceError={referenceError}
+                    onRetryReferences={() => selectedMachine && void loadReferences(procedure, selectedMachine)}
+                    failedReferenceIds={failedReferenceIds}
+                    onMediaError={(assetId) => setFailedReferenceIds((current) => new Set(current).add(assetId))}
+                    onRetryMedia={(assetId) => setFailedReferenceIds((current) => { const next = new Set(current); next.delete(assetId); return next; })}
+                    checklistChecked={currentChecklistState}
+                    checklistReadOnly={currentStepComplete}
+                    onToggleCheck={toggleChecklistItem}
+                    reducedMotion={prefersReducedMotion}
+                  />
+                  {referenceState === 'error' && stepAssetIds(currentStep).length === 0 && <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900">
+                    <p><span className="font-bold">Shared procedure materials could not be loaded.</span> {referenceError}</p>
+                    <button type="button" onClick={() => selectedMachine && void loadReferences(procedure, selectedMachine)} className="min-h-9 rounded-full border border-rose-200 bg-white px-3 font-bold">Retry</button>
+                  </div>}
 
-                  {currentStepComplete ? <div className="flex items-start gap-3 rounded-2xl border border-[#C8DCE7] bg-[#F0F6F8] p-4 text-sm text-[#102844]"><CheckCircle2 size={19} className="mt-0.5 shrink-0 text-[#1677F8]" /><div><p className="font-bold">Checkpoint saved</p>{currentExecution?.verified_at && <p className="mt-1 text-xs text-[#536779]">Recorded {new Date(currentExecution.verified_at).toLocaleString()}</p>}<p className="mt-1 text-xs text-[#536779]">You can revisit this completed step without changing your progress.</p></div></div> : <div className="space-y-4 rounded-2xl border border-[#DCE6F0] bg-[#FAFBFC] p-4 sm:p-5">
+                  {currentStepComplete ? <motion.div initial={prefersReducedMotion ? false : { opacity: 0, y: 6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.3, ease: 'easeOut' }} className="flex items-start gap-3 rounded-2xl border border-[#BFE5E0] bg-[#EEF8F6] p-4 text-sm text-[#17324D]"><CheckCircle2 size={22} className="mt-0.5 shrink-0 text-[#2A9D90]" /><div><p className="font-bold">Checkpoint saved</p>{currentExecution?.verified_at && <p className="mt-1 text-xs text-[#536779]">Recorded {new Date(currentExecution.verified_at).toLocaleString()}</p>}<p className="mt-1 text-xs text-[#536779]">You can revisit this completed step without changing your progress.</p></div></motion.div> : <div className="space-y-4 rounded-2xl border border-[#DCE6F0] bg-[#FAFBFC] p-4 sm:p-5">
                     <div><p className="text-sm font-bold text-[#17324D]">Record this checkpoint</p><p className="mt-1 text-xs leading-5 text-[#536779]">Your confirmation is saved to this procedure run.</p></div>
                     <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-6 text-[#344B60]"><input type="checkbox" checked={performed} onChange={(event) => setPerformed(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 rounded border-[#C8D6E4] accent-[#176E8A]" /><span>I performed this checkpoint according to the approved procedure.</span></label>
                     {needsStepVerification && <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-6 text-[#344B60]"><input type="checkbox" checked={verified} onChange={(event) => setVerified(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 rounded border-[#C8D6E4] accent-[#176E8A]" /><span>I checked the expected observation and applicable safety conditions.</span></label>}
@@ -606,7 +610,7 @@ export function GuidedWorkflowsPage() {
           </>}
         </section>}
 
-        {stage === 3 && procedure && run && selectedMachine && <section aria-labelledby="review-heading" className="w-full max-w-4xl space-y-5">
+        {stage === 4 && procedure && run && selectedMachine && <section aria-labelledby="review-heading" className="mx-auto max-w-3xl space-y-5">
           <div className={`${theme.panel} overflow-hidden`}>
             <div className="border-b border-[#DCE6F0] bg-[#F7FAFB] p-6 sm:p-9">
               <div className={`grid h-14 w-14 place-items-center rounded-2xl ${serverConfirmedComplete ? 'bg-[#E3EEF2] text-[#176E8A]' : 'bg-amber-100 text-amber-800'}`}>{serverConfirmedComplete ? <CheckCircle2 size={30} /> : <AlertTriangle size={28} />}</div>

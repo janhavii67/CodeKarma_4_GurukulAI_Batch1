@@ -1,5 +1,5 @@
-export function getMachineImage(name?: string, category?: string): string {
-  const normalized = (name || '').toLowerCase();
+export function getMachineImage(name?: string, category?: string | null): string {
+  const normalized = `${name || ''} ${category || ''}`.toLowerCase();
   if (normalized.includes('ct') || normalized.includes('scan') || normalized.includes('computed')) {
     return '/assets/machines/ct-scan.jpg';
   }

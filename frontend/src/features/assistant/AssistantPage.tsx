@@ -9,17 +9,18 @@ import {
   AudioLines,
   Paperclip,
   LoaderCircle,
+  Brain,
 } from 'lucide-react';
 import { ConversationList } from './components/ConversationList';
 import { MessageList } from './components/MessageList';
 import { MachineContextFilter, type MachineOption } from './components/MachineContextFilter';
 import { SourceDetailDrawer } from './components/SourceDetailDrawer';
+import { TutorMemoryPanel } from './components/TutorMemoryPanel';
 import { useAssistantChat } from './useAssistantChat';
 import { listConversations, getConversation, deleteConversation } from './api';
 import { api } from '../../lib/api/client';
-import type { AudioAnalysisResult, ChatResponse, Conversation, Message } from './types';
+import type { ChatResponse, Conversation } from './types';
 
-const MAX_AUDIO_UPLOAD_BYTES = 100 * 1024 * 1024;
 const MAX_MEDIA_UPLOAD_BYTES = 14 * 1024 * 1024;
 const SYNTHETIC_DEMO_MARKER = 'SYNTHETIC DEMO DATA — NOT FOR REAL MACHINE OPERATION';
 
@@ -47,6 +48,8 @@ export const AssistantPage: React.FC = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConversations, setLoadingConversations] = useState<boolean>(false);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
+  const [isMemoryPanelOpen, setIsMemoryPanelOpen] = useState(false);
+  const [tutorMemoryCount, setTutorMemoryCount] = useState(0);
   const [isSidebarOpenMobile, setIsSidebarOpenMobile] = useState<boolean>(false);
   const [inputMessage, setInputMessage] = useState<string>('');
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState<boolean>(false);
@@ -101,7 +104,6 @@ export const AssistantPage: React.FC = () => {
     setConversationId,
     appendLocalMessages,
     updateLocalMessage,
-    removeLocalMessage,
   } = useAssistantChat();
 
   const selectedMachine = machineOptions.find((machine) => machine.id === machineId);
@@ -194,96 +196,24 @@ export const AssistantPage: React.FC = () => {
     await sendMessage(text);
   };
 
-  const handleAudioUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = '';
-    if (!file) return;
-
-    if (!/\.(wav|flac|mp3|m4a|m4b|m4p|aac|aiff|aif|ogg|opus|weba|webm|mp4|mov|avi|flv|mpeg|mpg|wmv|3gp|qt)$/i.test(file.name)) {
-      setAudioError('Choose a supported audio file or a video with an audio track.');
-      return;
-    }
-    if (file.size > MAX_AUDIO_UPLOAD_BYTES) {
-      setAudioError('Audio files must be 100 MB or smaller.');
-      return;
-    }
-    if (isStreaming || isAudioAnalyzing) return;
-
-    setAudioError('');
-    setIsAudioAnalyzing(true);
-    const timestamp = Date.now();
-    const userMessageId = `audio-user-${timestamp}`;
-    const resultMessageId = `asst-audio-${timestamp}`;
-    const now = new Date().toISOString();
-    const uploadMessage: Message = {
-      id: userMessageId,
-      role: 'user',
-      content: 'Uploaded machine sound',
-      attachment: makeLocalAttachment(file),
-      created_at: now,
-    };
-    const pendingMessage: Message = {
-      id: resultMessageId,
-      role: 'assistant',
-      content: 'Comparing the recording with approved machine-sound references…',
-      is_ai_generated: true,
-      evidence_status: 'n_a',
-      created_at: now,
-    };
-    appendLocalMessages([uploadMessage, pendingMessage]);
-
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      if (machineId) form.append('machine_id', machineId);
-      const result = await api.postForm<AudioAnalysisResult>('/audio/analyze', form);
-      updateLocalMessage(resultMessageId, {
-        content: result.status === 'MATCHED'
-          ? 'This recording resembles a published expert-approved sound reference.'
-          : 'The recording did not produce a reliable approved sound match.',
-        audio_analysis: result,
-      });
-
-      if (result.status === 'MATCHED' && result.matched_reference) {
-        const reference = result.matched_reference;
-        const context = [reference.machine_name, reference.model_name, reference.component, reference.operation].filter(Boolean).join(', ');
-        const answerMachineId = machineId || reference.machine_id || undefined;
-        const sent = await sendMessage(
-          `Explain the approved expert interpretation for the machine sound similar to "${reference.title}"${context ? ` (${context})` : ''}. State only observations and interpretations supported by published approved sources. Clearly distinguish acoustic similarity from a confirmed fault or safety status. Do not infer causes, additional faults, probabilities, corrective actions, settings, tolerances, or safety instructions. If sources do not explain the sound, say evidence is insufficient.`,
-          {
-            machineId: answerMachineId,
-            audioAnalysisJobId: result.id,
-          },
-        );
-        if (sent) removeLocalMessage(resultMessageId);
-      } else {
-        const sent = await sendMessage(
-          'Save this machine audio comparison result. Do not diagnose a fault or suggest a procedure.',
-          { machineId: machineId || undefined, audioAnalysisJobId: result.id },
-        );
-        if (sent) removeLocalMessage(resultMessageId);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'The audio could not be analyzed. Check that it is a supported recording.';
-      updateLocalMessage(resultMessageId, {
-        content: `I couldn't analyze this recording: ${message}`,
-        evidence_status: 'n_a',
-      });
-    } finally {
-      setIsAudioAnalyzing(false);
-    }
-  };
-
   const handleMediaUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const isVoiceQuestionUpload = event.currentTarget === audioInputRef.current;
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = '';
     if (!file) return;
-    if (!/\.(wav|flac|mp3|m4a|aac|aiff|aif|ogg|opus|weba|webm|mp4|mov|avi|flv|mpeg|mpg|wmv|3gp|bmp|png|jpe?g|webp|pdf|docx|pptx|xlsx|csv|txt|md)$/i.test(file.name)) {
-      setAudioError('Choose a supported audio, video, image, or document file.');
+    const isAudioFile = file.type.toLowerCase().startsWith('audio/') || /\.(wav|flac|mp3|m4a|aac|aiff|aif|ogg|opus|weba)$/i.test(file.name);
+    const isSupportedVoiceFormat = /\.(wav|flac|mp3|m4a|aac|aiff|aif|ogg|opus|weba)$/i.test(file.name);
+    const isSupportedMediaFormat = /\.(webm|mp4|mov|avi|flv|mpeg|mpg|wmv|3gp|bmp|png|jpe?g|webp|pdf|docx|pptx|xlsx|csv|txt|md)$/i.test(file.name);
+    if (isVoiceQuestionUpload ? !isSupportedVoiceFormat : isAudioFile || !isSupportedMediaFormat) {
+      setAudioError(isVoiceQuestionUpload
+        ? 'Choose a supported audio file containing your spoken question.'
+        : 'Choose a supported video, image, or document. Use Ask by voice for spoken questions.');
       return;
     }
     if (file.size > MAX_MEDIA_UPLOAD_BYTES) {
-      setAudioError('Tutor attachments must be 14 MB or smaller. Use the sound-match button for audio recordings up to 100 MB.');
+      setAudioError(isVoiceQuestionUpload
+        ? 'Voice-question uploads must be 14 MB or smaller and no longer than 120 seconds.'
+        : 'AI Tutor attachments must be 14 MB or smaller.');
       return;
     }
     if (isStreaming || isAudioAnalyzing) return;
@@ -301,7 +231,7 @@ export const AssistantPage: React.FC = () => {
       {
         id: userMessageId,
         role: 'user',
-        content: question || 'Please analyze this attachment in relation to approved manufacturing knowledge.',
+        content: question || (isVoiceQuestionUpload ? 'Transcribing your spoken question…' : 'Please analyze this attachment in relation to approved knowledge.'),
         attachment: localAttachment,
         created_at: now,
       },
@@ -315,11 +245,9 @@ export const AssistantPage: React.FC = () => {
       },
     ]);
 
-    const progressSteps = [
-      'Reading the attachment…',
-      'Finding related approved knowledge…',
-      'Preparing a cited answer…',
-    ];
+    const progressSteps = isVoiceQuestionUpload
+      ? ['Transcribing your spoken question…', 'Finding relevant expert knowledge…', 'Preparing a cited answer…']
+      : ['Reading the attachment…', 'Finding related approved knowledge…', 'Preparing a cited answer…'];
     let progressIndex = 0;
     const progressTimer = window.setInterval(() => {
       progressIndex = Math.min(progressIndex + 1, progressSteps.length - 1);
@@ -335,7 +263,12 @@ export const AssistantPage: React.FC = () => {
       const result = await api.postForm<ChatResponse>('/assistant/chat/media', form);
       setConversationId(result.conversation_id);
       if (result.attachment) releaseLocalPreview(localAttachment.preview_url);
-      updateLocalMessage(userMessageId, { attachment: result.attachment || localAttachment });
+      const userContent = result.audio_transcript
+        ? question
+          ? `Typed prompt: ${question}\n\nVoice transcript: ${result.audio_transcript}`
+          : result.audio_transcript
+        : question || (isVoiceQuestionUpload ? 'Spoken question attached.' : 'Please analyze this attachment in relation to approved knowledge.');
+      updateLocalMessage(userMessageId, { content: userContent, attachment: result.attachment || localAttachment });
       updateLocalMessage(resultMessageId, {
         id: result.message_id,
         conversation_id: result.conversation_id,
@@ -446,6 +379,16 @@ export const AssistantPage: React.FC = () => {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsMemoryPanelOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 py-2 text-xs font-semibold text-indigo-800 shadow-sm transition hover:bg-indigo-100"
+              aria-label="Manage Tutor memory"
+              title="Manage what the Tutor remembers across chats"
+            >
+              <Brain className="h-4 w-4" />
+              <span className="hidden sm:inline">Memory{tutorMemoryCount ? ` · ${tutorMemoryCount}` : ''}</span>
+            </button>
             <MachineContextFilter
               selectedMachineId={machineId}
               onSelectMachine={setMachineId}
@@ -529,7 +472,7 @@ export const AssistantPage: React.FC = () => {
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask about SOPs, machines, procedures, or attach a photo, recording, or manual..."
+                placeholder="Ask about SOPs, machines, and expert knowledge, or upload a voice question..."
                 rows={2}
                 disabled={isStreaming || isAudioAnalyzing}
                 className="max-h-36 w-full resize-none border-0 bg-transparent px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-0 disabled:opacity-50"
@@ -539,15 +482,15 @@ export const AssistantPage: React.FC = () => {
                 <input
                   ref={audioInputRef}
                   type="file"
-                  accept=".wav,.flac,.mp3,.m4a,.m4b,.m4p,.aac,.aiff,.aif,.ogg,.opus,.weba,.webm,.mp4,.mov,.avi,.flv,.mpeg,.mpg,.wmv,.3gp,.qt,audio/wav,audio/flac,audio/mpeg,audio/aac,audio/aiff,audio/ogg,audio/opus,audio/webm,video/mp4,video/quicktime,video/avi,video/x-flv,video/mpeg,video/wmv,video/3gpp,video/webm"
-                  aria-label="Upload machine audio"
+                  accept=".wav,.flac,.mp3,.m4a,.aac,.aiff,.aif,.ogg,.opus,.weba,audio/wav,audio/flac,audio/mpeg,audio/aac,audio/aiff,audio/ogg,audio/opus"
+                  aria-label="Upload spoken question audio"
                   className="sr-only"
-                  onChange={handleAudioUpload}
+                  onChange={handleMediaUpload}
                 />
                 <input
                   ref={mediaInputRef}
                   type="file"
-                  accept="audio/wav,audio/flac,audio/mpeg,audio/m4a,audio/aac,audio/aiff,audio/ogg,audio/opus,audio/webm,video/mp4,video/quicktime,video/avi,video/x-flv,video/mpeg,video/wmv,video/3gpp,video/webm,image/bmp,image/png,image/jpeg,image/webp,application/pdf,.aiff,.aif,.aac,.opus,.weba,.mov,.avi,.flv,.mpeg,.mpg,.wmv,.3gp,.docx,.pptx,.xlsx,text/csv,text/plain,.md"
+                  accept="video/mp4,video/quicktime,video/avi,video/x-flv,video/mpeg,video/wmv,video/3gpp,video/webm,image/bmp,image/png,image/jpeg,image/webp,application/pdf,.mov,.avi,.flv,.mpeg,.mpg,.wmv,.3gp,.docx,.pptx,.xlsx,text/csv,text/plain,.md"
                   aria-label="Select media or document file"
                   className="sr-only"
                   onChange={handleMediaUpload}
@@ -557,7 +500,7 @@ export const AssistantPage: React.FC = () => {
                   onClick={() => mediaInputRef.current?.click()}
                   disabled={isStreaming || isAudioAnalyzing}
                   className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 sm:px-3"
-                  title="Attach audio, video, image, or document (14 MB max)"
+                  title="Attach a video, image, or document (14 MB max)"
                   aria-label="Attach media or document"
                 >
                   {isAudioAnalyzing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
@@ -568,11 +511,11 @@ export const AssistantPage: React.FC = () => {
                   onClick={() => audioInputRef.current?.click()}
                   disabled={isStreaming || isAudioAnalyzing}
                   className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 sm:px-3"
-                  title="Match a machine sound recording with approved references"
-                  aria-label="Upload machine audio"
+                  title="Upload a recording of your spoken question"
+                  aria-label="Ask the AI Tutor by voice"
                 >
                   {isAudioAnalyzing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
-                  <span className="hidden sm:inline">Match sound</span>
+                  <span className="hidden sm:inline">Ask by voice</span>
                 </button>
                 {isStreaming ? (
                   <button
@@ -617,6 +560,12 @@ export const AssistantPage: React.FC = () => {
         sourceId={activeSourceId}
         onClose={() => setActiveSourceId(null)}
       />
+      {isMemoryPanelOpen && (
+        <TutorMemoryPanel
+          onClose={() => setIsMemoryPanelOpen(false)}
+          onCountChange={setTutorMemoryCount}
+        />
+      )}
       </div>
     </div>
   );

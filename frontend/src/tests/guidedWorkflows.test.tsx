@@ -93,7 +93,11 @@ describe('Guided Workflow', () => {
     const progress = screen.getByRole('progressbar', { name: 'Procedure progress' });
     expect(progress).toHaveAttribute('aria-valuenow', '0');
     expect(progress).toHaveAttribute('aria-valuemax', '2');
-    expect(screen.getByRole('button', { name: /Step 1: Clear the room, Current/ })).toHaveAttribute('aria-current', 'step');
+    const currentStep = screen.getByRole('button', { name: /Step 1: Clear the room, Current/ });
+    expect(currentStep).toHaveAttribute('aria-current', 'step');
+    expect(currentStep.querySelector('[data-step-label]')).toHaveTextContent('Clear the room');
+    expect(currentStep.querySelector('[data-step-label]')).toHaveClass('font-extrabold');
+    expect(currentStep.querySelector('[data-step-label]')).not.toHaveTextContent('Inspect the scan room.');
     expect(screen.getByRole('button', { name: /Step 2: Confirm scanner status, Locked/ })).toBeDisabled();
   });
 
@@ -283,6 +287,8 @@ describe('Guided Workflow', () => {
       { ...procedure.steps[0], details: {
         asset_ids: ['step-photo', 'step-audio', 'pending-step-doc'],
         notes: 'Keep the door log within reach.',
+        narration_text: 'Confirm the MRI room is clear before starting.',
+        source_refs: [{ title: 'ACR Manual on MR Safety', publisher: 'ACR', url: 'https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/radiology-safety/mr-safety' }],
         quality_checkpoints: ['Door log reviewed', 'Room is clear'],
         tools: ['Metal detector wand'],
         stop_condition: 'Stop if the door interlock is open.',
@@ -311,6 +317,8 @@ describe('Guided Workflow', () => {
     expect(screen.getByText('Stop if the door interlock is open.')).toBeInTheDocument();
     expect(screen.getByText('Metal detector wand')).toBeInTheDocument();
     expect(screen.getByText('Keep the door log within reach.')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Verified guidance sources' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /ACR Manual on MR Safety/ })).toHaveAttribute('href', 'https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/radiology-safety/mr-safety');
     expect(screen.getByRole('heading', { name: 'Shared procedure materials' })).toBeInTheDocument();
     expect(screen.getByLabelText('Scanner manual preview')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open or download Scanner manual' })).toHaveAttribute('href', 'http://api.test/api/v1/media/shared-manual');

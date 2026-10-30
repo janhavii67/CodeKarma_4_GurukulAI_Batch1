@@ -94,7 +94,9 @@ def list_my_troubleshooting_sessions(
     db: Session = Depends(get_db),
 ):
     from app.services.troubleshooting_service import session_payload
-    sessions = (db.query(TroubleshootingSession).filter(TroubleshootingSession.user_id == auth_ctx.user.id)
+    # Decision-tree walks have their own history (/decision-trees/walk/my); this list is evidence sessions.
+    sessions = (db.query(TroubleshootingSession).filter(TroubleshootingSession.user_id == auth_ctx.user.id,
+                                                        TroubleshootingSession.guide_version_id.is_(None))
                 .order_by(TroubleshootingSession.started_at.desc()).limit(100).all())
     return [session_payload(session) for session in sessions]
 

@@ -142,6 +142,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const isProviderUnavailable = Boolean(message.provider_unavailable);
 
   if (isUser) {
+    const isVoiceQuestion = Boolean(message.attachment?.mime.toLowerCase().startsWith('audio/'));
     const displayContent = message.attachment
       ? message.content
           .split('\n')
@@ -157,6 +158,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <User className="h-4 w-4" />
           </div>
           <div className="min-w-0 rounded-[1.4rem] rounded-br-md bg-gradient-to-br from-blue-600 to-blue-700 px-4 py-3 text-sm leading-relaxed text-white shadow-md shadow-blue-900/10">
+            {isVoiceQuestion && displayContent && (
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-blue-100">Voice question transcript</p>
+            )}
             {displayContent && <p className="whitespace-pre-wrap">{displayContent}</p>}
             {message.attachment && <AttachmentPreview attachment={message.attachment} />}
             {message.created_at && (

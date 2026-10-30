@@ -8,6 +8,9 @@ import type {
   SourceRef,
   TutorHandoffSuggestion,
   TutorHandoffStartResponse,
+  TutorMemory,
+  TutorMemoryCategory,
+  TutorMemoryList,
 } from './types';
 import { normalizeSourceRef } from './types';
 
@@ -244,6 +247,29 @@ export async function getConversation(conversationId: string): Promise<Conversat
  */
 export async function deleteConversation(conversationId: string): Promise<{ status: string; id: string }> {
   return api.delete<{ status: string; id: string }>(`/assistant/conversations/${conversationId}`);
+}
+
+export async function listTutorMemories(): Promise<TutorMemoryList> {
+  return api.get<TutorMemoryList>('/assistant/memories');
+}
+
+export async function createTutorMemory(category: TutorMemoryCategory, content: string): Promise<TutorMemory> {
+  return api.post<TutorMemory>('/assistant/memories', { category, content });
+}
+
+export async function updateTutorMemory(
+  id: string,
+  updates: { category?: TutorMemoryCategory; content?: string },
+): Promise<TutorMemory> {
+  return api.patch<TutorMemory>(`/assistant/memories/${encodeURIComponent(id)}`, updates);
+}
+
+export async function deleteTutorMemory(id: string): Promise<{ status: string; id: string }> {
+  return api.delete<{ status: string; id: string }>(`/assistant/memories/${encodeURIComponent(id)}`);
+}
+
+export async function clearTutorMemories(): Promise<{ status: string; deleted_count: number }> {
+  return api.delete<{ status: string; deleted_count: number }>('/assistant/memories');
 }
 
 /**

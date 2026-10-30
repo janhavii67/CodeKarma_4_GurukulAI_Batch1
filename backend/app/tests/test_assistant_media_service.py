@@ -11,8 +11,10 @@ from app.core.exceptions import ValidationError
 from app.modules.assistant.providers.llm_base import LLMRequest
 from app.modules.assistant.providers.llm_gemini import GeminiLLMProvider
 from app.modules.assistant.models import ChatMessage
+from app.services.ai_orchestrator import AIResponse, AICapability
 from app.services import audio_service
 from app.services.assistant_media_service import prepare_attachment
+from app.api.v1.endpoints import assistant as assistant_endpoint
 
 
 def _wav(seconds: float = 1.0) -> bytes:
@@ -149,6 +151,53 @@ def test_gemini_provider_receives_inline_media_after_the_prompt():
     assert len(contents) == 2
     assert contents[1].inline_data.mime_type == "image/jpeg"
     assert contents[1].inline_data.data == b"\xff\xd8\xffsample"
+
+
+def test_tutor_voice_upload_transcribes_only_and_passes_text_for_rag(monkeypatch):
+    normalized_wav = _wav()
+    captured = []
+    monkeypatch.setattr(assistant_endpoint, "extract_features", lambda _data, _name: {
+        "normalized_audio_wav": normalized_wav,
+    })
+
+    def fake_execute(request):
+        captured.append(request)
+        return AIResponse(
+            request.request_id,
+            request.capability,
+            "succeeded",
+            result="Transcription: How do I perform daily CT quality control?",
+        )
+
+    monkeypatch.setattr(assistant_endpoint.ai_orchestrator, "execute", fake_execute)
+    transcript = assistant_endpoint._transcribe_voice_question(b"voice bytes", "question.wav")
+
+    assert transcript == "How do I perform daily CT quality control?"
+    assert len(captured) == 1
+    request = captured[0]
+    assert request.capability == AICapability.SPEECH_TRANSCRIPTION
+    assert request.payload.media_parts == [{"mime_type": "audio/wav", "data": normalized_wav}]
+    assert "Transcribe the spoken words" in request.payload.prompt
+    assert "do not describe equipment" in request.payload.prompt.lower()
+    assert "Ignore non-speech machine sounds" in request.payload.system_prompt
+
+
+@pytest.mark.parametrize("result", [
+    "NO_SPOKEN_QUESTION.",
+    "No intelligible spoken question",
+    "`NO_SPOKEN_QUESTION`",
+])
+def test_tutor_voice_upload_rejects_recordings_without_a_question(monkeypatch, result):
+    monkeypatch.setattr(assistant_endpoint, "extract_features", lambda _data, _name: {
+        "normalized_audio_wav": _wav(),
+    })
+    monkeypatch.setattr(assistant_endpoint.ai_orchestrator, "execute", lambda request:
+        AIResponse(request.request_id, request.capability, "succeeded", result=result))
+
+    with pytest.raises(ValidationError) as error:
+        assistant_endpoint._transcribe_voice_question(b"machine sound", "machine.wav")
+
+    assert error.value.code == "spoken_question_not_detected"
 
 
 def test_media_chat_route_requires_csrf_and_records_only_attachment_name(client: TestClient, db_session: Session):

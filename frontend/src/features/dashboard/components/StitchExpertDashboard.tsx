@@ -204,6 +204,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
           <div className="lg:col-span-5 grid grid-cols-2 gap-4">
             <Link
               to="/app/knowledge-assets?kind=video"
+              aria-label="Video"
               className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between text-sm font-semibold text-[#08264A] hover:border-[#1677F8] hover:bg-white hover:text-[#1677F8] transition-all"
             >
               <div className="flex items-center gap-3">
@@ -215,6 +216,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
 
             <Link
               to="/app/knowledge-assets?kind=audio"
+              aria-label="Audio"
               className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between text-sm font-semibold text-[#08264A] hover:border-[#1677F8] hover:bg-white hover:text-[#1677F8] transition-all"
             >
               <div className="flex items-center gap-3">
@@ -226,6 +228,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
 
             <Link
               to="/app/knowledge-assets?kind=notes"
+              aria-label="Notes"
               className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between text-sm font-semibold text-[#08264A] hover:border-[#1677F8] hover:bg-white hover:text-[#1677F8] transition-all"
             >
               <div className="flex items-center gap-3">
@@ -237,6 +240,7 @@ export const StitchExpertDashboard: React.FC<StitchExpertDashboardProps> = ({
 
             <Link
               to="/app/knowledge-assets?kind=image"
+              aria-label="Photos"
               className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between text-sm font-semibold text-[#08264A] hover:border-[#1677F8] hover:bg-white hover:text-[#1677F8] transition-all"
             >
               <div className="flex items-center gap-3">

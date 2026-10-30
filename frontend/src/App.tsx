@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './routes/ProtectedRoute';
@@ -25,8 +25,12 @@ import { MachineKnowledgePage } from './features/knowledge/MachineKnowledgePage'
 import { ProcedureCreatePage } from './features/knowledge/ProcedureCreatePage';
 import { LandingPage } from './features/landing/LandingPage';
 import { MachineDiaryLibraryPage, MachineDiaryPage } from './features/knowledge/MachineDiaryLibraryPage';
-import { SoundInferencePage } from './features/sound-inference/SoundInferencePage';
 import { KnowledgeDetailPage } from './features/knowledge/KnowledgeDetailPage';
+import { DecisionTreesPage } from './features/decision-trees/DecisionTreesPage';
+import { DecisionTreeBuilderPage } from './features/decision-trees/DecisionTreeBuilderPage';
+import { TroubleshootHubPage } from './features/decision-trees/trainee/TroubleshootHubPage';
+import { TroubleshootTreeSessionPage } from './features/decision-trees/trainee/TroubleshootTreeSessionPage';
+import { TroubleshootingWorkspacePage } from './features/decision-trees/TroubleshootingWorkspacePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -70,6 +74,8 @@ export const App: React.FC = () => {
               <Route path="knowledge/new" element={<ProtectedRoute requiredPermission="knowledge.create"><KnowledgeEditorPage /></ProtectedRoute>} />
               <Route path="knowledge/:id" element={<ProtectedRoute requiredAnyPermission={['knowledge.view_published', 'knowledge.create', 'knowledge.approve']}><KnowledgeDetailPage /></ProtectedRoute>} />
               <Route path="knowledge/:id/edit" element={<ProtectedRoute requiredPermission="knowledge.create"><KnowledgeEditorPage /></ProtectedRoute>} />
+              <Route path="decision-trees" element={<ProtectedRoute requiredPermission="knowledge.create"><DecisionTreesPage /></ProtectedRoute>} />
+              <Route path="decision-trees/:guideId" element={<ProtectedRoute requiredAnyPermission={['knowledge.create', 'knowledge.approve']}><DecisionTreeBuilderPage /></ProtectedRoute>} />
               <Route path="reviews" element={<ProtectedRoute requiredPermission="knowledge.approve"><ReviewsPage /></ProtectedRoute>} />
               <Route path="guided-workflows" element={<ProtectedRoute requiredPermission="procedure.execute"><GuidedWorkflowsPage /></ProtectedRoute>} />
               <Route path="sound-analysis" element={<ProtectedRoute requiredPermission="audio.analyze"><SoundAnalysisPage /></ProtectedRoute>} />
@@ -81,13 +87,18 @@ export const App: React.FC = () => {
               {/* AI Knowledge Assistant (Module 02) */}
               <Route path="assistant" element={<ProtectedRoute requiredPermission="assistant.use"><AssistantPage /></ProtectedRoute>} />
 
-              {/* Medical Equipment Sound Intelligence */}
-              <Route path="sound-inference" element={<ProtectedRoute requiredPermission="audio.analyze"><SoundInferencePage /></ProtectedRoute>} />
+              {/* Retire the synthetic sound classifier and preserve the old URL as an alias. */}
+              <Route path="sound-inference" element={<ProtectedRoute requiredPermission="audio.analyze"><Navigate to="/app/sound-analysis" replace /></ProtectedRoute>} />
 
               <Route
                 path="troubleshooting"
-                element={<ProtectedRoute requiredPermission="troubleshoot.use"><TroubleshootingPage /></ProtectedRoute>}
+                element={<ProtectedRoute requiredAnyPermission={['troubleshoot.use', 'knowledge.create']}><TroubleshootingWorkspacePage /></ProtectedRoute>}
               />
+              <Route path="troubleshooting/investigation" element={<ProtectedRoute requiredPermission="troubleshoot.use"><TroubleshootingPage /></ProtectedRoute>} />
+              <Route path="troubleshooting/guided" element={<ProtectedRoute requiredPermission="troubleshoot.use"><TroubleshootHubPage /></ProtectedRoute>} />
+              <Route path="troubleshooting/interactive/*" element={<Navigate to="/app/troubleshooting" replace />} />
+              <Route path="simulator/*" element={<Navigate to="/app/failure-simulator" replace />} />
+              <Route path="troubleshooting/guided/:sessionId" element={<ProtectedRoute requiredPermission="troubleshoot.use"><TroubleshootTreeSessionPage /></ProtectedRoute>} />
               <Route
                 path="knowledge-graph"
                 element={<ProtectedRoute requiredPermission="knowledge.view_published"><ModulePlaceholderPage moduleKeyOverride="knowledge-graph" /></ProtectedRoute>}

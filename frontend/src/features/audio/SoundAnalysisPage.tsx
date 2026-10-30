@@ -12,7 +12,6 @@ import {
   ShieldAlert,
   Send,
   BookOpen,
-  Wrench,
   ChevronDown,
   BadgeCheck,
   Play,
@@ -32,7 +31,6 @@ import {
   Info,
   Headphones,
   Check,
-  HelpCircle,
   AlertOctagon,
   FileText,
 } from 'lucide-react';
@@ -94,6 +92,14 @@ interface AnalysisResult {
   similarity_score?: number;
   reason_code: string;
   message: string;
+  audio_observation?: string | null;
+  processing_metadata?: {
+    input_format: string;
+    duration_seconds: number;
+    decoded_sample_rate: number;
+    normalized_sample_rate: number;
+    channels: number;
+  } | null;
   limitation: string;
   requires_expert_review: boolean;
   candidate_matches: Candidate[];
@@ -196,49 +202,6 @@ function wavFromBuffer(buffer: AudioBuffer): Blob {
     view.setInt16(44 + i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
   }
   return new Blob([bytes], { type: 'audio/wav' });
-}
-
-function generateSynthesizedSample(kind: 'xray' | 'ct' | 'mri' | 'ecg'): File {
-  const sampleRate = 16000;
-  const duration = 2.0;
-  const frameCount = Math.floor(sampleRate * duration);
-  const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-  const buffer = audioCtx.createBuffer(1, frameCount, sampleRate);
-  const data = buffer.getChannelData(0);
-
-  for (let i = 0; i < frameCount; i++) {
-    const t = i / sampleRate;
-    if (kind === 'xray') {
-      data[i] =
-        0.35 * Math.sin(2 * Math.PI * 150 * t) +
-        0.15 * Math.sin(2 * Math.PI * 300 * t) +
-        (Math.random() - 0.5) * 0.04;
-    } else if (kind === 'ct') {
-      data[i] =
-        0.35 * Math.sin(2 * Math.PI * 120 * t) +
-        0.12 * Math.sin(2 * Math.PI * 240 * t) +
-        (Math.random() - 0.5) * 0.06;
-    } else if (kind === 'mri') {
-      const isKnock = (i % 4000) < 450;
-      data[i] =
-        (isKnock ? 0.45 * Math.sin(2 * Math.PI * 600 * t) : 0.05 * Math.sin(2 * Math.PI * 80 * t)) +
-        (Math.random() - 0.5) * 0.04;
-    } else {
-      const isBeep = (i % 16000) < 1800;
-      data[i] =
-        (isBeep ? 0.40 * Math.sin(2 * Math.PI * 1000 * t) : 0) +
-        (Math.random() - 0.5) * 0.02;
-    }
-  }
-
-  const blob = wavFromBuffer(buffer);
-  const names: Record<string, string> = {
-    xray: 'sample-xray-generator-warmup.wav',
-    ct: 'sample-ct-gantry-low-speed.wav',
-    mri: 'sample-mri-gradient-knocking.wav',
-    ecg: 'sample-ecg-normal-qrs-beep.wav',
-  };
-  return new File([blob], names[kind], { type: 'audio/wav' });
 }
 
 function citationUrl(citation: Citation) {
@@ -713,22 +676,24 @@ export const SoundAnalysisPage: React.FC = () => {
 
   const runAnalysis = async () => {
     if (!file) return;
+    if (!selectedMachine) {
+      setError('Select the exact machine before comparing its recording with approved references.');
+      return;
+    }
     setBusy(true);
     setError('');
     setResult(null);
     setComparisonCandidate(null);
-    setNotice('Extracting log-mel acoustic filterbanks & matching against published medical references…');
+    setNotice('Processing the recording, describing audible content, and checking approved references for this machine…');
 
     const form = new FormData();
     form.append('file', file);
-    if (selectedMachine) {
-      form.append('machine_id', selectedMachine);
-    }
+    form.append('machine_id', selectedMachine);
 
     try {
       const response = await api.postForm<AnalysisResult>('/audio/analyze', form);
       setResult(response);
-      setNotice('Acoustic pattern comparison complete. Review diagnostic details below.');
+      setNotice('Audio processing complete. Review the AI observations and machine-specific reference comparison below.');
       await loadReferences();
       await loadHistory();
       setTimeout(() => {
@@ -908,7 +873,7 @@ export const SoundAnalysisPage: React.FC = () => {
 
   // Primary candidate: use matched_reference, or top candidate in ambiguous/no-match states
   const primaryCandidate = useMemo(() => {
-    return result?.matched_reference || result?.candidate_matches?.[0] || null;
+    return result?.matched_reference || null;
   }, [result]);
 
   // Find Matched Expert Audio Record from library
@@ -962,31 +927,6 @@ export const SoundAnalysisPage: React.FC = () => {
     );
   }, [result, primaryCandidate]);
 
-  // Cross-equipment detection flag (Requirement 4: flag cross-equipment matches without silent filtering)
-  const crossEquipmentWarning = useMemo(() => {
-    if (!primaryCandidate) return null;
-    const candMachine = primaryCandidate.machine_name || '';
-    if (selectedModality !== 'all') {
-      const matchMod = MODALITY_FILTERS.find((m) => m.id === selectedModality);
-      if (
-        matchMod?.matchStr &&
-        !candMachine.toLowerCase().includes(matchMod.matchStr) &&
-        !primaryCandidate.title.toLowerCase().includes(matchMod.matchStr)
-      ) {
-        return `Cross-equipment candidate: This recording matched a ${candMachine || 'different equipment'} reference profile. The backend matched purely on acoustic frequency signatures without modality constraints. Technician verification is required before applying this guidance.`;
-      }
-    }
-    if (activeMachineObj && candMachine) {
-      if (
-        !candMachine.toLowerCase().includes(activeMachineObj.name.toLowerCase()) &&
-        !activeMachineObj.name.toLowerCase().includes(candMachine.toLowerCase())
-      ) {
-        return `Cross-equipment candidate: Selected machine is "${activeMachineObj.name}", but the closest acoustic signature belongs to "${candMachine}". Technician verification is required.`;
-      }
-    }
-    return null;
-  }, [primaryCandidate, selectedModality, activeMachineObj]);
-
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -1001,14 +941,14 @@ export const SoundAnalysisPage: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight text-slate-900">
-                  Acoustic Diagnostic Workstation
+                  Machine Sound Analysis
                 </h1>
                 <span className="rounded-md bg-teal-50 px-2.5 py-0.5 text-xs font-bold text-teal-800 ring-1 ring-inset ring-teal-200">
                   SUJANA AI · Module 07
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium">
-                Medical equipment sound matching, baseline comparison & condition inference
+                AI audio observations and machine-specific approved reference comparison
               </p>
             </div>
           </div>
@@ -1016,7 +956,7 @@ export const SoundAnalysisPage: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <div className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50/80 px-3 py-1 font-semibold text-emerald-800">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              Engine Online · Log-Mel FFT
+              Audio processor ready · AI observation + acoustic comparison
             </div>
 
             <button
@@ -1046,7 +986,7 @@ export const SoundAnalysisPage: React.FC = () => {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  Diagnostic Console
+                  Audio Analysis
                 </button>
                 <button
                   type="button"
@@ -1071,13 +1011,13 @@ export const SoundAnalysisPage: React.FC = () => {
         </div>
       </header>
 
-      {/* ── 2. CLINICAL DIAGNOSTIC DISCLAIMER ─────────────────────────────────── */}
+      {/* ── AUDIO OBSERVATION AND MATCHING LIMITS ─────────────────────────────── */}
       <div className="bg-amber-50/70 border-b border-amber-200/80 px-4 py-2.5 text-xs text-amber-950 font-medium">
         <div className="w-full flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 shrink-0 text-amber-600" />
             <span>
-              <strong>Diagnostic Protocol Notice:</strong> Acoustic matching identifies physical sound resemblance against peer-approved reference baselines. Acoustic similarity does not replace certified field service inspection, physical tool measurement, or electrical safety testing. It does <strong>NOT</strong> confirm a hardware fault or declare an operating machine safe. Always perform certified physical inspections and follow lockout/tagout procedures.
+              <strong>Audio analysis limits:</strong> The AI can describe audible features, while the signal score compares a recording only with approved references for the selected machine. Neither result diagnoses a fault or establishes that equipment is safe. Follow the facility procedure and escalate unexpected sounds to the responsible expert.
             </span>
           </div>
           <a
@@ -1191,12 +1131,12 @@ export const SoundAnalysisPage: React.FC = () => {
                       {result.status === 'MATCHED' ? (
                         <>
                           <Check className="h-3.5 w-3.5 text-emerald-700" />
-                          <span>Match Found: {primaryCandidate?.title || 'Verified Baseline Match'}</span>
+                          <span>Similar to approved reference: {primaryCandidate?.title || 'Reference match'}</span>
                         </>
                       ) : result.status === 'AMBIGUOUS_MATCH' ? (
                         <>
                           <CircleHelp className="h-3.5 w-3.5 text-amber-700" />
-                          <span>Ambiguous Match: Multiple Close Reference Profiles</span>
+                          <span>Ambiguous: multiple approved references scored similarly</span>
                         </>
                       ) : (
                         <>
@@ -1214,10 +1154,10 @@ export const SoundAnalysisPage: React.FC = () => {
 
                   <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-tight">
                     {result.status === 'MATCHED'
-                      ? (primaryCandidate?.title || 'Verified Baseline Condition')
+                      ? (primaryCandidate?.title || 'Similar to an approved reference')
                       : result.status === 'AMBIGUOUS_MATCH'
-                      ? `Ambiguous: ${primaryCandidate?.title || 'Multiple Close Profiles'}`
-                      : 'No reliable matching sound found'}
+                      ? 'No single reference stands out'
+                      : 'No reliable machine-specific reference match'}
                   </h1>
                 </div>
 
@@ -1246,87 +1186,29 @@ export const SoundAnalysisPage: React.FC = () => {
                       </div>
                       <div>
                         <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
-                          Main Summary
+                          AI description
                         </span>
                         <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">
-                          What This Sound Indicates
+                          Audible observations
                         </h2>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-white border border-slate-200 text-slate-900 shadow-2xs">
-                        <span className="text-slate-400 font-semibold">Similarity:</span>
-                        <span className="text-emerald-700 font-extrabold">{(primaryScore * 100).toFixed(1)}% Match</span>
-                        <span className="text-slate-400 font-mono text-[11px]">({primaryScore.toFixed(4)} / 1.0000)</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Core Diagnostic Finding - LARGE, BOLD & HIGHLIGHTED */}
-                  <div className="space-y-1.5">
-                    <p className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-                      {primaryCandidate?.interpretation
-                        ? primaryCandidate.interpretation
-                        : matchedReferenceRecord?.description
-                        ? matchedReferenceRecord.description
-                        : result.message}
-                    </p>
                     {primaryCandidate && (
-                      <p className="text-xs text-slate-600 font-medium flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
-                        <span>
-                          Equipment:{' '}
-                          <strong className="text-slate-800">
-                            {primaryCandidate.machine_name} {primaryCandidate.model_name ? `(${primaryCandidate.model_name})` : ''}
-                          </strong>
-                        </span>
-                        {primaryCandidate.component && (
-                          <span>
-                            Subsystem: <strong className="text-slate-800">{primaryCandidate.component}</strong>
-                          </span>
-                        )}
-                        {primaryCandidate.operation && (
-                          <span>
-                            Operating Mode: <strong className="text-slate-800">{primaryCandidate.operation}</strong>
-                          </span>
-                        )}
-                      </p>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                        Similarity score: {(primaryScore * 100).toFixed(1)}% · ranking only
+                      </span>
                     )}
                   </div>
 
-                  {/* Immediate Action / SOP - HIGH VISIBILITY CALLOUT */}
-                  <div
-                    className={`rounded-xl border p-4 space-y-2 ${
-                      result.status === 'MATCHED'
-                        ? 'border-emerald-300 bg-emerald-100/70 text-emerald-950'
-                        : result.status === 'AMBIGUOUS_MATCH'
-                        ? 'border-amber-300 bg-amber-100/70 text-amber-950'
-                        : 'border-slate-300 bg-slate-100/80 text-slate-900'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
-                        <Wrench className="h-4 w-4" />
-                        Immediate Action & Next Step:
-                      </span>
-                      {primaryCandidate?.knowledge_sources && primaryCandidate.knowledge_sources.length > 0 && (
-                        <a
-                          href={citationUrl(primaryCandidate.knowledge_sources[0])}
-                          className="inline-flex items-center gap-1 text-xs font-bold underline hover:opacity-80"
-                        >
-                          <BookOpen className="h-3.5 w-3.5" />
-                          Open SOP Guide →
-                        </a>
-                      )}
-                    </div>
-                    <p className="text-sm font-semibold leading-relaxed">
-                      {matchedReferenceRecord?.annotation_notes
-                        ? matchedReferenceRecord.annotation_notes
-                        : primaryCandidate?.knowledge_sources && primaryCandidate.knowledge_sources.length > 0
-                        ? 'Consult the approved SOP linked below. Verify mounting, operating temperatures, and execute visual inspection before component teardown.'
-                        : 'No approved troubleshooting instruction is currently available for this acoustic signature. Dispatch recording for certified engineering review.'}
+                  <p className="text-base leading-7 text-slate-800">
+                    {result.audio_observation || 'The AI provider did not return an audio description. The signal comparison result is shown separately.'}
+                  </p>
+                  {result.processing_metadata && (
+                    <p className="text-xs text-slate-500">
+                      Processed {result.processing_metadata.duration_seconds}s · {result.processing_metadata.input_format} · {result.processing_metadata.channels} channel(s) · normalized to {result.processing_metadata.normalized_sample_rate} Hz.
                     </p>
-                  </div>
+                  )}
                 </div>
 
                 {/* Visual Uncertainty Warning Banner for Ambiguous Matches */}
@@ -1335,10 +1217,10 @@ export const SoundAnalysisPage: React.FC = () => {
                     <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
                     <div className="space-y-1">
                       <strong className="text-sm font-bold block text-amber-900">
-                        ⚠️ Visual Uncertainty Warning — Match is Ambiguous
+                        Ambiguous audio comparison
                       </strong>
                       <p className="leading-relaxed">
-                        Multiple reference recordings scored within the ±4.0% ambiguity margin (top candidate scored {(primaryScore * 100).toFixed(1)}%). <strong>Never label an ambiguous match as a confirmed fault.</strong> Physical symptoms and operational conditions must be reviewed with an expert specialist.
+                        Multiple approved recordings received similar ranking scores. This does not establish a match or a machine condition; review the recording with an expert if a comparison is needed.
                       </p>
                     </div>
                   </div>
@@ -1347,24 +1229,14 @@ export const SoundAnalysisPage: React.FC = () => {
                 {/* Plain Language Metric Caveat */}
                 <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-600 leading-relaxed space-y-1">
                   <p>
-                    <strong>Score Definition:</strong> Similarity score measures cosine overlap across 48 frequency filterbanks. Similarity is <strong>NOT</strong> a calibrated probability of machine failure, an operating lifetime projection, or proof of machine condition.
+                    <strong>Score definition:</strong> The similarity score ranks acoustic feature overlap with approved recordings for the selected machine. It is not a calibrated probability, a diagnosis, or proof of machine condition.
                   </p>
                   {primaryScore < 0.82 && (
                     <p className="text-slate-600 font-medium">
-                      <strong>Below Screening Threshold:</strong> No reference met the current screening threshold (82.0%). Closest reference profiles are displayed for comparative inspection only.
+                      <strong>No reference met the configured comparison threshold.</strong> Any displayed candidates are comparison aids only.
                     </p>
                   )}
                 </div>
-
-                {/* Cross-Equipment Warning */}
-                {crossEquipmentWarning && (
-                  <div className="rounded-xl border border-amber-300 bg-amber-50/80 p-3.5 text-xs text-amber-950 flex items-start gap-2.5">
-                    <ShieldAlert className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-                    <div>
-                      <strong>Cross-Equipment Acoustic Match:</strong> {crossEquipmentWarning}
-                    </div>
-                  </div>
-                )}
 
                 {/* ── 5. AUDIO COMPARISON: SIDE-BY-SIDE ────────────────────────── */}
                 <div className="space-y-3 pt-2">
@@ -1409,31 +1281,27 @@ export const SoundAnalysisPage: React.FC = () => {
                     <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
                       <FileText className="h-4 w-4 text-teal-600" />
                       <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                        Technician Diagnostic Breakdown: What This Recording Means
+                      Approved reference details
                       </h4>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
-                      {/* 1. Observed Sound */}
+                      {/* Approved reference information is separate from the model-generated audio description above. */}
                       <div className="rounded-lg bg-slate-50 p-3.5 border border-slate-100 space-y-1">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-                          1. Observed Sound Characteristics
+                          Reference machine and context
                         </span>
                         <p className="text-xs text-slate-800 leading-relaxed">
-                          {matchedReferenceRecord?.sound_label
-                            ? SOUND_LABELS[matchedReferenceRecord.sound_label]?.label
-                            : 'Observed mechanical acoustic signature'}{' '}
-                          ({file ? `${file.name} · ${(file.size / 1024).toFixed(1)} KB` : 'Field recording'})
-                          {primaryCandidate.operating_conditions
-                            ? ` under operating conditions: "${primaryCandidate.operating_conditions}".`
-                            : '.'}
+                          {primaryCandidate.machine_name} {primaryCandidate.model_name ? `· ${primaryCandidate.model_name}` : ''}
+                          {primaryCandidate.component ? ` · ${primaryCandidate.component}` : ''}
+                          {primaryCandidate.operation ? ` · ${primaryCandidate.operation}` : ''}
                         </p>
                       </div>
 
                       {/* 2. Closest Known Condition */}
                       <div className="rounded-lg bg-slate-50 p-3.5 border border-slate-100 space-y-1">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-                          2. Closest Known Reference Profile
+                          Approved reference
                         </span>
                         <p className="text-xs font-bold text-slate-900">
                           {primaryCandidate.title}
@@ -1451,36 +1319,20 @@ export const SoundAnalysisPage: React.FC = () => {
                       {/* 3. Possible Issue */}
                       <div className="rounded-lg bg-slate-50 p-3.5 border border-slate-100 space-y-1">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-                          3. Available Acoustic Evidence / Interpretation
+                          Expert-approved reference interpretation
                         </span>
                         <p className="text-xs text-slate-800 leading-relaxed">
                           {primaryCandidate.interpretation || result.message}
                         </p>
                       </div>
 
-                      {/* 4. Recommended Next Step */}
-                      <div className="rounded-lg bg-teal-50/60 p-3.5 border border-teal-200/80 space-y-1">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-teal-900 block flex items-center gap-1">
-                          <Wrench className="h-3 w-3 text-teal-700" />
-                          4. Approved Next Step & Field SOP
-                        </span>
-                        <p className="text-xs text-teal-950 font-medium leading-relaxed">
-                          {matchedReferenceRecord?.annotation_notes ? (
-                            <span>{matchedReferenceRecord.annotation_notes}</span>
-                          ) : (
-                            <span>
-                              Consult approved service documentation for {primaryCandidate.machine_name || 'this equipment'}. Verify mounting, operating temperatures, and execute SOP visual inspection before disassembling components.
-                            </span>
-                          )}
-                        </p>
-                      </div>
                     </div>
 
-                    {/* 5. Diagnostic Limitations */}
+                    {/* Similarity limitation */}
                     <div className="rounded-lg bg-amber-50/80 p-3.5 border border-amber-200 text-xs text-amber-950 flex items-start gap-2.5">
                       <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                       <div>
-                        <strong>5. Diagnostic Limitations:</strong> {result.limitation || 'Similarity is not a diagnosis, fault probability, or machine-safety determination.'} Acoustic recording alone cannot measure internal clearance, lubrication viscosity, thermal degradation, or electrical winding insulation breakdown. Physical inspection and certified tools are strictly required.
+                        <strong>Comparison limit:</strong> {result.limitation || 'Similarity is not a diagnosis, fault probability, or machine-safety determination.'}
                       </div>
                     </div>
                   </div>
@@ -1510,7 +1362,7 @@ export const SoundAnalysisPage: React.FC = () => {
                             <div>
                               <div className="flex items-center gap-1.5">
                                 <span className="rounded bg-slate-200 px-1.5 py-0.2 text-[10px] font-bold text-slate-700">
-                                  Rank #{idx + 2}
+                                  Rank #{idx + (primaryCandidate ? 2 : 1)}
                                 </span>
                                 <h5 className="text-xs font-bold text-slate-900 truncate max-w-[200px]">
                                   {cand.title}
@@ -1598,15 +1450,15 @@ export const SoundAnalysisPage: React.FC = () => {
 
                       <p className="text-xs text-amber-900 leading-relaxed">
                         {result.status === 'AMBIGUOUS_MATCH'
-                          ? 'Multiple reference profiles match closely within 4% similarity. Request senior engineering evaluation to review physical symptoms and clarify machine condition.'
-                          : 'No published reference reached the 82% screening cutoff. Dispatch this recording securely to senior specialists for manual spectral analysis.'}
+                          ? 'Several approved recordings have similar ranking scores. Ask an expert to review the recording and documented operating context.'
+                          : 'No approved reference met the current comparison threshold. Submit this recording and relevant observations for independent expert review.'}
                       </p>
 
                       <textarea
                         rows={3}
                         value={reviewNote}
                         onChange={(e) => setReviewNote(e.target.value)}
-                        placeholder="Enter technician observations: machine serial number, operating hours, load conditions, ambient noise factors, or suspected mechanical symptoms…"
+                        placeholder="Add the machine component, operation, and recording conditions. Avoid patient-identifying details."
                         className="w-full rounded-xl border border-amber-300 bg-white p-3 text-xs text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                       />
 
@@ -1646,7 +1498,7 @@ export const SoundAnalysisPage: React.FC = () => {
                     </h2>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Select equipment to narrow comparison against matching physical machinery
+                      Select one of the four registered machines. References from other machines are never compared.
                   </p>
                 </div>
 
@@ -1693,7 +1545,7 @@ export const SoundAnalysisPage: React.FC = () => {
                       onChange={(e) => setSelectedMachine(e.target.value)}
                       className="w-full appearance-none rounded-lg border border-slate-300 bg-slate-50/50 py-2.5 pl-3 pr-8 text-xs font-bold text-slate-800 outline-none focus:border-teal-500 focus:bg-white focus:ring-2 focus:ring-teal-500/20"
                     >
-                      <option value="">Any Machine (Broad-spectrum match across all 117 references)</option>
+                      <option value="">Select a machine to continue</option>
                       {filteredMachines.map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.name} {m.model_number ? `· Model: ${m.model_number}` : ''} {m.code ? `(${m.code})` : ''}
@@ -1710,7 +1562,7 @@ export const SoundAnalysisPage: React.FC = () => {
                       Target: <strong className="text-slate-900">{activeMachineObj.name}</strong> ({activeMachineObj.model_number || activeMachineObj.code || 'Active'})
                     </span>
                   ) : (
-                    <span>Searching across all 117 verified references</span>
+                    <span>Machine selection is required</span>
                   )}
                 </div>
               </div>
@@ -1733,7 +1585,7 @@ export const SoundAnalysisPage: React.FC = () => {
                     PCM 16-bit · 16 kHz
                   </span>
                   <span className="text-slate-400">|</span>
-                  <span className="text-slate-500">Duration: 0.5s – 120s · Max 50 MB</span>
+                    <span className="text-slate-500">Duration: 0.5s – 120s · Max 100 MB</span>
                 </div>
               </div>
 
@@ -1767,7 +1619,7 @@ export const SoundAnalysisPage: React.FC = () => {
                   >
                     <input
                       type="file"
-                      accept="audio/wav,audio/x-wav,audio/flac,audio/mpeg,.wav,.flac,.mp3"
+                      accept="audio/wav,audio/x-wav,audio/flac,audio/mpeg,audio/mp4,audio/aac,audio/aiff,audio/ogg,audio/opus,audio/webm,video/mp4,video/webm,video/quicktime,.wav,.flac,.mp3,.m4a,.aac,.aiff,.aif,.ogg,.opus,.webm,.mp4,.mov"
                       className="hidden"
                       onChange={(e) => {
                         const picked = e.target.files?.[0];
@@ -1788,7 +1640,7 @@ export const SoundAnalysisPage: React.FC = () => {
                       {file ? 'Click or drop to replace file' : 'Drag & Drop Equipment Sound Recording'}
                     </p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      Supported formats: WAV, FLAC, MP3 · Sample rate auto-normalized to 16 kHz
+                      WAV, FLAC, MP3, M4A, AAC, OGG, WebM, MP4 · decoded and normalized to mono 16 kHz for processing
                     </p>
                   </label>
                 </div>
@@ -1800,7 +1652,7 @@ export const SoundAnalysisPage: React.FC = () => {
                       Live Microphone Capture
                     </h3>
                     <p className="text-xs text-slate-500 leading-relaxed mb-4">
-                      Position your microphone 10–30 cm from the operating machinery or cooling intake.
+                      Follow facility recording policy. Keep the microphone outside restricted areas and capture a representative sound without touching or obstructing the equipment.
                     </p>
                   </div>
 
@@ -1826,43 +1678,11 @@ export const SoundAnalysisPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Reference Sound Calibration & Testing (1-Click Test Generation) */}
+              {/* Verified sound references only */}
               <div className="pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                    <HelpCircle className="h-3.5 w-3.5 text-slate-400" />
-                    Reference Sound Calibration & Testing
-                  </span>
-                  <span className="text-[11px] text-slate-400">1-Click Test Sample</span>
-                </div>
                 <p className="text-xs text-slate-500 mb-2.5">
-                  Select a calibrated reference sample to test acoustic pattern matching:
+                  Comparisons use only real recordings with verified source, exact machine association, and expert approval. Generated tones are not used as reference evidence. Current reference count for this machine: {references.filter((reference) => reference.machine_id === selectedMachine).length}.
                 </p>
-
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {[
-                    { id: 'xray', label: '🩻 X-Ray Tube Hum', desc: '150 Hz Warmup Baseline' },
-                    { id: 'ct', label: '🔬 CT Gantry Whine', desc: '120 Hz Rotation Harmonic' },
-                    { id: 'mri', label: '🧲 MRI Gradient Knock', desc: '600 Hz T2 EPI Sequence' },
-                    { id: 'ecg', label: '💓 ECG Heart Monitor', desc: '1000 Hz QRS Normal Beep' },
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        const sample = generateSynthesizedSample(item.id as 'xray' | 'ct' | 'mri' | 'ecg');
-                        setFile(sample);
-                        setResult(null);
-                        setError('');
-                        setNotice(`Calibrated test sample loaded: ${item.label}. Click "Analyze Machine Sound" below.`);
-                      }}
-                      className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5 text-left hover:border-teal-500 hover:bg-teal-50/30 transition-all cursor-pointer"
-                    >
-                      <span className="block text-xs font-bold text-slate-800">{item.label}</span>
-                      <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{item.desc}</span>
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {/* Selected File Details & Waveform Player */}
@@ -1908,7 +1728,7 @@ export const SoundAnalysisPage: React.FC = () => {
                   {/* ── THE PROMINENT PRIMARY ACTION BUTTON ────────────────────────── */}
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={busy || !selectedMachine}
                     onClick={runAnalysis}
                     aria-label="Analyze Machine Sound"
                     className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-teal-600 py-4 text-base font-bold text-white shadow-md shadow-teal-700/20 hover:bg-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/20 disabled:opacity-60 transition-all cursor-pointer"
@@ -1916,7 +1736,7 @@ export const SoundAnalysisPage: React.FC = () => {
                     {busy ? (
                       <>
                         <RefreshCw className="h-5 w-5 animate-spin" />
-                        <span>Computing 48-Band Spectral Filterbanks…</span>
+                        <span>Processing audio and checking approved references…</span>
                       </>
                     ) : (
                       <>
@@ -1945,7 +1765,7 @@ export const SoundAnalysisPage: React.FC = () => {
                       {referenceDraftId ? 'Edit Acoustic Reference Draft' : 'Author New Reference Profile'}
                     </h2>
                     <p className="text-xs text-slate-500">
-                      Requires two-party peer approval before becoming an active diagnostic match target
+                      Requires two-person expert approval before becoming an active comparison reference
                     </p>
                   </div>
 

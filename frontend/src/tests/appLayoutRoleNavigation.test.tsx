@@ -53,6 +53,9 @@ describe('AppLayout role navigation', () => {
     expect(screen.getByRole('link', { name: 'Knowledge Library' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Guided Workflow' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'AI Tutor' })).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Troubleshooting' })[0]).toHaveAttribute('href', '/app/troubleshooting');
+    expect(screen.queryByRole('link', { name: 'Mission Control' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Failure Simulator' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Capture Knowledge' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Open profile menu' }));
@@ -65,6 +68,8 @@ describe('AppLayout role navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Toggle navigation menu' }));
     expect(screen.getAllByRole('link', { name: 'Troubleshooting' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('link', { name: 'Mission Control' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Failure Simulator' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Audio Matching' }).length).toBeGreaterThan(0);
   });
 
@@ -74,6 +79,8 @@ describe('AppLayout role navigation', () => {
     renderLayout();
 
     expect(screen.getByRole('link', { name: 'Capture Knowledge' })).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Troubleshooting' })).toHaveLength(1);
+    expect(screen.queryByRole('link', { name: 'Decision Trees' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Sound AI' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Toggle navigation menu' }));
     expect(screen.queryByRole('link', { name: /Sound Analysis/ })).not.toBeInTheDocument();

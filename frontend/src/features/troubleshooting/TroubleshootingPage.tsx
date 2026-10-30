@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert } from '../../components/ui/Alert';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -11,7 +11,7 @@ import { api, ApiClientError } from '../../lib/api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useMachines } from '../knowledge-capture/hooks';
 import { selectableMachines } from '../machines/registeredMachines';
-import { ArrowLeft, CircleHelp, FileText, Search, ShieldAlert, Wrench } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleHelp, FileText, Route, Search, ShieldAlert, Wrench } from 'lucide-react';
 
 interface WorkflowCheck {
   index: number;
@@ -226,6 +226,15 @@ export const TroubleshootingPage: React.FC = () => {
           <p className="mt-1 text-sm text-[#5D7188]">Review checks and references from approved manufacturing knowledge.</p>
         </div>
       </header>
+
+      <Link to="/app/troubleshooting/guided" className="group flex items-center gap-4 rounded-2xl border border-[#BCD7F5] bg-gradient-to-r from-[#EAF3FF] to-white p-4 transition hover:border-[#1976D2] hover:shadow-md">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1976D2] text-white"><Route className="h-5 w-5" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold text-[#17324D]">Guided troubleshooting</span>
+          <span className="block text-sm text-[#5D7188]">Pick a machine and problem, then answer one question at a time along an expert-approved decision tree.</span>
+        </span>
+        <ArrowRight className="h-5 w-5 text-[#1976D2] transition group-hover:translate-x-1" />
+      </Link>
 
       <Alert variant="warning" title="Investigation support">
         This helps organize an investigation; it does not certify a diagnosis or confirm that a machine is safe to operate. Only perform checks your role is authorized to do. Pause and escalate if a check is unclear or involves maintenance.

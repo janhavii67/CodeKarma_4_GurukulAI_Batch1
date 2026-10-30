@@ -215,115 +215,57 @@ describe('AI Knowledge Assistant UI Component Tests', () => {
     expect(screen.queryByText(/Writing your grounded answer/i)).not.toBeInTheDocument();
   });
 
-  it('uploads machine audio, follows a reliable match through grounded chat, and renders the persisted analysis result', async () => {
-    const audioAnalysis = {
-      id: 'audio-job-41',
-      status: 'MATCHED',
-      matched_reference: {
-        reference_id: 'audio-reference-7',
-        title: 'VF-2 spindle idle reference',
-        interpretation: 'The recording resembles the approved idle spindle observation.',
-        similarity_score: 0.94,
-        knowledge_version_id: 'version-7',
-        knowledge_item_id: 'item-7',
-        knowledge_sources: [{
-          knowledge_item_id: 'source-item-2',
-          knowledge_version_id: 'source-version-2',
-          title: 'Spindle Inspection SOP',
-          version_no: 2,
-        }],
-      },
-      similarity_score: 0.94,
-      reason_code: 'MATCHED',
-      message: 'A current approved sound reference matched.',
-      limitation: 'Similarity is not a diagnosis, fault probability, or machine-safety determination.',
-      requires_expert_review: false,
-      candidate_matches: [],
-    };
-    vi.spyOn(api, 'postForm').mockResolvedValue(audioAnalysis as any);
-    const sseResponse = [
-      'event: token\ndata: {"token":"This possible sound match is documented in the approved reference."}\n\n',
-      `event: sources\ndata: ${JSON.stringify({ sources: [], insufficient_evidence: false, conversation_id: 'conv-audio', message_id: 'msg-audio', audio_analysis: audioAnalysis })}\n\n`,
-      'event: done\ndata: [DONE]\n\n',
-    ];
-    global.fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-      const request = JSON.parse(String(init?.body));
-      expect(request.audio_analysis_job_id).toBe('audio-job-41');
-      expect(request.message).toContain('VF-2 spindle idle reference');
-      return {
-        ok: true,
-        status: 200,
-        headers: new Headers({ 'content-type': 'text/event-stream' }),
-        body: createMockStream(sseResponse),
-      } as Response;
-    });
-
+  it('transcribes an uploaded voice question and answers it from grounded Tutor knowledge', async () => {
+    const postForm = vi.spyOn(api, 'postForm').mockResolvedValue({
+      answer: 'Follow the published daily CT quality control procedure before clinical use.',
+      sources: [{ chunk_id: 'chk-audio', source_id: 'src-audio', title: 'CT daily quality control' }],
+      insufficient_evidence: false,
+      provider_unavailable: false,
+      conversation_id: 'conv-audio',
+      message_id: 'msg-audio',
+      audio_transcript: 'How do I perform daily CT quality control?',
+      handoffs: [],
+      related_media: [],
+      attachment: { media_id: 'media-audio-1', filename: 'question.wav', mime: 'audio/wav', size_bytes: 1024 },
+    } as any);
     renderAssistant();
-    const input = document.querySelector('input[type="file"]');
-    expect(input).not.toBeNull();
-    fireEvent.change(input!, {
-      target: { files: [new File(['sample audio'], 'spindle.wav', { type: 'audio/wav' })] },
-    });
+    const input = screen.getByLabelText('Upload spoken question audio');
+    const file = new File(['sample audio'], 'question.wav', { type: 'audio/wav' });
+    fireEvent.change(input!, { target: { files: [file] } });
 
-    await waitFor(() => expect(api.postForm).toHaveBeenCalled());
-    expect(await screen.findByText(/Possible documented match/i)).toBeInTheDocument();
-    expect(await screen.findByText('VF-2 spindle idle reference')).toBeInTheDocument();
-    expect(await screen.findByText('Spindle Inspection SOP')).toBeInTheDocument();
-    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-    expect(api.postForm).toHaveBeenCalledWith('/audio/analyze', expect.any(FormData));
+    expect(await screen.findByText('How do I perform daily CT quality control?')).toBeInTheDocument();
+    expect(await screen.findByText('Voice question transcript')).toBeInTheDocument();
+    expect(await screen.findByText(/published daily CT quality control procedure/i)).toBeInTheDocument();
+    expect(await screen.findByText('CT daily quality control')).toBeInTheDocument();
+    expect(postForm).toHaveBeenCalledWith('/assistant/chat/media', expect.any(FormData));
+    const form = postForm.mock.calls[0][1] as FormData;
+    expect(form.get('message')).toBeNull();
+    expect(form.get('file')).toBeInstanceOf(File);
+    expect(screen.queryByRole('region', { name: 'Machine sound comparison' })).not.toBeInTheDocument();
   });
 
-  it('rejects Tutor uploads larger than 100 MB before making a request', async () => {
+  it('rejects audio from the generic attachment picker and directs it to voice question upload', async () => {
+    const postForm = vi.spyOn(api, 'postForm');
+    renderAssistant();
+    const input = screen.getByLabelText('Select media or document file');
+    fireEvent.change(input, {
+      target: { files: [new File(['sample audio'], 'machine.wav', { type: 'audio/wav' })] },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Use Ask by voice for spoken questions/i);
+    expect(postForm).not.toHaveBeenCalled();
+  });
+
+  it('rejects Tutor uploads larger than 14 MB before making a request', async () => {
     const postForm = vi.spyOn(api, 'postForm');
     renderAssistant();
     const input = document.querySelector('input[type="file"]');
     const oversized = new File(['small test payload'], 'large.wav', { type: 'audio/wav' });
-    Object.defineProperty(oversized, 'size', { value: 100 * 1024 * 1024 + 1 });
+    Object.defineProperty(oversized, 'size', { value: 14 * 1024 * 1024 + 1 });
     fireEvent.change(input!, { target: { files: [oversized] } });
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/100 MB or smaller/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/14 MB or smaller/i);
     expect(postForm).not.toHaveBeenCalled();
-  });
-
-  it('persists an unmatched audio result without asking the model to diagnose it', async () => {
-    const audioAnalysis = {
-      id: 'audio-job-no-match',
-      status: 'NO_RELIABLE_MATCH',
-      matched_reference: null,
-      similarity_score: null,
-      reason_code: 'BELOW_SCREENING_THRESHOLD',
-      message: 'No approved sound reference matched this recording.',
-      limitation: 'Similarity is not a diagnosis.',
-      requires_expert_review: true,
-      candidate_matches: [],
-    };
-    vi.spyOn(api, 'postForm').mockResolvedValue(audioAnalysis as any);
-    global.fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-      const request = JSON.parse(String(init?.body));
-      expect(request.audio_analysis_job_id).toBe('audio-job-no-match');
-      expect(request.message).toMatch(/save this machine audio comparison result/i);
-      const sseResponse = [
-        `event: token\ndata: ${JSON.stringify({ token: 'Audio comparison saved. No fault diagnosis was generated.' })}\n\n`,
-        `event: sources\ndata: ${JSON.stringify({ sources: [], insufficient_evidence: false, conversation_id: 'conv-no-match', message_id: 'msg-no-match', audio_analysis: audioAnalysis })}\n\n`,
-        'event: done\ndata: [DONE]\n\n',
-      ];
-      return {
-        ok: true,
-        status: 200,
-        headers: new Headers({ 'content-type': 'text/event-stream' }),
-        body: createMockStream(sseResponse),
-      } as Response;
-    });
-    renderAssistant();
-    const input = document.querySelector('input[type="file"]');
-    fireEvent.change(input!, {
-      target: { files: [new File(['sample audio'], 'unknown.wav', { type: 'audio/wav' })] },
-    });
-
-    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getAllByRole('region', { name: 'Machine sound comparison' })).toHaveLength(1));
-    expect(screen.getByText('No approved sound reference matched this recording.')).toBeInTheDocument();
-    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it('uploads an image through the grounded multimodal Tutor route', async () => {

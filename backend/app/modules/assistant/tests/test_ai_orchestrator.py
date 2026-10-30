@@ -26,6 +26,10 @@ class StubLLM:
         yield "second"
 
 
+class MultimodalStubLLM(StubLLM):
+    supports_multimodal = True
+
+
 def test_text_response_is_standardized():
     provider = StubLLM()
     service = AIOrchestrator(lambda name: provider)
@@ -42,6 +46,18 @@ def test_rag_uses_configured_text_provider_and_preserves_request_id():
     response = service.execute(AIRequest(AICapability.RAG_ANSWER, LLMRequest("prompt"), request_id="trace-1"))
     assert response.request_id == "trace-1"
     assert response.capability == AICapability.RAG_ANSWER
+    assert provider.calls == 1
+
+
+def test_speech_transcription_uses_configured_multimodal_provider():
+    provider = MultimodalStubLLM()
+    service = AIOrchestrator(lambda name: provider)
+    request = LLMRequest("Transcribe this question.", media_parts=[{"mime_type": "audio/wav", "data": b"wav"}])
+    response = service.execute(AIRequest(AICapability.SPEECH_TRANSCRIPTION, request))
+
+    assert response.status == "succeeded"
+    assert response.result == "answer"
+    assert response.capability == AICapability.SPEECH_TRANSCRIPTION
     assert provider.calls == 1
 
 

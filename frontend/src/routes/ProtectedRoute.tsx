@@ -39,18 +39,18 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (requiredRole && !hasRole(requiredRole)) {
-    return <Navigate to="/403" replace />;
+    return <Navigate to="/403" replace state={{ accessDenial: { path: location.pathname, requiredRole } }} />;
   }
 
   if (requiredPermission && !hasPermission(requiredPermission)) {
-    return <Navigate to="/403" replace />;
+    return <Navigate to="/403" replace state={{ accessDenial: { path: location.pathname, requiredPermission } }} />;
   }
 
   if (
     requiredAnyPermission &&
     !requiredAnyPermission.some((permission) => hasPermission(permission))
   ) {
-    return <Navigate to="/403" replace />;
+    return <Navigate to="/403" replace state={{ accessDenial: { path: location.pathname, requiredAnyPermission } }} />;
   }
 
   return <>{children}</>;

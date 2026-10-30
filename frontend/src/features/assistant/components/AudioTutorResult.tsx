@@ -16,6 +16,20 @@ export const AudioTutorResult: React.FC<AudioTutorResultProps> = ({ result }) =>
         <h4 className="text-sm font-semibold text-slate-900">Machine sound comparison</h4>
       </div>
 
+      {result.audio_observation && (
+        <div className="rounded-lg border border-violet-200 bg-white p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">AI audio observations</p>
+          <p className="mt-1 text-sm leading-6 text-slate-800">{result.audio_observation}</p>
+          <p className="mt-2 text-[11px] text-slate-500">Model-generated description of this recording; it is not verified machine guidance.</p>
+        </div>
+      )}
+
+      {result.processing_metadata && (
+        <p className="text-[11px] text-slate-500">
+          Processed {result.processing_metadata.duration_seconds}s · {result.processing_metadata.input_format} · {result.processing_metadata.channels} channel(s) · normalized to {result.processing_metadata.normalized_sample_rate} Hz
+        </p>
+      )}
+
       {match ? (
         <>
           <div className="rounded-lg border border-blue-200 bg-white p-3">
@@ -61,7 +75,8 @@ export const AudioTutorResult: React.FC<AudioTutorResultProps> = ({ result }) =>
         </>
       ) : (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
-          {result.message}
+          <p>{result.message}</p>
+          {!result.audio_observation && <p className="mt-1 text-xs">AI audio observations are unavailable for this recording.</p>}
         </div>
       )}
 

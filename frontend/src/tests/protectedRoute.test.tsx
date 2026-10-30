@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProtectedRoute } from '../routes/ProtectedRoute';
+import { ForbiddenPage } from '../features/errors/ForbiddenPage';
 
 const authState = vi.hoisted(() => ({
   user: null as null | { role_id: string },
@@ -36,7 +37,7 @@ const renderDirectUrl = (permission = 'assistant.use') =>
           }
         />
         <Route path="/login" element={<div>Login page</div>} />
-        <Route path="/403" element={<div>Forbidden page</div>} />
+        <Route path="/403" element={<ForbiddenPage />} />
       </Routes>
       <LocationProbe />
     </MemoryRouter>
@@ -69,7 +70,9 @@ describe('ProtectedRoute direct URL handling', () => {
     authState.isAuthenticated = true;
     authState.permissions = ['knowledge.view_published', 'procedure.execute'];
     renderDirectUrl();
-    expect(screen.getByText('Forbidden page')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Insufficient Permissions' })).toBeInTheDocument();
+    expect(screen.getByText('/app/assistant')).toBeInTheDocument();
+    expect(screen.getByText('assistant.use')).toBeInTheDocument();
     expect(screen.getByTestId('location')).toHaveTextContent('/403');
   });
 

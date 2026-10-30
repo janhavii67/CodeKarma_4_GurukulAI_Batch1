@@ -15,11 +15,41 @@ class FeedbackReason(str, Enum):
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=1000, description="User query or message")
+    message: str = Field(..., min_length=1, max_length=7000, description="User query or message")
     conversation_id: Optional[str] = Field(None, description="Optional existing conversation ID")
     machine_id: Optional[str] = Field(None, description="Optional machine context ID")
     audio_analysis_job_id: Optional[str] = Field(None, description="Owned audio analysis result to explain using its approved reference")
     image_media_id: Optional[str] = Field(None, description="Optional uploaded image media asset ID to analyze")
+
+
+TutorMemoryCategory = Literal[
+    "learning_goal", "explanation_preference", "experience", "machine_context", "other"
+]
+
+
+class TutorMemoryCreate(BaseModel):
+    category: TutorMemoryCategory = "learning_goal"
+    content: str = Field(..., min_length=1, max_length=500)
+
+
+class TutorMemoryUpdate(BaseModel):
+    category: Optional[TutorMemoryCategory] = None
+    content: Optional[str] = Field(None, min_length=1, max_length=500)
+
+
+class TutorMemoryItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    category: str
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class TutorMemoryList(BaseModel):
+    items: List[TutorMemoryItem]
+    max_items: int = 30
 
 
 class SourceItem(BaseModel):
@@ -83,6 +113,7 @@ class ChatResponse(BaseModel):
     provider_unavailable: bool = False
     conversation_id: str
     message_id: str
+    audio_transcript: Optional[str] = None
     audio_analysis: Optional[AudioAnalysisJobResponse] = None
     handoffs: List[TutorHandoffSuggestion] = Field(default_factory=list)
     related_media: List[RelatedMediaItem] = Field(default_factory=list)

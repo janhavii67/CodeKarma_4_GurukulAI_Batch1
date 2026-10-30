@@ -41,6 +41,9 @@ from app.models.troubleshooting import (
     TroubleshootingEvidence,
     TroubleshootingEscalation,
     decision_tree_node_media,
+    DecisionTreeAIDraft,
+    MissionAttempt,
+    MissionAchievement,
 )
 from app.models.audio import AudioReference, AudioAnalysisJob
 from app.models.simulation import SimulationScenario, SimulationAttempt, SimulationScenarioRevision, SimulationScenarioReport

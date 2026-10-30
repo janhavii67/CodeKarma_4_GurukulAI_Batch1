@@ -2,15 +2,9 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Check,
-  ClipboardList,
-  FileText,
-  Image as ImageIcon,
   LockKeyhole,
-  PlayCircle,
-  ShieldAlert,
   ShieldCheck,
   Trophy,
-  Volume2,
 } from 'lucide-react';
 import type { ProcedureStep } from './types';
 import { CONTENT_KIND_LABELS, type StepContentKind } from './stepContent';
@@ -33,15 +27,6 @@ export interface RoadItem {
 }
 
 interface Point { x: number; y: number }
-
-const KIND_ICONS: Record<StepContentKind, typeof ImageIcon> = {
-  safety: ShieldAlert,
-  image: ImageIcon,
-  video: PlayCircle,
-  audio: Volume2,
-  document: FileText,
-  checklist: ClipboardList,
-};
 
 function curveLength(from: Point, to: Point, bend: number): number {
   const c1 = { x: from.x, y: from.y + bend };
@@ -136,7 +121,6 @@ export function LearningRoad({ items, activeIndex, nextIndex, completedCount, co
         const isSelected = index === activeIndex;
         const isNext = index === nextIndex && !item.done && !complete;
         const celebrating = celebrateStepId === item.step.id && !reducedMotion;
-        const blurb = item.step.instruction.replace(/\s+/g, ' ').trim();
         const contentText = item.kinds.length ? `, includes ${item.kinds.map((kind) => CONTENT_KIND_LABELS[kind]).join(', ')}` : '';
         const circle = item.done
           ? 'bg-[#36B3A8] text-white shadow-[0_10px_24px_-12px_rgba(54,179,168,0.9)] hover:bg-[#2FA096]'
@@ -179,13 +163,10 @@ export function LearningRoad({ items, activeIndex, nextIndex, completedCount, co
               <motion.span initial={reducedMotion ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="relative block whitespace-nowrap rounded-full bg-white px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#176E8A] shadow-md after:absolute after:left-1/2 after:top-full after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-white after:content-['']">{completedCount === 0 ? 'Start' : 'Up next'}</motion.span>
             </span>}
             <span aria-hidden="true" className={`absolute top-1/2 -translate-y-1/2 ${labelOnRight ? 'left-[calc(100%+14px)] text-left' : 'right-[calc(100%+14px)] text-right'}`} style={{ width: labelWidth }}>
-              <span className={`block text-[10px] font-bold uppercase tracking-[0.16em] ${item.locked ? 'text-[#6F86A0]' : 'text-[#8FD3CF]'}`}>Step {item.step.step_order}</span>
-              <span className={`mt-0.5 block text-sm font-bold leading-5 ${item.locked ? 'text-[#9AAEC2]' : 'text-white'}`}>{item.step.title}</span>
-              <span className={`mt-1 block line-clamp-2 text-[11px] font-normal leading-4 ${item.locked ? 'text-[#7F95AB]' : 'text-[#B8C7D6]'}`}>{blurb}</span>
-              <span className={`mt-1.5 flex flex-wrap items-center gap-1.5 ${labelOnRight ? '' : 'justify-end'}`}>
-                {item.kinds.map((kind) => { const Icon = KIND_ICONS[kind]; return <span key={kind} title={CONTENT_KIND_LABELS[kind]} className={`grid h-5 w-5 place-items-center rounded-md ${kind === 'safety' ? 'bg-amber-400/20 text-amber-300' : 'bg-white/10 text-[#CFE0EC]'}`}><Icon size={12} /></span>; })}
-                <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] ${item.done ? 'bg-[#36B3A8]/20 text-[#8FE3DA]' : item.locked ? 'bg-white/5 text-[#7F95AB]' : 'bg-white text-[#176E8A]'}`}>{item.status}</span>
-              </span>
+              <span
+                data-step-label
+                className={`block rounded-xl border px-3 py-2 text-[14px] font-extrabold leading-[1.25] tracking-[-0.015em] shadow-lg ring-1 ring-white/5 backdrop-blur-sm ${item.locked ? 'border-white/5 bg-[#17324D]/80 text-[#B8C7D6]' : 'border-white/15 bg-[#17324D]/95 text-white'}`}
+              >{item.step.title}</span>
             </span>
           </button>
         </motion.li>;

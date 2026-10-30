@@ -238,7 +238,7 @@ function OtherFileCard({ asset }: { asset: ProcedureReference }) {
 const GROUP_LABELS = { image: ['Images', ImageIcon], video: ['Video', PlayCircle], audio: ['Audio', Volume2], document: ['Documents', FileText] } as const;
 
 /** Shows attached media grouped by type: image gallery, video, audio, documents, then other files. */
-export function MediaShowcase({ assets, failedIds, onMediaError, onRetry, reducedMotion, showStatus = true }: MediaProps & { assets: ProcedureReference[]; showStatus?: boolean }) {
+export function MediaShowcase({ assets, failedIds, onMediaError, onRetry, reducedMotion, showStatus = true, compact = false }: MediaProps & { assets: ProcedureReference[]; showStatus?: boolean; compact?: boolean }) {
   const others = assets.filter((asset) => !MEDIA_KINDS.includes(asset.kind as typeof MEDIA_KINDS[number]));
   return <ShowStatusContext.Provider value={showStatus}><div className="space-y-5">
     {MEDIA_KINDS.map((kind) => {
@@ -249,7 +249,7 @@ export function MediaShowcase({ assets, failedIds, onMediaError, onRetry, reduce
         <p className="mb-2 inline-flex items-center gap-1.5 text-xs font-bold text-[#17324D]"><Icon size={14} className="text-[#176E8A]" />{label}{group.length > 1 && <span className="font-mono text-[10px] font-semibold text-[#708196]">· {group.length}</span>}</p>
         {kind === 'image' && <ImageGallery images={group} failedIds={failedIds} onMediaError={onMediaError} onRetry={onRetry} reducedMotion={reducedMotion} />}
         {kind === 'video' && <div className="space-y-4">{group.map((asset) => <VideoCard key={asset.id} asset={asset} failed={failedIds.has(asset.id)} onMediaError={() => onMediaError(asset.id)} onRetry={() => onRetry(asset.id)} />)}</div>}
-        {kind === 'audio' && <div className="grid gap-3 xl:grid-cols-2">{group.map((asset) => <AudioCard key={asset.id} asset={asset} failed={failedIds.has(asset.id)} onMediaError={() => onMediaError(asset.id)} onRetry={() => onRetry(asset.id)} reducedMotion={reducedMotion} />)}</div>}
+        {kind === 'audio' && <div className={compact ? 'grid gap-3' : 'grid gap-3 xl:grid-cols-2'}>{group.map((asset) => <AudioCard key={asset.id} asset={asset} failed={failedIds.has(asset.id)} onMediaError={() => onMediaError(asset.id)} onRetry={() => onRetry(asset.id)} reducedMotion={reducedMotion} />)}</div>}
         {kind === 'document' && <div className="space-y-3">{group.map((asset) => <DocumentCard key={asset.id} asset={asset} failed={failedIds.has(asset.id)} onRetry={() => onRetry(asset.id)} />)}</div>}
       </div>;
     })}

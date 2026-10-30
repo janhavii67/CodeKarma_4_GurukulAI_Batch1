@@ -72,7 +72,25 @@ def test_tutor_multimodal_upload_reaches_mocked_gemini_payload(
     auth_ctx = _auth_context(db_session)
     storage = LocalStorageService(tmp_path / "tutor-media")
     monkeypatch.setattr(assistant, "get_storage_service", lambda: storage)
-    monkeypatch.setattr(assistant.RetrievalService, "retrieve_chunks", lambda *_args, **_kwargs: [])
+    is_voice_question = content_type.startswith("audio/")
+    retrieval_queries = []
+
+    def retrieve_chunks(retrieval_query, _db):
+        retrieval_queries.append(retrieval_query.query)
+        if is_voice_question:
+            return [RetrievedChunk(
+                chunk_id="inspection-step",
+                source_id="verified-inspection-source",
+                knowledge_version_id="verified-inspection-version",
+                title="Machine inspection procedure",
+                section_label="Inspection",
+                text="Follow the published inspection procedure for this machine.",
+                score=0.9,
+                rank=1,
+            )]
+        return []
+
+    monkeypatch.setattr(assistant.RetrievalService, "retrieve_chunks", retrieve_chunks)
     requests = []
 
     def mocked_execute(request):
@@ -80,6 +98,12 @@ def test_tutor_multimodal_upload_reaches_mocked_gemini_payload(
         return _fake_response(request)
 
     monkeypatch.setattr(assistant.ai_orchestrator, "execute", mocked_execute)
+    if is_voice_question:
+        monkeypatch.setattr(
+            assistant,
+            "_transcribe_voice_question",
+            lambda _data, _filename: "How do I safely inspect this machine?",
+        )
     response = asyncio.run(assistant.chat_media_endpoint(
         file=_media_file(filename, data, content_type),
         message="What can you observe in this upload?",
@@ -92,13 +116,20 @@ def test_tutor_multimodal_upload_reaches_mocked_gemini_payload(
     assert response.conversation_id
     assert response.attachment is not None
     assert response.attachment.filename == filename
-    request_with_media = next(request for request in requests if request.payload.media_parts)
-    assert request_with_media.payload.prompt
-    provider = object.__new__(__import__("app.modules.assistant.providers.llm_gemini", fromlist=["GeminiLLMProvider"]).GeminiLLMProvider)
-    contents = provider._build_contents(request_with_media.payload)
-    assert contents[1].inline_data.mime_type == expected_mime
-    assert contents[1].inline_data.data == data
-    assert "What can you observe in this upload?" in request_with_media.payload.prompt
+    if is_voice_question:
+        assert response.audio_transcript == "How do I safely inspect this machine?"
+        assert len(requests) == 1
+        assert requests[0].payload.media_parts == []
+        assert "How do I safely inspect this machine?" in requests[0].payload.prompt
+        assert "How do I safely inspect this machine?" in retrieval_queries[0]
+    else:
+        request_with_media = next(request for request in requests if request.payload.media_parts)
+        assert request_with_media.payload.prompt
+        provider = object.__new__(__import__("app.modules.assistant.providers.llm_gemini", fromlist=["GeminiLLMProvider"]).GeminiLLMProvider)
+        contents = provider._build_contents(request_with_media.payload)
+        assert contents[1].inline_data.mime_type == expected_mime
+        assert contents[1].inline_data.data == data
+        assert "What can you observe in this upload?" in request_with_media.payload.prompt
     assert db_session.query(ChatMessage).filter(
         ChatMessage.conversation_id == response.conversation_id,
         ChatMessage.role == "user",

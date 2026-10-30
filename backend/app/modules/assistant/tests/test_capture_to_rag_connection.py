@@ -139,11 +139,14 @@ def test_updating_transcript_segment_refreshes_rag_chunks(db_session: Session):
     item = KnowledgeItem(title="Published Runout Procedure", author_id=expert.id, status="APPROVED")
     db_session.add(item)
     db_session.flush()
+    machine = db_session.query(Machine).first()
+    assert machine is not None
     from app.db.base import utc_now
     version = KnowledgeVersion(
         item_id=item.id,
         version_no=1,
         title=item.title,
+        machine_id=machine.id,
         status=STATUS_PUBLISHED,
         published_at=utc_now(),
         created_by=expert.id,
@@ -194,6 +197,7 @@ def test_updating_transcript_segment_refreshes_rag_chunks(db_session: Session):
         .first()
     )
     assert source is not None
+    assert source.machine_id == machine.id
     chunk_texts = " ".join([c.text for c in source.chunks])
     assert "0.005mm tolerance" in chunk_texts
 
@@ -206,6 +210,17 @@ def test_updating_transcript_segment_refreshes_rag_chunks(db_session: Session):
     retrieved = RetrievalService.retrieve_chunks(query, db_session)
     assert len(retrieved) > 0
     assert any("0.005mm" in r.text for r in retrieved)
+
+    machine_scoped = RetrievalService.retrieve_chunks(
+        RetrievalQuery(
+            query="laser micrometer 0.005mm tolerance spindle runout",
+            user_id=expert.id,
+            machine_id=machine.id,
+            top_k=3,
+        ),
+        db_session,
+    )
+    assert any(result.source_id == source.id for result in machine_scoped)
 
 
 def test_knowledge_capture_article_all_fields_indexed_on_approval(client: TestClient, db_session: Session):

@@ -75,6 +75,22 @@ class ChatConversation(Base):
     )
 
 
+class TutorMemory(Base):
+    """Private learner context explicitly saved by its owner for future Tutor chats."""
+    __tablename__ = "tutor_memories"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    category: Mapped[str] = mapped_column(String(32), nullable=False, default="learning_goal")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id])
+
+
 class ChatMessage(Base):
     """
     Individual turn within an assistant chat conversation.

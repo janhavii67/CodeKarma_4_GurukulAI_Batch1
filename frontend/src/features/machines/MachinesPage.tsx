@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -18,7 +17,6 @@ import {
   RefreshCw,
   Plus,
   Search,
-  Eye,
   Trash2,
   X,
   Cpu,

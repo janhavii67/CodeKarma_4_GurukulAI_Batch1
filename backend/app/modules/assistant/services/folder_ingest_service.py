@@ -15,6 +15,7 @@ from app.modules.assistant.providers.embedding_base import (
     EmbeddingRequest,
     get_embedding_provider,
 )
+from app.models.machine import Machine
 from app.services.audit_service import AuditService
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".csv", ".xlsx"}
@@ -53,6 +54,25 @@ class FolderIngestService:
     def _compute_hash(file_bytes: bytes) -> str:
         """Computes SHA-256 hexadecimal digest of raw file bytes."""
         return hashlib.sha256(file_bytes).hexdigest()
+
+    @staticmethod
+    def _parse_front_matter(text: str) -> tuple[Dict[str, str], str]:
+        """Read a small, dependency-free YAML-style header used for scoped guides."""
+        if not text.startswith("---\n") and not text.startswith("---\r\n"):
+            return {}, text
+        lines = text.splitlines()
+        try:
+            end = lines.index("---", 1)
+        except ValueError:
+            return {}, text
+        metadata: Dict[str, str] = {}
+        for line in lines[1:end]:
+            key, separator, value = line.partition(":")
+            if not separator:
+                continue
+            value = value.strip().strip("\"'")
+            metadata[key.strip()] = value
+        return metadata, "\n".join(lines[end + 1 :]).lstrip()
 
     @staticmethod
     def _extract_text_and_sections(file_path: Path) -> List[Dict[str, Any]]:
@@ -102,6 +122,8 @@ class FolderIngestService:
                 })
         elif ext in (".txt", ".md"):
             raw_text = file_path.read_text(encoding="utf-8", errors="replace")
+            if ext == ".md":
+                _, raw_text = FolderIngestService._parse_front_matter(raw_text)
             if raw_text.strip():
                 items.append({
                     "text": raw_text.strip(),
@@ -148,7 +170,7 @@ class FolderIngestService:
             raise FileNotFoundError(f"Knowledge base directory '{folder_path}' does not exist.")
 
         summary = IngestSummary(folder_path=str(p.resolve()))
-        files = sorted(list(p.iterdir()), key=lambda x: x.name)
+        files = sorted((path for path in p.rglob("*") if path.is_file()), key=lambda x: x.as_posix())
 
         # Retrieve embedding provider (graceful fallback if offline / mock)
         embedding_provider = None
@@ -161,7 +183,8 @@ class FolderIngestService:
             if not file_path.is_file():
                 continue
 
-            file_name = file_path.name
+            relative_name = file_path.relative_to(p).as_posix()
+            file_name = relative_name
             ext = file_path.suffix.lower()
 
             # 1. Check supported extensions
@@ -187,7 +210,29 @@ class FolderIngestService:
             file_bytes = file_path.read_bytes()
             content_hash = cls._compute_hash(file_bytes)
 
-            source_ref_id = f"kb:{file_name}"
+            metadata: Dict[str, str] = {}
+            if ext == ".md":
+                try:
+                    metadata, _ = cls._parse_front_matter(file_bytes.decode("utf-8-sig"))
+                except UnicodeDecodeError:
+                    summary.skipped_files.append(SkippedFileResult(name=file_name, reason="Markdown must use UTF-8 encoding"))
+                    continue
+            machine_id = None
+            machine_code = metadata.get("machine_code", "").strip()
+            if machine_code:
+                machine = db.query(Machine).filter(
+                    Machine.code == machine_code,
+                    Machine.is_active.is_(True),
+                ).first()
+                if not machine:
+                    summary.skipped_files.append(
+                        SkippedFileResult(name=file_name, reason=f"Machine code '{machine_code}' is not registered and active")
+                    )
+                    continue
+                machine_id = machine.id
+
+            source_ref_id = f"kb:{relative_name}"
+            source_title = metadata.get("title") or f"Knowledge base document: {Path(file_name).name}"
             existing_source = (
                 db.query(KnowledgeSource)
                 .filter(
@@ -207,7 +252,13 @@ class FolderIngestService:
                     )
                     .first()
                 )
-                if active_chunk and active_chunk.metadata_json and active_chunk.metadata_json.get("content_hash") == content_hash:
+                if (
+                    active_chunk
+                    and active_chunk.metadata_json
+                    and active_chunk.metadata_json.get("content_hash") == content_hash
+                    and existing_source.machine_id == machine_id
+                    and existing_source.title == source_title
+                ):
                     # Content unchanged
                     chunk_count = (
                         db.query(KnowledgeChunk)
@@ -229,6 +280,9 @@ class FolderIngestService:
                     ).update({"is_active": False})
                     db.flush()
                     source = existing_source
+                    source.title = source_title
+                    source.machine_id = machine_id
+                    source.product_family = metadata.get("product_family") or "knowledge_base_folder"
                     source.indexed_at = utc_now()
                     source.status = "published" if getattr(settings, "INGEST_AS_PUBLISHED", True) else "draft"
                     status_str = "updated"
@@ -236,8 +290,9 @@ class FolderIngestService:
                 source = KnowledgeSource(
                     source_type="knowledge_base_document",
                     source_ref_id=source_ref_id,
-                    title=f"Knowledge base document: {file_name}",
-                    product_family="knowledge_base_folder",
+                    title=source_title,
+                    machine_id=machine_id,
+                    product_family=metadata.get("product_family") or "knowledge_base_folder",
                     status="published" if getattr(settings, "INGEST_AS_PUBLISHED", True) else "draft",
                     index_version="v1",
                     indexed_at=utc_now(),
@@ -306,6 +361,14 @@ class FolderIngestService:
                     "approval_status": source.status,
                     "revision": None,
                 }
+                if metadata.get("source_url"):
+                    meta["source_url"] = metadata["source_url"]
+                if metadata.get("publisher"):
+                    meta["publisher"] = metadata["publisher"]
+                if metadata.get("source_updated"):
+                    meta["source_updated"] = metadata["source_updated"]
+                if machine_code:
+                    meta["machine_code"] = machine_code
                 if embeddings_list and idx < len(embeddings_list) and embeddings_list[idx]:
                     meta["embedding"] = embeddings_list[idx]
 

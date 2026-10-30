@@ -68,6 +68,8 @@ class AudioAnalysisJobResponse(BaseModel):
     similarity_score: Optional[float] = None
     reason_code: str
     message: str
+    audio_observation: Optional[str] = None
+    processing_metadata: Optional[dict[str, Any]] = None
     limitation: str = "Similarity is not a diagnosis, fault probability, or machine-safety determination."
     requires_expert_review: bool
     candidate_matches: List[AudioCandidate] = Field(default_factory=list)

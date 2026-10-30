@@ -8,9 +8,23 @@ const { get, postForm } = vi.hoisted(() => ({ get: vi.fn(), postForm: vi.fn() })
 vi.mock('../lib/api/client', () => ({ api: { get, postForm, post: vi.fn(), patch: vi.fn() } }));
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ hasPermission: () => false }) }));
 
+const selectMachine = async (id: string) => {
+  fireEvent.change(await screen.findByRole('combobox'), { target: { value: id } });
+};
+
 describe('Machine sound matching UI (Chunk 11)', () => {
   beforeEach(() => {
-    get.mockResolvedValue([]);
+    get.mockImplementation(async (url: string) => {
+      if (url.startsWith('/machines')) {
+        return { items: [
+          { id: 'machine-ct', name: 'CT-Scan', code: 'MACH-CT12', model_number: 'MACH-CT12' },
+          { id: 'machine-ecg', name: 'ECG', code: 'ECG-001', model_number: 'ECG-001' },
+          { id: 'machine-mri', name: 'MRI', code: 'MACH-MRI', model_number: 'MACH-MRI' },
+          { id: 'machine-xray', name: 'Xray', code: 'MACH-Xray', model_number: 'MACH-Xray' },
+        ] };
+      }
+      return [];
+    });
     postForm.mockReset();
     Object.defineProperty(URL, 'createObjectURL', {
       configurable: true,
@@ -57,16 +71,13 @@ describe('Machine sound matching UI (Chunk 11)', () => {
       </BrowserRouter>
     );
 
-    expect(
-      screen.getByText(/does not replace certified field service inspection/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Audio processor ready · AI observation \+ acoustic comparison/i)).toBeInTheDocument();
     expect(
       screen.getByText(/Drag & Drop Equipment Sound Recording/i)
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Reference Sound Calibration & Testing/i)
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/Match Found:/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Machine selection is required/i)).toBeInTheDocument();
+    expect(screen.getByText(/Generated tones are not used as reference evidence/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Similar to approved reference:/i)).not.toBeInTheDocument();
   });
 
   it('handles file upload, displays waveform preview, and executes analysis', async () => {
@@ -86,6 +97,8 @@ describe('Machine sound matching UI (Chunk 11)', () => {
       </BrowserRouter>
     );
 
+    await selectMachine('machine-ct');
+
     const upload = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(upload, {
       target: { files: [new File(['wav-data'], 'generator-hum.wav', { type: 'audio/wav' })] },
@@ -98,29 +111,32 @@ describe('Machine sound matching UI (Chunk 11)', () => {
     fireEvent.click(analyzeButton);
 
     await waitFor(() =>
-      expect(postForm).toHaveBeenCalledWith('/audio/analyze', expect.any(FormData))
+      expect(postForm).toHaveBeenCalledWith('/audio/analyze', expect.any(FormData)),
+      { timeout: 5000 }
     );
+    const form = postForm.mock.calls[0][1] as FormData;
+    expect(form.get('machine_id')).toBe('machine-ct');
     expect(
       await screen.findByText(/No Reliable Reference Match Identified/i)
     ).toBeInTheDocument();
   });
 
-  it('renders successful MATCHED state with primary candidate, actual score, and 5-point interpretation', async () => {
+  it('renders audible observations separately from a machine-specific reference similarity', async () => {
     const candidate1 = {
       reference_id: 'ref-coldhead-1',
-      title: 'MRI Cryocooler Coldhead Compression',
-      machine_name: 'Magnetom Aera 1.5T',
-      model_name: 'Aera-2023',
-      component: 'Coldhead Displacer',
-      operation: 'Cooling Compressor Cycle',
-      interpretation: 'Acoustic pulse signature matches normal coldhead displacer stroke under 2.1 bar helium return.',
+      title: 'MRI Cooling Cycle Reference',
+      machine_name: 'MRI',
+      model_name: 'Registered MRI machine',
+      component: 'Cooling system',
+      operation: 'Cooling cycle',
+      interpretation: 'This reference documents the recorded cooling cycle under its listed conditions.',
       similarity_score: 0.9421,
       knowledge_version_id: 'kv-coldhead-1',
       knowledge_sources: [
         {
           knowledge_item_id: 'ki-coldhead',
           knowledge_version_id: 'kv-coldhead-1',
-          title: 'MRI Coldhead Replacement & Pressure SOP',
+          title: 'ACR MRI Quality Control',
           version_no: 2,
         },
       ],
@@ -137,6 +153,8 @@ describe('Machine sound matching UI (Chunk 11)', () => {
       matched_reference: candidate1,
       requires_expert_review: false,
       candidate_matches: [candidate1],
+      audio_observation: 'A repeating mechanical tone is audible with a brief pause between cycles.',
+      processing_metadata: { duration_seconds: 3.2, input_format: 'audio/wav', channels: 1, decoded_sample_rate: 44100, normalized_sample_rate: 16000 },
     });
 
     render(
@@ -144,6 +162,8 @@ describe('Machine sound matching UI (Chunk 11)', () => {
         <SoundAnalysisPage />
       </BrowserRouter>
     );
+
+    await selectMachine('machine-mri');
 
     const upload = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(upload, {
@@ -154,31 +174,23 @@ describe('Machine sound matching UI (Chunk 11)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Analyze Machine Sound/i }));
 
     expect(await screen.findByText(/^Match found$/i)).toBeInTheDocument();
-    expect(screen.getByText(/Match Found: MRI Cryocooler Coldhead Compression/i)).toBeInTheDocument();
-    expect(screen.getByText(/94.2% Match/i)).toBeInTheDocument();
-    expect(screen.getByText(/0.9421 \/ 1.0000/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/calibrated probability of machine failure/i)
-    ).toBeInTheDocument();
-
-    // 5-Point Technician Diagnostic Breakdown
-    expect(screen.getByText(/1\. Observed Sound Characteristics/i)).toBeInTheDocument();
-    expect(screen.getByText(/2\. Closest Known Reference Profile/i)).toBeInTheDocument();
-    expect(screen.getByText(/3\. Available Acoustic Evidence \/ Interpretation/i)).toBeInTheDocument();
-    expect(screen.getByText(/4\. Approved Next Step & Field SOP/i)).toBeInTheDocument();
-    expect(screen.getByText(/5\. Diagnostic Limitations:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Similar to approved reference: MRI Cooling Cycle Reference/i)).toBeInTheDocument();
+    expect(screen.getByText(/94.2% · ranking only/i)).toBeInTheDocument();
+    expect(screen.getByText(/A repeating mechanical tone is audible/i)).toBeInTheDocument();
+    expect(screen.getByText(/normalized to 16000 Hz/i)).toBeInTheDocument();
+    expect(screen.getByText(/not a calibrated probability, a diagnosis, or proof of machine condition/i)).toBeInTheDocument();
 
     // SOP knowledge links
-    expect(screen.getByText(/MRI Coldhead Replacement & Pressure SOP/i)).toBeInTheDocument();
+    expect(screen.getByText(/ACR MRI Quality Control/i)).toBeInTheDocument();
   });
 
   it('renders AMBIGUOUS_MATCH state with prominent visual uncertainty warning and candidate comparison', async () => {
     const cand1 = {
       reference_id: 'ref-xray-1',
-      title: 'X-Ray Rotor Bearing Dry Friction',
-      machine_name: 'Optima XR646',
-      component: 'Anode Rotor Bearings',
-      interpretation: 'Dry metallic friction hum from rotating anode bearing track.',
+      title: 'X-ray Operating Reference A',
+      machine_name: 'Xray',
+      component: 'Mechanical movement',
+      interpretation: 'The reference recording contains a low mechanical hum under its listed conditions.',
       similarity_score: 0.865,
       knowledge_version_id: 'kv-xray-1',
       knowledge_sources: [],
@@ -186,10 +198,10 @@ describe('Machine sound matching UI (Chunk 11)', () => {
     };
     const cand2 = {
       reference_id: 'ref-xray-2',
-      title: 'X-Ray Tube Stator Winding Resonance',
-      machine_name: 'Optima XR646',
-      component: 'Stator Housing',
-      interpretation: 'Harmonic resonance in stator motor windings during high-kV spinup.',
+      title: 'X-ray Operating Reference B',
+      machine_name: 'Xray',
+      component: 'Mechanical movement',
+      interpretation: 'The reference recording contains a higher tonal component under its listed conditions.',
       similarity_score: 0.841,
       knowledge_version_id: 'kv-xray-2',
       knowledge_sources: [],
@@ -213,6 +225,8 @@ describe('Machine sound matching UI (Chunk 11)', () => {
       </BrowserRouter>
     );
 
+    await selectMachine('machine-xray');
+
     const upload = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(upload, {
       target: { files: [new File(['wav-data'], 'tube-spin.wav', { type: 'audio/wav' })] },
@@ -223,13 +237,13 @@ describe('Machine sound matching UI (Chunk 11)', () => {
 
     expect(await screen.findByText(/^Ambiguous match$/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/Never label an ambiguous match as a confirmed fault/i)
+      screen.getByText(/Multiple approved recordings received similar ranking scores/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/86.5% Match/i)).toBeInTheDocument();
+    expect(screen.getByText(/86.5%/i)).toBeInTheDocument();
     expect(screen.getByText(/Rank #2/i)).toBeInTheDocument();
-    expect(screen.getByText(/X-Ray Tube Stator Winding Resonance/i)).toBeInTheDocument();
+    expect(screen.getByText(/X-ray Operating Reference B/i)).toBeInTheDocument();
     expect(screen.getByText(/84.1%/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Compare Audio/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Compare Audio/i })).toHaveLength(2);
     expect(
       screen.getByText(/Request Independent Expert Engineering Evaluation/i)
     ).toBeInTheDocument();
@@ -238,10 +252,10 @@ describe('Machine sound matching UI (Chunk 11)', () => {
   it('renders NO_RELIABLE_MATCH state below screening cutoff and enables expert escalation', async () => {
     const lowCand = {
       reference_id: 'ref-ct-low',
-      title: 'CT Slip Ring Brush Arching',
-      machine_name: 'Revolution EVO CT',
-      component: 'Slip Ring Assembly',
-      interpretation: 'High-frequency brush arcing noise under gantry rotation.',
+      title: 'CT Operating Reference Sample',
+      machine_name: 'CT-Scan',
+      component: 'Gantry assembly',
+      interpretation: 'The reference recording contains a high-frequency mechanical tone under its listed conditions.',
       similarity_score: 0.742,
       knowledge_version_id: 'kv-ct-low',
       knowledge_sources: [],
@@ -265,6 +279,8 @@ describe('Machine sound matching UI (Chunk 11)', () => {
       </BrowserRouter>
     );
 
+    await selectMachine('machine-ct');
+
     const upload = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(upload, {
       target: { files: [new File(['wav-data'], 'unknown-noise.wav', { type: 'audio/wav' })] },
@@ -275,9 +291,9 @@ describe('Machine sound matching UI (Chunk 11)', () => {
 
     expect(await screen.findByText(/^No match$/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/No reference met the current screening threshold/i)
+      screen.getByText(/No reference met the configured comparison threshold/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/74.2% Match/i)).toBeInTheDocument();
+    expect(screen.getByText(/74.2%/i)).toBeInTheDocument();
     expect(
       screen.getByText(/Submit Sample To Peer Review Queue/i)
     ).toBeInTheDocument();
@@ -291,6 +307,8 @@ describe('Machine sound matching UI (Chunk 11)', () => {
         <SoundAnalysisPage />
       </BrowserRouter>
     );
+
+    await selectMachine('machine-mri');
 
     const upload = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(upload, {
@@ -308,18 +326,18 @@ describe('Machine sound matching UI (Chunk 11)', () => {
   it('allows switching comparison reference using Compare Audio button', async () => {
     const candA = {
       reference_id: 'ref-a',
-      title: 'MRI Gradient Knocking (Sequence A)',
+      title: 'MRI Gradient Cycle Reference A',
       similarity_score: 0.91,
-      interpretation: 'Normal knocking',
+      interpretation: 'The recording contains repeating gradient-cycle pulses.',
       knowledge_version_id: 'kv-a',
       knowledge_sources: [],
       related_links: [],
     };
     const candB = {
       reference_id: 'ref-b',
-      title: 'MRI Gradient Coil Chattering (Loose Clamp)',
+      title: 'MRI Gradient Cycle Reference B',
       similarity_score: 0.89,
-      interpretation: 'Loose clamp vibration harmonic',
+      interpretation: 'The recording contains a different pulse rhythm under its listed conditions.',
       knowledge_version_id: 'kv-b',
       knowledge_sources: [],
       related_links: [],
@@ -343,6 +361,8 @@ describe('Machine sound matching UI (Chunk 11)', () => {
       </BrowserRouter>
     );
 
+    await selectMachine('machine-mri');
+
     const upload = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(upload, {
       target: { files: [new File(['wav-data'], 'mri.wav', { type: 'audio/wav' })] },
@@ -357,7 +377,7 @@ describe('Machine sound matching UI (Chunk 11)', () => {
 
     fireEvent.click(compareButtons[0]);
     expect(
-      await screen.findByText(/Loaded candidate for side-by-side comparison: MRI Gradient Coil Chattering/i)
+      await screen.findByText(/Loaded candidate for side-by-side comparison: MRI Gradient Cycle Reference B/i)
     ).toBeInTheDocument();
   });
 });

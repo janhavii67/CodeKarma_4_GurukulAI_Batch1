@@ -59,6 +59,8 @@ class AudioAnalysisJob(Base):
     similarity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     reason_code: Mapped[str] = mapped_column(String(64), default="PENDING", nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
+    audio_observation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    processing_metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     requires_expert_review: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     candidate_scores_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Ranked candidate scores
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

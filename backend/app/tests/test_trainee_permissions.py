@@ -6,6 +6,7 @@ from array import array
 import pytest
 from fastapi.testclient import TestClient
 from app.core.config import settings
+from app.models.machine import Machine
 
 
 
@@ -103,8 +104,15 @@ def test_trainee_cannot_view_another_operators_procedure_run(client: TestClient)
     assert peek_resp.json()["error"]["code"] == "unauthorized_run"
 
 
-def test_trainee_sound_analysis_execution(client: TestClient):
+def test_trainee_sound_analysis_execution(client: TestClient, db_session, monkeypatch):
     """Trainee can submit machine audio for acoustic comparison."""
+    machine = db_session.query(Machine).filter_by(code="MACH-CT12", is_active=True).first()
+    if machine is None:
+        machine = Machine(name="CT-Scan", code="MACH-CT12", category="Medical Imaging", status="ACTIVE", is_active=True)
+        db_session.add(machine)
+        db_session.flush()
+    machine_id = machine.id
+    monkeypatch.setattr("app.api.v1.endpoints.audio._observe_audio", lambda _features, _machine: "A steady tone is audible.")
     client.post("/api/v1/auth/login", json={"email": settings.TRAINEE_EMAIL, "password": settings.TRAINEE_PASSWORD})
     csrf = client.get("/api/v1/auth/csrf").json()["csrf_token"]
     samples = array("h", (int(12_000 * math.sin(2 * math.pi * 440 * index / 16_000)) for index in range(16_000)))
@@ -116,6 +124,7 @@ def test_trainee_sound_analysis_execution(client: TestClient):
         wav.writeframes(samples.tobytes())
     resp = client.post(
         "/api/v1/audio/analyze",
+        data={"machine_id": machine_id},
         files={"file": ("machine.wav", output.getvalue(), "audio/wav")},
         headers={"X-CSRF-Token": csrf},
     )

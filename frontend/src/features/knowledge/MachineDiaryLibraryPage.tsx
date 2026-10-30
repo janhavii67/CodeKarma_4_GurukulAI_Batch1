@@ -16,7 +16,6 @@ import {
   ShieldCheck,
   Lock,
   Cloud,
-  PlusCircle,
   ArrowRight,
   Clock,
   Plus,
@@ -33,11 +32,6 @@ import {
   type MachineDiaryMachine,
 } from './machineDiaryApi';
 import './machineDiary.css';
-
-const bookPalettes = [
-  ['#1976D2', '#1976C9', '#125EA3'],
-  ['#047857', '#047857', '#065F46'],
-];
 
 const displayedKnowledgeCount = (machine: MachineDiaryMachine) =>
   machine.counts.video + machine.counts.image + machine.counts.document + machine.counts.notes;

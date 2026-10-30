@@ -171,10 +171,18 @@ class IndexingService:
         doc_title = title or f"Audio Recording Transcript ({transcript_id[:8]})"
 
         from app.models.media import MediaAsset
-        from app.models.knowledge import KnowledgeVersion
         media = db.get(MediaAsset, transcript.media_id) if transcript.media_id else None
-        machine_id = media.machine_id if media else None
-        version = db.get(KnowledgeVersion, transcript.version_id) if transcript.version_id else None
+        # A narrated transcript may be linked through either its own version
+        # or the media asset. Keep its RAG source aligned with the approved
+        # procedure's machine scope so exact-machine Tutor queries can find it.
+        version_id = transcript.version_id or (media.version_id if media else None)
+        version = db.get(KnowledgeVersion, version_id) if version_id else None
+        version_item = db.get(KnowledgeItem, version.item_id) if version and version.item_id else None
+        machine_id = (
+            (version.machine_id if version else None)
+            or (version_item.machine_id if version_item else None)
+            or (media.machine_id if media else None)
+        )
         approved = bool(version and version.status == STATUS_PUBLISHED)
 
         # Find or create source

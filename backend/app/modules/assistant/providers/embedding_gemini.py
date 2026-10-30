@@ -1,4 +1,6 @@
+import hashlib
 import re
+import threading
 import time
 from typing import List, Optional
 from google import genai
@@ -15,6 +17,32 @@ from app.modules.assistant.providers.llm_base import (
     LLMTimeoutError,
     LLMError,
 )
+
+RATE_LIMIT_COOLDOWN_SECONDS = 60.0
+_RATE_LIMITED_KEYS_UNTIL: dict[str, float] = {}
+_RATE_LIMITED_KEYS_LOCK = threading.Lock()
+
+
+def _key_fingerprint(api_key: str) -> str:
+    """Return a non-reversible identifier so cooldown state never stores API keys."""
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+
+
+def _key_is_rate_limited(api_key: str) -> bool:
+    fingerprint = _key_fingerprint(api_key)
+    now = time.monotonic()
+    with _RATE_LIMITED_KEYS_LOCK:
+        until = _RATE_LIMITED_KEYS_UNTIL.get(fingerprint, 0.0)
+        if until <= now:
+            _RATE_LIMITED_KEYS_UNTIL.pop(fingerprint, None)
+            return False
+        return True
+
+
+def _mark_key_rate_limited(api_key: str) -> None:
+    fingerprint = _key_fingerprint(api_key)
+    with _RATE_LIMITED_KEYS_LOCK:
+        _RATE_LIMITED_KEYS_UNTIL[fingerprint] = time.monotonic() + RATE_LIMIT_COOLDOWN_SECONDS
 
 
 class GeminiEmbeddingProvider(EmbeddingProvider):
@@ -35,7 +63,10 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
             raise LLMAuthenticationError(
                 "GEMINI_API_KEY is not configured for Gemini embedding provider."
             )
-        self.current_key_idx = 0
+        self.current_key_idx = next(
+            (index for index, key in enumerate(self.api_keys) if not _key_is_rate_limited(key)),
+            0,
+        )
         self.api_key = self.api_keys[0]
 
         self.model_name = (
@@ -44,6 +75,7 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
             or "text-embedding-004"
         )
         self.provider_name = "gemini"
+        self.api_key = self.api_keys[self.current_key_idx]
         self.client = genai.Client(api_key=self.api_key)
 
     @staticmethod
@@ -57,16 +89,21 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
                 keys.append(cleaned)
         return keys
 
-    def _rotate_key(self) -> str:
-        if not self.api_keys:
-            return ""
-        self.current_key_idx = (self.current_key_idx + 1) % len(self.api_keys)
-        self.api_key = self.api_keys[self.current_key_idx]
-        self.client = genai.Client(api_key=self.api_key)
-        logger.info(
-            f"Rotated Gemini Embedding API key to slot {self.current_key_idx + 1}/{len(self.api_keys)}"
-        )
-        return self.api_key
+    def _rotate_key(self, excluded: Optional[set[int]] = None) -> bool:
+        """Move to the next available key without cycling through a limited key again."""
+        excluded = excluded or set()
+        for offset in range(1, len(self.api_keys) + 1):
+            index = (self.current_key_idx + offset) % len(self.api_keys)
+            if index in excluded or _key_is_rate_limited(self.api_keys[index]):
+                continue
+            self.current_key_idx = index
+            self.api_key = self.api_keys[index]
+            self.client = genai.Client(api_key=self.api_key)
+            logger.info(
+                f"Rotated Gemini Embedding API key to slot {self.current_key_idx + 1}/{len(self.api_keys)}"
+            )
+            return True
+        return False
 
     def embed_texts(self, request: EmbeddingRequest) -> EmbeddingResponse:
         """Batch compute embeddings for multiple texts with multi-key rotation and backoff."""
@@ -79,6 +116,12 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
             batch = request.texts[i : i + batch_size]
             retries = max(3, len(self.api_keys))
             backoff_s = 1.0
+            rate_limited_keys: set[int] = set()
+
+            if _key_is_rate_limited(self.api_keys[self.current_key_idx]) and not self._rotate_key():
+                raise LLMRateLimitError(
+                    "Gemini Embedding keys are in cooldown; semantic retrieval is temporarily unavailable."
+                )
 
             while retries >= 0:
                 try:
@@ -91,7 +134,6 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
                             all_embeddings.append(emb.values)
                     break
                 except Exception as exc:
-                    retries -= 1
                     err_msg = str(exc).lower()
                     if (
                         "429" in err_msg
@@ -99,18 +141,17 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
                         or "rate limit" in err_msg
                         or "quota" in err_msg
                     ):
-                        if len(self.api_keys) > 1:
-                            self._rotate_key()
-                        if retries >= 0:
+                        rate_limited_keys.add(self.current_key_idx)
+                        _mark_key_rate_limited(self.api_key)
+                        if self._rotate_key(excluded=rate_limited_keys):
                             logger.warning(
-                                f"Embedding rate limit hit, rotated key, backing off {backoff_s:.1f}s..."
+                                "Gemini Embedding key rate-limited; trying the next configured key without retrying this key."
                             )
-                            time.sleep(backoff_s)
-                            backoff_s *= 1.5
                             continue
                         raise LLMRateLimitError(
-                            "Gemini Embedding rate limit exceeded after retries."
+                            "Gemini Embedding rate limit exceeded for all available keys; semantic retrieval is temporarily unavailable."
                         ) from exc
+                    retries -= 1
                     if "api_key" in err_msg or "401" in err_msg or "403" in err_msg:
                         if len(self.api_keys) > 1 and retries >= 0:
                             self._rotate_key()

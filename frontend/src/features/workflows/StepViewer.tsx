@@ -6,17 +6,20 @@ import {
   Check,
   ClipboardList,
   Eye,
+  ExternalLink,
   FileWarning,
   Flag,
   Layers,
   Lightbulb,
+  BookOpen,
   RotateCcw,
   ScrollText,
   Wrench,
 } from 'lucide-react';
 import { MediaShowcase } from './MediaShowcase';
 import type { ProcedureReference, ProcedureStep, ReferenceLoadState } from './types';
-import { stepAssetIds, stepChecklist, stepNeedsReview, stepNote, stepStopCondition, stepTools } from './stepContent';
+import { stepAssetIds, stepChecklist, stepNarrationText, stepNeedsReview, stepNote, stepSourceReferences, stepStopCondition, stepTools } from './stepContent';
+import { StepNarrator } from './StepNarrator';
 
 function SectionHeading({ icon, children, id }: { icon: ReactNode; children: ReactNode; id?: string }) {
   return <h4 id={id} className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#536779]">
@@ -52,6 +55,7 @@ export function StepViewerBody({
   const tools = stepTools(step);
   const checklist = stepChecklist(step);
   const note = stepNote(step);
+  const sources = stepSourceReferences(step);
   const checkedCount = checklistReadOnly ? checklist.length : checklistChecked.filter(Boolean).length;
 
   return <div className="space-y-6">
@@ -62,9 +66,25 @@ export function StepViewerBody({
     </div>}
 
     <section aria-labelledby={`instructions-${step.id}`}>
-      <SectionHeading id={`instructions-${step.id}`} icon={<ScrollText size={13} />}>What to do</SectionHeading>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SectionHeading id={`instructions-${step.id}`} icon={<ScrollText size={13} />}>What to do</SectionHeading>
+        <StepNarrator text={stepNarrationText(step)} />
+      </div>
       <p className="mt-3 max-w-[68ch] whitespace-pre-line text-[15px] leading-7 text-[#344B60]">{step.instruction}</p>
     </section>
+
+    {sources.length > 0 && <section aria-label="Verified guidance sources" className="rounded-2xl border border-[#C8DCE7] bg-[#F4F8FA] p-4">
+      <SectionHeading icon={<BookOpen size={13} />}>Verified guidance</SectionHeading>
+      <p className="mt-2 text-xs leading-5 text-[#536779]">Use these references with the installed machine manual and local approved procedure.</p>
+      <ul className="mt-3 space-y-2">
+        {sources.map((source) => <li key={`${source.url}-${source.title}`}>
+          <a href={source.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-start gap-2 text-sm font-semibold text-[#176E8A] underline decoration-[#A8CCD7] underline-offset-2 hover:text-[#125C74]">
+            <ExternalLink size={14} className="mt-0.5 shrink-0" />
+            <span>{source.title}{source.publisher ? <span className="font-normal text-[#536779]"> · {source.publisher}</span> : null}</span>
+          </a>
+        </li>)}
+      </ul>
+    </section>}
 
     {tools.length > 0 && <section aria-labelledby={`tools-${step.id}`}>
       <SectionHeading id={`tools-${step.id}`} icon={<Wrench size={13} />}>Tools and materials</SectionHeading>

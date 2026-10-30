@@ -160,7 +160,7 @@ describe('Redesigned Operational Dashboard Tests', () => {
       '/app/knowledge-assets?kind=image'
     );
 
-    // The expert Home keeps its capture and hero sections only.
+    // The redesigned Expert Home keeps its four intended capture and knowledge sections.
     expect(screen.queryByText(/Review & Verify Knowledge/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Knowledge Assistant/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/My Knowledge Overview/i)).not.toBeInTheDocument();
@@ -174,15 +174,10 @@ describe('Redesigned Operational Dashboard Tests', () => {
     expect(screen.queryByText(/Pending peer evaluations/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/View History/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No Knowledge Entries Recorded/i)).not.toBeInTheDocument();
-    expect(container.querySelectorAll('section')).toHaveLength(2);
+    expect(container.querySelectorAll('section')).toHaveLength(4);
     expect(Array.from(container.querySelectorAll('div')).some((element) =>
-      element.className.includes('max-w-6xl'),
+      element.className.includes('w-full') && element.className.includes('space-y-7'),
     )).toBe(true);
-    expect(screen.getByText(/Start Capturing →/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Start Capturing/i })).toHaveAttribute(
-      'href',
-      '/app/knowledge-assets'
-    );
     expect(screen.getByRole('link', { name: /Explore My Knowledge/i })).toHaveAttribute('href', '/app/knowledge');
     expect(screen.queryByText(/Ask Assistant/i)).not.toBeInTheDocument();
 

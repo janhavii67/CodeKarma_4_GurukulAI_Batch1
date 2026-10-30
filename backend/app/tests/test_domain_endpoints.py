@@ -6,6 +6,7 @@ from array import array
 import pytest
 from fastapi.testclient import TestClient
 from app.core.config import settings
+from app.models.machine import Machine
 
 
 def login(client: TestClient, email: str, password: str):
@@ -160,11 +161,18 @@ def _machine_tone_wav(*, silent: bool = False) -> bytes:
     return output.getvalue()
 
 
-def test_machine_sound_analysis_validates_audio_and_does_not_invent_references(client: TestClient):
+def test_machine_sound_analysis_validates_audio_and_does_not_invent_references(client: TestClient, db_session, monkeypatch):
+    machine = db_session.query(Machine).filter_by(code="MACH-CT12", is_active=True).first()
+    if machine is None:
+        machine = Machine(name="CT-Scan", code="MACH-CT12", category="Medical Imaging", status="ACTIVE", is_active=True)
+        db_session.add(machine)
+        db_session.flush()
+    machine_id = machine.id
+    monkeypatch.setattr("app.api.v1.endpoints.audio._observe_audio", lambda _features, _machine: "A steady tone is audible.")
     login(client, settings.OPERATOR_EMAIL if hasattr(settings, "OPERATOR_EMAIL") else "operator@demo.local", "Operator@Gurukul2026!")
     csrf = client.get("/api/v1/auth/csrf").json()["csrf_token"]
     headers = {settings.CSRF_HEADER_NAME: csrf}
-    response = client.post("/api/v1/audio/analyze", files={"file": ("machine.wav", _machine_tone_wav(), "audio/wav")}, headers=headers)
+    response = client.post("/api/v1/audio/analyze", data={"machine_id": machine_id}, files={"file": ("machine.wav", _machine_tone_wav(), "audio/wav")}, headers=headers)
     assert response.status_code == 201
     result = response.json()
     assert result["status"] == "NO_RELIABLE_MATCH"
@@ -173,10 +181,10 @@ def test_machine_sound_analysis_validates_audio_and_does_not_invent_references(c
     assert result["candidate_matches"] == []
     assert "no expert-approved reference" in result["message"].lower()
 
-    silent = client.post("/api/v1/audio/analyze", files={"file": ("silent.wav", _machine_tone_wav(silent=True), "audio/wav")}, headers=headers)
+    silent = client.post("/api/v1/audio/analyze", data={"machine_id": machine_id}, files={"file": ("silent.wav", _machine_tone_wav(silent=True), "audio/wav")}, headers=headers)
     assert silent.status_code == 422
     assert silent.json()["error"]["code"] == "silent_audio"
 
-    unsupported = client.post("/api/v1/audio/analyze", files={"file": ("sound.mp3", b"not an audio stream", "audio/mpeg")}, headers=headers)
+    unsupported = client.post("/api/v1/audio/analyze", data={"machine_id": machine_id}, files={"file": ("sound.mp3", b"not an audio stream", "audio/mpeg")}, headers=headers)
     assert unsupported.status_code == 422
     assert unsupported.json()["error"]["code"] == "unsupported_audio_format"

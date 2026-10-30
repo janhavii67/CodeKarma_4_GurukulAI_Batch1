@@ -273,60 +273,15 @@ def test_index_prediction_to_rag(db_session):
 
 
 # --------------------------------------------------------------------------- #
-# 9 & 10. REST API endpoints                                                  #
+# 9 & 10. Synthetic classifier routes are retired                             #
 # --------------------------------------------------------------------------- #
 
-def test_api_classify(client):
-    sig = _synth("infusion_pump_normal")
-    wav_bytes = _make_wav_bytes(sig)
-    response = client.post(
-        "/api/v1/sound-inference/classify",
-        files={"file": ("pump.wav", wav_bytes, "audio/wav")},
-    )
-    assert response.status_code == 200, response.text
-    data = response.json()
-    assert data["predicted_class"] in CLASSES
-    assert 0.0 <= data["confidence"] <= 1.0
-    assert data["severity"] in ("normal", "critical")
-    assert isinstance(data["probabilities"], dict)
-    assert len(data["probabilities"]) == len(CLASSES)
-
-
-def test_api_model_info(client):
-    response = client.get("/api/v1/sound-inference/model-info")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["model_ready"] is True
-    assert data["accuracy"] >= 0.80
-
-
-def test_api_classes(client):
-    response = client.get("/api/v1/sound-inference/classes")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == len(CLASSES)
-    names = [entry["class_name"] for entry in data]
-    for c in CLASSES:
-        assert c in names
-
-
-def test_api_classify_empty_file(client):
-    response = client.post(
-        "/api/v1/sound-inference/classify",
-        files={"file": ("empty.wav", b"", "audio/wav")},
-    )
-    assert response.status_code == 400
-
-
-def test_api_classify_and_index(client, db_session):
-    sig = _synth("defibrillator_charging")
-    wav_bytes = _make_wav_bytes(sig)
-    response = client.post(
-        "/api/v1/sound-inference/classify-and-index",
-        files={"file": ("defib.wav", wav_bytes, "audio/wav")},
-    )
-    assert response.status_code == 200, response.text
-    data = response.json()
-    assert data["predicted_class"] in CLASSES
-    assert data["indexed"] is True
-    assert data["rag_embedding_id"] is not None
+def test_retired_synthetic_classifier_api_is_not_exposed(client):
+    assert client.get("/api/v1/sound-inference/model-info").status_code == 404
+    assert client.get("/api/v1/sound-inference/classes").status_code == 404
+    for route in ("classify", "classify-and-index"):
+        response = client.post(
+            f"/api/v1/sound-inference/{route}",
+            files={"file": ("synthetic.wav", b"not served", "audio/wav")},
+        )
+        assert response.status_code == 404

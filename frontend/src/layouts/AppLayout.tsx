@@ -16,7 +16,6 @@ export const AppLayout: React.FC = () => {
   const canApprove = hasPermission('knowledge.approve');
   const canReadKnowledge = hasPermission('knowledge.view_published') || hasPermission('knowledge.create') || canApprove;
   const canReadMachines = hasPermission('knowledge.view_published') || hasPermission('machine.manage');
-  const canUseLearning = hasPermission('procedure.execute') || hasPermission('learning.manage');
   const isTrainee = user?.role_id === 'TRAINEE';
 
   const traineeDestinations: Array<{ label: string; to: string; permission?: string | null; permissions?: string[]; end: boolean }> = [
@@ -113,11 +112,17 @@ export const AppLayout: React.FC = () => {
 
             {hasPermission('knowledge.create') && <NavLink
               to="/app/knowledge-assets?kind=notes"
+              aria-label="Capture Knowledge"
               className="px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs bg-[#1677F8] text-white border border-[#1677F8]/40 font-semibold shadow-sm hover:bg-[#1060C4]"
             >
               <span className="material-symbols-outlined text-[15px]">photo_camera</span>
               <span>Capture Knowledge</span>
             </NavLink>}
+
+            {(hasPermission('troubleshoot.use') || hasPermission('knowledge.create')) && <NavLink
+              to="/app/troubleshooting"
+              className={({ isActive }) => `px-3.5 py-1.5 rounded-full flex items-center gap-1.5 transition-all text-xs ${isActive ? 'bg-white/15 text-white font-bold' : 'text-blue-100 hover:text-white hover:bg-white/10 font-medium'}`}
+            >Troubleshooting</NavLink>}
 
             {canReadKnowledge && <NavLink
               to="/app/knowledge"
@@ -144,6 +149,7 @@ export const AppLayout: React.FC = () => {
             >
               <span>Guided Workflows</span>
             </NavLink>}
+
             </>}
           </nav>
 
@@ -248,9 +254,17 @@ export const AppLayout: React.FC = () => {
               {hasPermission('knowledge.create') && <NavLink
                 to="/app/knowledge-assets?kind=notes"
                 onClick={closeMobileMenu}
+                aria-label="Capture Knowledge"
                 className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold ${isActive ? 'text-white bg-[#1677F8]' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
               >
                 <span>Capture Knowledge</span>
+              </NavLink>}
+              {(hasPermission('troubleshoot.use') || hasPermission('knowledge.create')) && <NavLink
+                to="/app/troubleshooting"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold ${isActive ? 'text-white bg-[#1677F8]' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
+              >
+                <span>Troubleshooting</span>
               </NavLink>}
               {canReadKnowledge && <NavLink
                 to="/app/knowledge"
@@ -266,7 +280,7 @@ export const AppLayout: React.FC = () => {
               >
                 <span>Guided Workflows</span>
               </NavLink>}
-              {hasPermission('audio.analyze') && <NavLink
+              {user?.role_id !== 'EXPERT' && hasPermission('audio.analyze') && <NavLink
                 to="/app/sound-inference"
                 onClick={closeMobileMenu}
                 className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold ${isActive ? 'text-white bg-[#1677F8]' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}

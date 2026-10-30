@@ -47,6 +47,14 @@ class TroubleshootingGuide(Base, TimestampMixin):
     product_family: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     severity: Mapped[str] = mapped_column(String(32), default="MEDIUM", nullable=False)  # LOW, MEDIUM, HIGH, CRITICAL
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    difficulty: Mapped[str] = mapped_column(String(16), default="INTERMEDIATE", server_default="INTERMEDIATE", nullable=False)  # BEGINNER, INTERMEDIATE, ADVANCED
+    tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # comma separated
+    cover_media_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    estimated_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
+    # Mission settings for the trainee troubleshooting simulator (briefing, objective, xp, skills, enabled).
+    simulation: Mapped[Optional[dict]] = mapped_column(JSON, default=dict, nullable=True)
     current_published_version_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
 
     # Relationships
@@ -96,6 +104,7 @@ class TroubleshootingVersion(Base):
         back_populates="version",
         cascade="all, delete-orphan",
         foreign_keys="[TroubleshootingEdge.version_id]",
+        order_by="TroubleshootingEdge.sort_order",
     )
     sessions: Mapped[List["TroubleshootingSession"]] = relationship(
         "TroubleshootingSession",
@@ -141,10 +150,15 @@ class TroubleshootingNode(Base):
     position_x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     position_y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     help_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Type-specific fields, e.g. ppe / possible_causes / recommended_actions / technical_terms.
+    details: Mapped[Optional[dict]] = mapped_column(JSON, default=dict, nullable=True)
+    # expert | ai_draft | ai_reviewed. AI-drafted steps must be reviewed before submission.
+    origin: Mapped[str] = mapped_column(String(16), default="expert", server_default="expert", nullable=False)
 
     # Backward compatibility fields
     is_root: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Migration 004 created this legacy column NOT NULL; default it so builder nodes can be inserted.
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default="")
 
     # Relationships
     version: Mapped[Optional["TroubleshootingVersion"]] = relationship("TroubleshootingVersion", back_populates="nodes", foreign_keys=[version_id])
@@ -154,6 +168,7 @@ class TroubleshootingNode(Base):
         foreign_keys="[TroubleshootingEdge.from_node_id]",
         back_populates="from_node",
         cascade="all, delete-orphan",
+        order_by="TroubleshootingEdge.sort_order",
     )
     incoming_edges: Mapped[List["TroubleshootingEdge"]] = relationship(
         "TroubleshootingEdge",
@@ -175,15 +190,17 @@ class TroubleshootingEdge(Base):
     version_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("troubleshooting_versions.id", ondelete="CASCADE"), nullable=True, index=True)
     case_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("troubleshooting_cases.id", ondelete="CASCADE"), nullable=True, index=True)
     from_node_id: Mapped[str] = mapped_column(String(36), ForeignKey("troubleshooting_nodes.id", ondelete="CASCADE"), nullable=False, index=True)
-    to_node_id: Mapped[str] = mapped_column(String(36), ForeignKey("troubleshooting_nodes.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Null while an answer exists but its destination has not been chosen yet.
+    to_node_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("troubleshooting_nodes.id", ondelete="CASCADE"), nullable=True, index=True)
     condition: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON condition rule
     label: Mapped[str] = mapped_column(String(128), nullable=False)  # "Yes", "No", "< 6.0 bar", etc.
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     # Relationships
     version: Mapped[Optional["TroubleshootingVersion"]] = relationship("TroubleshootingVersion", back_populates="edges", foreign_keys=[version_id])
     case: Mapped[Optional["TroubleshootingCase"]] = relationship("TroubleshootingCase", back_populates="edges", foreign_keys=[case_id])
     from_node: Mapped["TroubleshootingNode"] = relationship("TroubleshootingNode", foreign_keys=[from_node_id], back_populates="outgoing_edges")
-    to_node: Mapped["TroubleshootingNode"] = relationship("TroubleshootingNode", foreign_keys=[to_node_id], back_populates="incoming_edges")
+    to_node: Mapped[Optional["TroubleshootingNode"]] = relationship("TroubleshootingNode", foreign_keys=[to_node_id], back_populates="incoming_edges")
 
 
 class TroubleshootingSession(Base):
@@ -310,3 +327,59 @@ class TroubleshootingCase(Base, TimestampMixin):
 
     nodes: Mapped[List["TroubleshootingNode"]] = relationship("TroubleshootingNode", back_populates="case", cascade="all, delete-orphan")
     edges: Mapped[List["TroubleshootingEdge"]] = relationship("TroubleshootingEdge", back_populates="case", cascade="all, delete-orphan")
+
+
+class DecisionTreeAIDraft(Base):
+    """Audit record of an AI generation or review request for a decision tree.
+
+    AI output only ever lands in a draft version as ``origin="ai_draft"`` nodes;
+    an expert must review those nodes before the version can be submitted.
+    """
+    __tablename__ = "decision_tree_ai_drafts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    guide_id: Mapped[str] = mapped_column(String(36), ForeignKey("troubleshooting_guides.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("troubleshooting_versions.id", ondelete="CASCADE"), nullable=True, index=True)
+    requested_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # generate | review | assist
+    prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)  # applied | completed | failed
+    provider: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    source_refs: Mapped[Optional[List[dict]]] = mapped_column(JSON, default=list, nullable=True)
+    result: Mapped[Optional[dict]] = mapped_column(JSON, default=dict, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class MissionAttempt(Base):
+    """A trainee's run of a published tree as a troubleshooting mission, pinned to one version."""
+    __tablename__ = "mission_attempts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    guide_id: Mapped[str] = mapped_column(String(36), ForeignKey("troubleshooting_guides.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_id: Mapped[str] = mapped_column(String(36), ForeignKey("troubleshooting_versions.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="in_progress", nullable=False, index=True)  # in_progress | completed | abandoned
+    stage: Mapped[str] = mapped_column(String(16), default="investigate", nullable=False)  # investigate | diagnose | correct | verify | complete
+    current_node_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    state: Mapped[Optional[dict]] = mapped_column(JSON, default=dict, nullable=True)
+    score: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    total_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    xp_awarded: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    active_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    resumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MissionAchievement(Base):
+    __tablename__ = "mission_achievements"
+    __table_args__ = (UniqueConstraint("user_id", "code", name="uq_mission_achievement_user_code"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(48), nullable=False)
+    attempt_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("mission_attempts.id", ondelete="SET NULL"), nullable=True)
+    earned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

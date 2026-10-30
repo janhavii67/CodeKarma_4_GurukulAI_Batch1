@@ -9,6 +9,12 @@ export interface ProcedureStep {
   details?: Record<string, unknown>;
 }
 
+export interface ProcedureSourceReference {
+  title: string;
+  publisher?: string | null;
+  url: string;
+}
+
 export interface Procedure {
   id: string;
   title: string;
@@ -24,6 +30,7 @@ export interface Procedure {
   required_tools?: string | null;
   safety_warnings?: string | null;
   operating_conditions?: string | null;
+  source_refs?: ProcedureSourceReference[];
   steps: ProcedureStep[];
   updated_at: string;
 }

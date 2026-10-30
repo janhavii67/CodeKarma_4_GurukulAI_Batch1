@@ -35,6 +35,8 @@ vi.mock('../features/knowledge/MachineDiaryLibraryPage', () => ({
   MachineDiaryPage: () => <div>Machine diary page</div>,
 }));
 vi.mock('../features/troubleshooting/TroubleshootingPage', () => ({ TroubleshootingPage: () => <div>Troubleshooting page</div> }));
+vi.mock('../features/decision-trees/trainee/TroubleshootHubPage', () => ({ TroubleshootHubPage: () => <div>Guided troubleshooting tree</div> }));
+vi.mock('../features/decision-trees/trainee/TroubleshootTreeSessionPage', () => ({ TroubleshootTreeSessionPage: () => <div>Troubleshooting tree session</div> }));
 vi.mock('../features/audio/SoundAnalysisPage', () => ({ SoundAnalysisPage: () => <div>Audio matching page</div> }));
 
 afterEach(() => {
@@ -55,7 +57,13 @@ describe('actual application route permission matrix', () => {
     ['TRAINEE', [], '/app', 'Dashboard page'],
     ['TRAINEE', ['knowledge.view_published'], '/app/knowledge', 'Knowledge library page'],
     ['TRAINEE', ['assistant.use'], '/app/assistant', 'Assistant page'],
-    ['TRAINEE', ['troubleshoot.use'], '/app/troubleshooting', 'Troubleshooting page'],
+    ['TRAINEE', ['troubleshoot.use'], '/app/troubleshooting', 'Guided troubleshooting tree'],
+    ['TRAINEE', ['troubleshoot.use'], '/app/troubleshooting/guided', 'Guided troubleshooting tree'],
+    ['TRAINEE', ['troubleshoot.use'], '/app/troubleshooting/interactive', 'Guided troubleshooting tree'],
+    ['TRAINEE', ['troubleshoot.use'], '/app/troubleshooting/interactive/missions/g1', 'Guided troubleshooting tree'],
+    ['TRAINEE', ['troubleshoot.use'], '/app/troubleshooting/interactive/attempts/a1', 'Guided troubleshooting tree'],
+    ['TRAINEE', ['troubleshoot.use'], '/app/troubleshooting/guided/s1', 'Troubleshooting tree session'],
+    ['TRAINEE', ['troubleshoot.use'], '/app/troubleshooting/investigation', 'Troubleshooting page'],
     ['ADMIN', ['knowledge.approve'], '/app/reviews', 'Review queue'],
     ['EXPERT', ['knowledge.approve'], '/app/reviews', 'Review queue'],
     ['OPERATOR', ['procedure.execute'], '/app/guided-workflows', 'Workflow page'],
@@ -63,6 +71,7 @@ describe('actual application route permission matrix', () => {
     ['TRAINEE', ['audio.analyze'], '/app/sound-analysis', 'Audio matching page'],
     ['TRAINEE', ['assistant.use'], '/app/assistant', 'Assistant page'],
     ['TRAINEE', ['simulation.attempt'], '/app/failure-simulator', 'Failure simulator'],
+    ['TRAINEE', ['simulation.attempt'], '/app/simulator', 'Failure simulator'],
     ['ADMIN', ['procedure.create'], '/app/procedures/new', 'Procedure authoring'],
   ])('%s can directly open %s when its permission is present', (role, permissions, path, page) => {
     directOpen(role, permissions, path);

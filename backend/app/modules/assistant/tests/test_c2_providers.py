@@ -198,6 +198,42 @@ def test_gemini_http_client_uses_configured_timeout_and_disables_nested_retries(
     assert shortened_options.retry_options.attempts == 1
 
 
+def test_gemini_embedding_rate_limit_tries_each_key_once_then_cools_down(monkeypatch):
+    from types import SimpleNamespace
+    from app.modules.assistant.providers import embedding_gemini
+    from app.modules.assistant.providers.embedding_gemini import GeminiEmbeddingProvider
+    from app.modules.assistant.providers.llm_base import LLMRateLimitError
+
+    monkeypatch.setattr(embedding_gemini, "_RATE_LIMITED_KEYS_UNTIL", {})
+    calls = []
+
+    class Models:
+        def embed_content(self, **_kwargs):
+            calls.append("request")
+            raise RuntimeError("429 RESOURCE_EXHAUSTED test quota")
+
+    monkeypatch.setattr(
+        embedding_gemini.genai,
+        "Client",
+        lambda **_kwargs: SimpleNamespace(models=Models()),
+    )
+    monkeypatch.setattr(embedding_gemini.time, "sleep", lambda _seconds: pytest.fail("Rate limits should not sleep per request"))
+
+    provider = GeminiEmbeddingProvider(api_key="key-a|key-b|key-c", model_name="test-embedding-model")
+    with pytest.raises(LLMRateLimitError):
+        provider.embed_query("CT daily quality control")
+
+    assert len(calls) == 3
+    assert len(embedding_gemini._RATE_LIMITED_KEYS_UNTIL) == 3
+    assert all(len(fingerprint) == 64 for fingerprint in embedding_gemini._RATE_LIMITED_KEYS_UNTIL)
+
+    # A new provider instance shares cooldown state and fails without hitting the API again.
+    next_provider = GeminiEmbeddingProvider(api_key="key-a|key-b|key-c", model_name="test-embedding-model")
+    with pytest.raises(LLMRateLimitError):
+        next_provider.embed_query("ECG lead placement")
+    assert len(calls) == 3
+
+
 def test_gemini_tries_next_model_when_configured_model_is_unavailable(monkeypatch):
     from types import SimpleNamespace
     from app.modules.assistant.providers.llm_gemini import GeminiLLMProvider

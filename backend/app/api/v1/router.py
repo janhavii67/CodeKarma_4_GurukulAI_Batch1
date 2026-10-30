@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     procedures,
     troubleshooting,
     decision_trees,
+    simulator,
     audio,
     learning,
     voice,
@@ -32,6 +33,7 @@ api_router.include_router(reviews.router)
 api_router.include_router(procedures.router)
 api_router.include_router(troubleshooting.router)
 api_router.include_router(decision_trees.router)
+api_router.include_router(simulator.router)
 api_router.include_router(audio.router)
 api_router.include_router(learning.router)
 api_router.include_router(voice.router)
