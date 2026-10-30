@@ -100,7 +100,7 @@ def _media_mime(data: bytes, filename: Optional[str] = None) -> str:
     return ""
 
 
-def _decode_audio(data: bytes, filename: Optional[str] = None) -> tuple[np.ndarray, int, str, Optional[bytes]]:
+def _decode_audio(data: bytes, filename: Optional[str] = None) -> tuple[np.ndarray, int, str, bytes, int]:
     if not data:
         raise AudioInputError("empty_audio", "The audio file is empty.")
     if len(data) > settings.MAX_UPLOAD_BYTES:
@@ -114,7 +114,6 @@ def _decode_audio(data: bytes, filename: Optional[str] = None) -> tuple[np.ndarr
         )
 
     decoded_data = data
-    normalized_wav: Optional[bytes] = None
     if mime not in {"audio/flac", "audio/wav"}:
         ffmpeg = _ffmpeg_executable()
         if not ffmpeg:
@@ -142,7 +141,6 @@ def _decode_audio(data: bytes, filename: Optional[str] = None) -> tuple[np.ndarr
                 "The media could not be decoded. Check that the file is complete and contains an audio track.",
             )
         decoded_data = result.stdout
-        normalized_wav = result.stdout
 
     try:
         info = sf.info(io.BytesIO(decoded_data))
@@ -173,12 +171,20 @@ def _decode_audio(data: bytes, filename: Optional[str] = None) -> tuple[np.ndarr
         raise AudioInputError("silent_audio", "The recording is too quiet to compare. Record the operating sound again with clear audio.")
     if len(mono) / TARGET_SAMPLE_RATE > MAX_DURATION_SECONDS:
         raise AudioInputError("audio_too_long", f"Record no more than {MAX_DURATION_SECONDS:g} seconds at a time.")
-    return mono, int(sample_rate), mime, normalized_wav
+    # Always provide a compact, canonical mono WAV for the multimodal Tutor.
+    # 16 kHz / 16-bit / mono stays below 4 MB for the full 120-second limit.
+    normalized_buffer = io.BytesIO()
+    try:
+        sf.write(normalized_buffer, mono, TARGET_SAMPLE_RATE, format="WAV", subtype="PCM_16")
+    except Exception as exc:
+        raise AudioProcessingError("The normalized audio could not be encoded for AI review.") from exc
+    normalized_wav = normalized_buffer.getvalue()
+    return mono, int(sample_rate), mime, normalized_wav, int(info.channels)
 
 
 def extract_features(data: bytes, filename: Optional[str] = None) -> Dict[str, Any]:
-    """Decode and summarize an upload as a normalized 48-band log-mel profile."""
-    samples, source_rate, mime, normalized_wav = _decode_audio(data, filename)
+    """Decode an upload for feature matching and provide canonical audio for AI observation."""
+    samples, source_rate, mime, normalized_wav, channels = _decode_audio(data, filename)
     try:
         if len(samples) < FRAME_SIZE:
             raise AudioInputError("audio_too_short", "Record at least 0.5 seconds of machine sound.")
@@ -214,6 +220,7 @@ def extract_features(data: bytes, filename: Optional[str] = None) -> Dict[str, A
             "duration_seconds": round(len(samples) / TARGET_SAMPLE_RATE, 3),
             "sample_rate": source_rate,
             "normalized_sample_rate": TARGET_SAMPLE_RATE,
+            "channels": channels,
             "mime": mime,
             "normalized_audio_wav": normalized_wav,
         }

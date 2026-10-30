@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Text, Boolean, Integer, ForeignKey, DateTime, UniqueConstraint, JSON
+from sqlalchemy import String, Text, Boolean, Integer, Float, ForeignKey, DateTime, UniqueConstraint, JSON, Table, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
 
@@ -103,6 +103,14 @@ class TroubleshootingVersion(Base):
     )
 
 
+decision_tree_node_media = Table(
+    "decision_tree_node_media", Base.metadata,
+    Column("node_id", String(36), ForeignKey("troubleshooting_nodes.id", ondelete="CASCADE"), primary_key=True),
+    Column("media_id", String(36), ForeignKey("media_assets.id", ondelete="CASCADE"), primary_key=True),
+    Column("sort_order", Integer, server_default="0", nullable=False),
+)
+
+
 class TroubleshootingNode(Base):
     """
     Diagnostic node in a troubleshooting decision tree DAG.
@@ -129,6 +137,11 @@ class TroubleshootingNode(Base):
     is_start: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     outcome: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # resolved, unresolved, escalated
 
+    # Canvas position for visual builder
+    position_x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    position_y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    help_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Backward compatibility fields
     is_root: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -148,6 +161,7 @@ class TroubleshootingNode(Base):
         back_populates="to_node",
         cascade="all, delete-orphan",
     )
+    media_assets = relationship("MediaAsset", secondary=decision_tree_node_media, lazy="selectin")
 
 
 class TroubleshootingEdge(Base):

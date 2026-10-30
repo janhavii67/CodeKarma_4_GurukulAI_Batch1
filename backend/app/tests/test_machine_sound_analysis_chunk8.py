@@ -11,6 +11,7 @@ from app.db.base import utc_now
 from app.integrations.storage import set_storage_service
 from app.integrations.storage.local import LocalStorageService
 from app.models.audio import AudioAnalysisJob, AudioReference
+from app.models.machine import Machine
 from app.models.knowledge import KnowledgeItem, KnowledgeVersion
 from app.models.user import User
 from app.modules.assistant.models import KnowledgeChunk, KnowledgeSource, SOURCE_TYPE_KNOWLEDGE_VERSION
@@ -39,12 +40,12 @@ def _login(client, email: str, password: str) -> str:
     return client.get("/api/v1/auth/csrf").json()["csrf_token"]
 
 
-def _published_source(db, author: User):
-    item = KnowledgeItem(title="Approved Spindle Inspection", category="MAINTENANCE", author_id=author.id, status="APPROVED")
+def _published_source(db, author: User, machine_id: str | None = None):
+    item = KnowledgeItem(title="Approved Spindle Inspection", category="MAINTENANCE", machine_id=machine_id, author_id=author.id, status="APPROVED")
     db.add(item)
     db.flush()
     version = KnowledgeVersion(
-        item_id=item.id, version_no=1, title=item.title, status="published", origin="expert",
+        item_id=item.id, version_no=1, title=item.title, machine_id=machine_id, status="published", origin="expert",
         created_by=author.id, summary="Documented spindle inspection observation and escalation guidance.",
         content="Compare the operating sound to this approved machine reference and contact a supervisor if the sound differs.",
         published_at=utc_now(), source_refs=[], steps=[],
@@ -54,6 +55,22 @@ def _published_source(db, author: User):
     item.current_published_version_id = version.id
     db.commit()
     return item, version
+
+
+def _machine(db_session, code: str = "MACH-CT12") -> Machine:
+    machine = db_session.query(Machine).filter(Machine.code == code, Machine.is_active.is_(True)).first()
+    if machine is None:
+        machine = Machine(name="CT-Scan", code=code, category="Medical Imaging", status="ACTIVE", is_active=True)
+        db_session.add(machine)
+        db_session.flush()
+    return machine
+
+
+def _mock_audio_observation(monkeypatch):
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.audio._observe_audio",
+        lambda _features, _machine: "A steady, low-pitched tone is audible.",
+    )
 
 
 @pytest.fixture
@@ -77,18 +94,47 @@ def test_decoded_log_mel_profile_and_similarity_are_deterministic():
     assert len(left["vector"]) == 48 + 16  # mel bands + rhythm (modulation) bands
     assert left["normalized_sample_rate"] == 16_000
     result = compare_features(left, [
-        {"feature_version": FEATURE_VERSION, "features_json": json.dumps(same), "title": "same"},
-        {"feature_version": FEATURE_VERSION, "features_json": json.dumps(other), "title": "other"},
+        {"feature_version": FEATURE_VERSION, "features_json": json.dumps({"version": same["version"], "vector": same["vector"]}), "title": "same"},
+        {"feature_version": FEATURE_VERSION, "features_json": json.dumps({"version": other["version"], "vector": other["vector"]}), "title": "other"},
     ])
     assert result["candidates"][0]["title"] == "same"
     assert result["candidates"][0]["similarity_score"] == 1.0
     assert "MATCHED" == result["status"]
     assert extract_features(_flac())["mime"] == "audio/flac"
+    normalized = left["normalized_audio_wav"]
+    assert normalized[:4] == b"RIFF"
+    assert normalized[8:12] == b"WAVE"
+    assert left["normalized_sample_rate"] == 16_000
+
+
+def test_audio_observation_uses_normalized_audio_and_falls_back_when_provider_fails(monkeypatch):
+    from types import SimpleNamespace
+    from app.api.v1.endpoints import audio as audio_endpoint
+
+    features = extract_features(_wav())
+    captured = {}
+
+    def observe(request):
+        captured["request"] = request
+        return SimpleNamespace(status="succeeded", result="A steady tone is audible.", error_code=None)
+
+    monkeypatch.setattr(audio_endpoint.ai_orchestrator, "execute", observe)
+    assert audio_endpoint._observe_audio(features, SimpleNamespace(name="CT-Scan")) == "A steady tone is audible."
+    request = captured["request"].payload
+    assert request.media_parts[0]["mime_type"] == "audio/wav"
+    assert request.media_parts[0]["data"][:4] == b"RIFF"
+    assert "Do not label the machine normal, faulty" in request.prompt
+
+    def fail(_request):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(audio_endpoint.ai_orchestrator, "execute", fail)
+    assert audio_endpoint._observe_audio(features, SimpleNamespace(name="CT-Scan")) is None
 
 
 def test_similarly_scored_approved_references_are_ambiguous_not_a_match():
     features = extract_features(_wav())
-    ref = {"feature_version": FEATURE_VERSION, "features_json": json.dumps(features)}
+    ref = {"feature_version": FEATURE_VERSION, "features_json": json.dumps({"version": features["version"], "vector": features["vector"]})}
     result = compare_features(features, [dict(ref, title="reference one"), dict(ref, title="reference two")])
     assert result["status"] == "AMBIGUOUS_MATCH"
     assert result["matched_reference"] is None
@@ -108,9 +154,12 @@ def test_audio_validation_rejects_corrupt_empty_silent_and_short_uploads():
 
 
 def test_analyze_upload_returns_clear_size_and_format_errors(client, db_session, audio_storage, monkeypatch):
+    _mock_audio_observation(monkeypatch)
+    machine_id = _machine(db_session).id
     csrf = _login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     no_csrf = client.post(
         "/api/v1/audio/analyze",
+        data={"machine_id": machine_id},
         files={"file": ("machine.wav", _wav(), "audio/wav")},
     )
     assert no_csrf.status_code == 403
@@ -118,6 +167,7 @@ def test_analyze_upload_returns_clear_size_and_format_errors(client, db_session,
     monkeypatch.setattr(settings, "MAX_UPLOAD_BYTES", 32)
     oversized = client.post(
         "/api/v1/audio/analyze",
+        data={"machine_id": machine_id},
         files={"file": ("large.wav", b"x" * 33, "audio/wav")},
         headers={settings.CSRF_HEADER_NAME: csrf},
     )
@@ -127,6 +177,7 @@ def test_analyze_upload_returns_clear_size_and_format_errors(client, db_session,
     monkeypatch.setattr(settings, "MAX_UPLOAD_BYTES", 100 * 1024 * 1024)
     malformed = client.post(
         "/api/v1/audio/analyze",
+        data={"machine_id": machine_id},
         files={"file": ("broken.wav", b"not audio", "audio/wav")},
         headers={settings.CSRF_HEADER_NAME: csrf},
     )
@@ -135,11 +186,14 @@ def test_analyze_upload_returns_clear_size_and_format_errors(client, db_session,
 
     flac = client.post(
         "/api/v1/audio/analyze",
+        data={"machine_id": machine_id},
         files={"file": ("machine.flac", _flac(), "audio/flac")},
         headers={settings.CSRF_HEADER_NAME: csrf},
     )
     assert flac.status_code == 201, flac.text
     assert flac.json()["status"] == "NO_RELIABLE_MATCH"
+    assert flac.json()["audio_observation"] == "A steady, low-pitched tone is audible."
+    assert flac.json()["processing_metadata"]["normalized_sample_rate"] == 16_000
     job = db_session.get(AudioAnalysisJob, flac.json()["id"])
     assert job.audio_sha256
     assert job.file_path is None
@@ -149,6 +203,8 @@ def test_analyze_upload_returns_clear_size_and_format_errors(client, db_session,
 
 
 def test_audio_matching_service_failure_does_not_create_a_result(client, db_session, monkeypatch):
+    _mock_audio_observation(monkeypatch)
+    machine_id = _machine(db_session).id
     csrf = _login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
 
     def fail_comparison(*_args, **_kwargs):
@@ -157,6 +213,7 @@ def test_audio_matching_service_failure_does_not_create_a_result(client, db_sess
     monkeypatch.setattr("app.api.v1.endpoints.audio.compare_features", fail_comparison)
     response = client.post(
         "/api/v1/audio/analyze",
+        data={"machine_id": machine_id},
         files={"file": ("machine.wav", _wav(), "audio/wav")},
         headers={settings.CSRF_HEADER_NAME: csrf},
     )
@@ -175,11 +232,13 @@ def test_feature_version_mismatch_is_not_reported_as_a_match():
     assert result["matched_reference"] is None
 
 
-def test_audio_matching_publishes_only_peer_approved_references_and_is_owner_scoped(client, db_session, audio_storage):
+def test_audio_matching_publishes_only_peer_approved_references_and_is_owner_scoped(client, db_session, audio_storage, monkeypatch):
+    _mock_audio_observation(monkeypatch)
+    machine_id = _machine(db_session).id
     expert_a = db_session.query(User).filter_by(email=settings.EXPERT_A_EMAIL).one()
     expert_b = db_session.query(User).filter_by(email=settings.EXPERT_B_EMAIL).one()
     trainee_email = settings.TRAINEE_EMAIL
-    source_item, source_version = _published_source(db_session, expert_b)
+    source_item, source_version = _published_source(db_session, expert_b, machine_id)
     source_version_id = source_version.id
 
     author_csrf = _login(client, settings.EXPERT_A_EMAIL, settings.EXPERT_A_PASSWORD)
@@ -188,6 +247,7 @@ def test_audio_matching_publishes_only_peer_approved_references_and_is_owner_sco
         "title": "VF-2 idle acoustic reference",
         "interpretation": "Expert recorded a steady idle sound under the listed conditions.",
         "source_version_ids": source_version_id,
+        "machine_id": machine_id,
         "operation": "idle",
         "operating_conditions": "No cutting operation.",
     }
@@ -228,7 +288,7 @@ def test_audio_matching_publishes_only_peer_approved_references_and_is_owner_sco
     assert reprocessed.json()["feature_version"] == FEATURE_VERSION
 
     operator_csrf = _login(client, trainee_email, settings.TRAINEE_PASSWORD)
-    match = client.post("/api/v1/audio/analyze", files={"file": ("query.wav", _wav(), "audio/wav")}, headers={settings.CSRF_HEADER_NAME: operator_csrf})
+    match = client.post("/api/v1/audio/analyze", data={"machine_id": machine_id}, files={"file": ("query.wav", _wav(), "audio/wav")}, headers={settings.CSRF_HEADER_NAME: operator_csrf})
     assert match.status_code == 201, match.text
     result = match.json()
     assert result["status"] == "MATCHED"
@@ -245,6 +305,7 @@ def test_audio_matching_publishes_only_peer_approved_references_and_is_owner_sco
         source_ref_id=item_id,
         knowledge_version_id=reference_version_id,
         title="VF-2 idle acoustic reference",
+        machine_id=machine_id,
         status="published",
     )
     db_session.add(reference_source)
@@ -352,9 +413,11 @@ def test_audio_matching_publishes_only_peer_approved_references_and_is_owner_sco
 
 
 def test_operator_can_submit_unmatched_sample_without_auto_promoting_it(client, db_session, audio_storage, monkeypatch):
+    _mock_audio_observation(monkeypatch)
+    machine_id = _machine(db_session).id
     csrf = _login(client, settings.TRAINEE_EMAIL, settings.TRAINEE_PASSWORD)
     sample = _wav(3_000)
-    analyzed = client.post("/api/v1/audio/analyze", files={"file": ("machine.wav", sample, "audio/wav")}, headers={settings.CSRF_HEADER_NAME: csrf})
+    analyzed = client.post("/api/v1/audio/analyze", data={"machine_id": machine_id}, files={"file": ("machine.wav", sample, "audio/wav")}, headers={settings.CSRF_HEADER_NAME: csrf})
     assert analyzed.status_code == 201, analyzed.text
     result = analyzed.json()
     assert result["status"] == "NO_RELIABLE_MATCH"

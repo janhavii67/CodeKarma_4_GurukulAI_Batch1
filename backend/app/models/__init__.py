@@ -40,6 +40,7 @@ from app.models.troubleshooting import (
     TroubleshootingResponse,
     TroubleshootingEvidence,
     TroubleshootingEscalation,
+    decision_tree_node_media,
 )
 from app.models.audio import AudioReference, AudioAnalysisJob
 from app.models.simulation import SimulationScenario, SimulationAttempt, SimulationScenarioRevision, SimulationScenarioReport
@@ -60,6 +61,7 @@ from app.models.embedding import KnowledgeEmbedding
 from app.modules.assistant.models import (
     ChatConversation,
     ChatMessage,
+    TutorMemory,
     KnowledgeSource,
     KnowledgeChunk,
     ChatMessageSource,
@@ -163,6 +165,7 @@ __all__ = [
     "KnowledgeEmbedding",
     "ChatConversation",
     "ChatMessage",
+    "TutorMemory",
     "KnowledgeSource",
     "KnowledgeChunk",
     "ChatMessageSource",
