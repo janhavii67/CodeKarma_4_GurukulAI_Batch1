@@ -13,7 +13,15 @@ import {
   Search,
   Video,
   X,
+  ShieldCheck,
+  Lock,
+  Cloud,
+  PlusCircle,
+  ArrowRight,
+  Clock,
+  Plus,
 } from 'lucide-react';
+import { getMachineImage } from '../machines/machineImages';
 import { getApiUrl } from '../../lib/api/client';
 import { useAuth } from '../../hooks/useAuth';
 import type { MediaAsset } from '../knowledge-capture/media/types';
@@ -130,114 +138,359 @@ export const MachineDiaryLibraryPage: React.FC = () => {
   }, [knowledgeItems, machines, search, machineFilter, categoryFilter]);
 
   return (
-    <main className="diary-page" aria-labelledby="machine-library-title">
-      <div className="diary-page-inner">
-        <header className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="diary-eyebrow flex items-center gap-2"><BookOpen size={15} /> Field knowledge archive</div>
-            <h1 id="machine-library-title" className="diary-heading mt-3">Your Knowledge Library</h1>
-            <p className="diary-subtitle mt-3">Browse current approved procedures and machine knowledge, including videos, photos, documents, and field notes.</p>
-          </div>
-          {canCreateKnowledge && <div className="flex flex-wrap items-center gap-3 self-start xl:self-auto">
-            <Link to="/app/knowledge-assets?kind=video" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#1976C9]/20 bg-[#1976C9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125EA3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976C9]">
-              <ClipboardList size={17} /> Capture knowledge
-            </Link>
-          </div>}
-        </header>
+    <main className="w-full p-4 sm:p-6 lg:p-8 space-y-8" aria-labelledby="machine-library-title">
+      {/* ─── HERO BANNER (Reference Image 2) ─── */}
+      <div className="rounded-2xl bg-[#08264A] text-white p-6 sm:p-8 relative overflow-hidden shadow-lg border border-[#123B68]">
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-72 h-72 rounded-full bg-[#1677F8]/20 blur-3xl pointer-events-none" />
 
-        <section className="diary-toolbar mt-8 grid gap-3 rounded-2xl p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(11rem,15rem)_minmax(11rem,15rem)] sm:p-4" aria-label="Search knowledge library">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#536779]" size={18} />
-            <input className="diary-control w-full pl-11 pr-4 text-sm" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search titles, machines, models, or categories…" aria-label="Search knowledge library" />
-          </label>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <div className="space-y-3 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1677F8]/20 border border-[#43B9F4]/30 text-xs font-semibold text-[#43B9F4] uppercase tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#35C5E8]" />
+              KNOWLEDGE LIBRARY
+            </div>
+            <h1 id="machine-library-title" className="font-serif text-3xl sm:text-4xl font-bold tracking-tight text-white">
+              Your Knowledge Library
+            </h1>
+            <p className="text-sm text-[#D9E5F2] leading-relaxed">
+              Access machine diaries, expert notes, procedures, media and more — all in one place. Search, filter and capture new knowledge effortlessly.
+            </p>
+          </div>
+
+          {canCreateKnowledge && (
+            <Link
+              to="/app/knowledge-assets?kind=video"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#1677F8] hover:bg-[#125EA3] text-white text-sm font-semibold px-5 py-2.5 shadow-sm transition-colors shrink-0 self-start md:self-auto"
+            >
+              <ClipboardList size={17} />
+              <span>Capture knowledge</span>
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {/* ─── TOOLBAR (Reference Image 2) ─── */}
+      <section className="bg-white p-4 rounded-2xl border border-[#D9E5F2] shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3" aria-label="Search knowledge library">
+        <label className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#647A96]" size={18} />
+          <input
+            className="w-full bg-[#F4F8FE] border border-[#D9E5F2] rounded-xl pl-10 pr-4 py-2.5 text-xs text-[#102844] outline-none focus:border-[#1677F8] focus:bg-white transition-colors"
+            value={search}
+            onChange={event => setSearch(event.target.value)}
+            placeholder="Search by machine, ID, model, location, or keyword…"
+            aria-label="Search knowledge library"
+          />
+        </label>
+        
+        <div className="flex flex-wrap items-center gap-2.5">
           <label className="sr-only" htmlFor="diary-machine-filter">Filter by machine</label>
-          <select id="diary-machine-filter" className="diary-control px-3.5 text-sm" aria-label="Filter by machine" value={machineFilter} onChange={event => setMachineFilter(event.target.value)}>
+          <select
+            id="diary-machine-filter"
+            className="text-xs bg-[#F4F8FE] border border-[#D9E5F2] rounded-xl px-3.5 py-2.5 text-[#102844] font-medium focus:outline-none focus:border-[#1677F8] focus:ring-1 focus:ring-[#1677F8] transition-colors"
+            aria-label="Filter by machine"
+            value={machineFilter}
+            onChange={event => setMachineFilter(event.target.value)}
+          >
             <option value="">All machines</option>
             {machineOptions.map(({ label, machine }) => <option key={machine.id} value={machine.id}>{label}</option>)}
           </select>
+
           <label className="sr-only" htmlFor="diary-category-filter">Filter by machine category</label>
-          <select id="diary-category-filter" className="diary-control px-3.5 text-sm" aria-label="Filter by machine category" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}>
+          <select
+            id="diary-category-filter"
+            className="text-xs bg-[#F4F8FE] border border-[#D9E5F2] rounded-xl px-3.5 py-2.5 text-[#102844] font-medium focus:outline-none focus:border-[#1677F8] focus:ring-1 focus:ring-[#1677F8] transition-colors"
+            aria-label="Filter by machine category"
+            value={categoryFilter}
+            onChange={event => setCategoryFilter(event.target.value)}
+          >
             <option value="">All categories</option>
             {categories.map(category => <option key={category} value={category}>{category}</option>)}
           </select>
-        </section>
 
-        {loading && <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-busy="true" aria-label="Loading machine diaries">
-          {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-[19rem] animate-pulse rounded-2xl border border-[#E2E8F0] bg-white" />)}
-        </div>}
+          {canCreateKnowledge && (
+            <Link
+              to="/app/knowledge-assets?kind=video"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#1677F8] hover:bg-[#125EA3] text-white text-xs font-bold px-4 py-2.5 shadow-sm transition-colors"
+            >
+              <Plus size={15} />
+              <span>Capture Knowledge</span>
+            </Link>
+          )}
+        </div>
+      </section>
 
-        {error && <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-800" role="alert">
-          <p className="font-semibold">The machine library could not be loaded.</p><p className="mt-1 text-sm text-rose-700">{error}</p>
-          <button type="button" onClick={loadMachines} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"><RefreshCw size={15} /> Try again</button>
-        </div>}
+      {loading && (
+        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-busy="true" aria-label="Loading machine diaries">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="h-64 animate-pulse rounded-2xl border border-[#D9E5F2] bg-white" />
+          ))}
+        </div>
+      )}
 
-        {!loading && !error && machines.length === 0 && <div className="mt-8 rounded-2xl border border-[#E2E8F0] bg-white px-6 py-14 text-center">
-          <Cpu className="mx-auto text-[#1976C9]" size={34} /><h2 className="mt-4 text-xl font-semibold text-[#173B5E]">No registered machines yet</h2>
-          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#536779]">Machine diaries appear here once equipment is registered. Ask a machine manager to add the equipment before capturing its knowledge.</p>
-        </div>}
+      {error && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-800" role="alert">
+          <p className="font-semibold">The machine library could not be loaded.</p>
+          <p className="mt-1 text-sm text-rose-700">{error}</p>
+          <button type="button" onClick={loadMachines} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500">
+            <RefreshCw size={15} /> Try again
+          </button>
+        </div>
+      )}
 
-        {!loading && !error && machines.length > 0 && availableMachines.length === 0 && <div className="mt-8 rounded-2xl border border-[#E2E8F0] bg-white px-6 py-12 text-center">
-          <Cpu className="mx-auto text-[#536779]" size={30} /><h2 className="mt-3 text-lg font-semibold text-[#173B5E]">No active machine diaries to display</h2><p className="mx-auto mt-1 max-w-lg text-sm leading-6 text-[#536779]">Ask a machine manager to make a machine available in the library.</p>
-        </div>}
+      {!loading && !error && machines.length === 0 && (
+        <div className="rounded-2xl border border-[#D9E5F2] bg-white px-6 py-14 text-center">
+          <Cpu className="mx-auto text-[#1677F8]" size={34} />
+          <h2 className="mt-4 text-xl font-semibold text-[#102844]">No registered machines yet</h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#647A96]">
+            Machine diaries appear here once equipment is registered. Ask a machine manager to add the equipment before capturing its knowledge.
+          </p>
+        </div>
+      )}
 
-        {!loading && !error && availableMachines.length > 0 && visibleMachines.length === 0 && <div className="mt-8 rounded-2xl border border-[#E2E8F0] bg-white px-6 py-12 text-center">
-          <Search className="mx-auto text-[#536779]" size={28} /><h2 className="mt-3 text-lg font-semibold text-[#173B5E]">No diaries match those filters</h2><p className="mt-1 text-sm text-[#536779]">Try another search or choose one of the available machines.</p>
-        </div>}
+      {!loading && !error && machines.length > 0 && availableMachines.length === 0 && (
+        <div className="rounded-2xl border border-[#D9E5F2] bg-white px-6 py-12 text-center">
+          <Cpu className="mx-auto text-[#647A96]" size={30} />
+          <h2 className="mt-3 text-lg font-semibold text-[#102844]">No active machine diaries to display</h2>
+          <p className="mx-auto mt-1 max-w-lg text-sm leading-6 text-[#647A96]">Ask a machine manager to make a machine available in the library.</p>
+        </div>
+      )}
 
-        {!loading && !error && visibleMachines.length > 0 && <section className="mt-8" aria-label="Machine volumes">
-          <div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold tracking-wide text-[#173B5E]">MACHINE VOLUMES <span className="ml-2 text-[#536779]">{visibleMachines.length}</span></h2><span className="text-xs text-[#536779]">Select a book to open its archive</span></div>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {visibleMachines.map((machine, index) => {
-              const [accent, mid, dark] = bookPalettes[index % 2];
+      {!loading && !error && availableMachines.length > 0 && visibleMachines.length === 0 && (
+        <div className="rounded-2xl border border-[#D9E5F2] bg-white px-6 py-12 text-center">
+          <Search className="mx-auto text-[#647A96]" size={28} />
+          <h2 className="mt-3 text-lg font-semibold text-[#102844]">No diaries match those filters</h2>
+          <p className="mt-1 text-sm text-[#647A96]">Try another search or choose one of the available machines.</p>
+        </div>
+      )}
+
+      {/* ─── MACHINE VOLUMES (Reference Image 2) ─── */}
+      {!loading && !error && visibleMachines.length > 0 && (
+        <section className="space-y-4" aria-label="Machine volumes">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-bold tracking-tight text-[#102844]">Machine Volumes</h2>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#EAF3FF] text-[#1677F8] border border-[#BCD7F5]">
+                {visibleMachines.length}
+              </span>
+            </div>
+            <span className="text-xs text-[#647A96]">Sorted by recently added</span>
+          </div>
+
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+            {visibleMachines.map((machine) => {
+              const thumbnail = getMachineImage(machine.name, machine.category_name || machine.category);
               const publishedProcedureCount = knowledgeItems.filter(item => item.machine_id === machine.id).length;
               const machineMediaCount = displayedKnowledgeCount(machine);
               const entryCountLabel = publishedProcedureCount > 0
                 ? `${machineMediaCount} media · ${publishedProcedureCount} SOP${publishedProcedureCount === 1 ? '' : 's'}`
                 : `${machineMediaCount} entries`;
-              return <button key={machine.id} type="button" className="diary-book-button group" onClick={() => navigate(`/app/knowledge/machine/${encodeURIComponent(machine.id)}`)} aria-label={`Open knowledge diary for ${machine.name}`}>
-                <div className="diary-book" style={{ '--book-a': accent, '--book-b': mid, '--book-c': dark } as React.CSSProperties}>
-                  <span className="diary-book-spine" aria-hidden="true" /><span className="diary-book-pages" aria-hidden="true" />
-                  <div className="diary-book-cover"><div className="diary-book-content">
-                    <div className="flex items-start justify-between gap-3"><span className="diary-book-mark"><Cpu size={21} /></span><span className="rounded-full border border-white/30 bg-white/10 px-2.5 py-1 text-[.65rem] font-semibold uppercase tracking-[.12em] text-white">{machine.status || 'Registered'}</span></div>
-                    <div className="mt-6"><p className="text-[.62rem] font-bold uppercase tracking-[.2em] text-white/60">Machine diary</p><h3 className="diary-book-title mt-2">{machine.name}</h3><p className="diary-book-meta mt-2 font-mono">{machine.code || machine.model_number || machine.id}</p></div>
-                    <div className="mt-auto pt-4"><div className="diary-book-divider border-t" /><div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2">
-                      <span className="diary-book-count flex items-center gap-1.5"><Video size={13} /> {machine.counts.video} <span>videos</span></span>
-                      <span className="diary-book-count flex items-center gap-1.5"><ImageIcon size={13} /> {machine.counts.image} <span>photos</span></span>
-                      <span className="diary-book-count flex items-center gap-1.5"><FileText size={13} /> {machine.counts.document} <span>documents</span></span>
-                      <span className="diary-book-count flex items-center gap-1.5"><ClipboardList size={13} /> {machine.counts.notes} <span>notes</span></span>
-                    </div><div className="diary-book-link"><span>{entryCountLabel}</span><ArrowUpRight size={16} /></div></div>
-                  </div></div>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 pl-2 text-left text-xs text-[#536779]">
-                  {(machine.category_name || machine.category) && <span>{machine.category_name || machine.category}</span>}
-                  {machine.location && <span className="inline-flex items-center gap-1"><MapPin size={12} />{machine.location}</span>}
-                  {machine.manufacturer && <span>{machine.manufacturer}</span>}
-                </div>
-              </button>;
-            })}
-          </div>
-        </section>}
 
-        <section className="mt-10" aria-label="Published procedures and knowledge">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-semibold tracking-wide text-[#173B5E]">PUBLISHED PROCEDURES &amp; KNOWLEDGE</h2><p className="mt-1 text-xs text-[#536779]">Current approved versions available for study.</p></div>{!knowledgeLoading && !knowledgeError && <span className="text-xs text-[#536779]">{visibleKnowledgeItems.length} shown</span>}</div>
-          {knowledgeLoading && <div role="status" aria-live="polite" className="rounded-2xl border border-[#E2E8F0] bg-white p-5 text-sm text-[#536779]">Loading published procedures…</div>}
-          {knowledgeError && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-800" role="alert"><p className="font-semibold">Published knowledge could not be loaded.</p><p className="mt-1 text-sm text-rose-700">{knowledgeError}</p><button type="button" onClick={loadPublishedItems} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium hover:bg-rose-100"><RefreshCw size={15} /> Try again</button></div>}
-          {!knowledgeLoading && !knowledgeError && visibleKnowledgeItems.length === 0 && <div className="rounded-2xl border border-[#E2E8F0] bg-white px-6 py-10 text-center"><BookOpen className="mx-auto text-[#1976C9]" size={30} /><h3 className="mt-3 text-base font-semibold text-[#173B5E]">{knowledgeItems.length === 0 ? 'No published procedures yet' : 'No published knowledge matches those filters'}</h3><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#536779]">{knowledgeItems.length === 0 ? 'Approved SOPs and learning documents will appear here when they are published.' : 'Try another search or choose a different machine or category.'}</p></div>}
-          {!knowledgeLoading && !knowledgeError && visibleKnowledgeItems.length > 0 && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              return (
+                <button
+                  key={machine.id}
+                  type="button"
+                  className="rounded-2xl border border-[#D9E5F2] bg-white shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between group text-left"
+                  onClick={() => navigate(`/app/knowledge/machine/${encodeURIComponent(machine.id)}`)}
+                  aria-label={`Open knowledge diary for ${machine.name}`}
+                >
+                  {/* Image Header with status badge */}
+                  <div className="relative h-44 w-full bg-[#061A35] overflow-hidden">
+                    <img
+                      src={thumbnail}
+                      alt={machine.name}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#061A35]/80 via-transparent to-black/20" />
+                    
+                    {/* Status Badge */}
+                    <div className="absolute top-3 left-3">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase backdrop-blur-md border bg-emerald-500/90 text-white border-emerald-400/50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                        {machine.status || 'ACTIVE'}
+                      </span>
+                    </div>
+
+                    {/* Title overlay */}
+                    <div className="absolute bottom-3 left-3 right-3 text-white">
+                      <h3 className="font-bold text-lg leading-tight tracking-tight drop-shadow-sm truncate">
+                        {machine.name}
+                      </h3>
+                      <p className="text-xs text-[#D9E5F2] truncate drop-shadow-sm mt-0.5">
+                        {machine.manufacturer || 'GE Healthcare'} · {machine.model_number || 'Standard Series'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Body Details */}
+                  <div className="p-4 space-y-3 flex-1 flex flex-col justify-between w-full">
+                    {/* Meta location and ID */}
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F4F8FE] text-[#102844] font-mono text-[11px] border border-[#D9E5F2]">
+                        <Cpu className="w-3.5 h-3.5 text-[#1677F8]" />
+                        {machine.code || machine.id}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F4F8FE] text-[#647A96] text-[11px] border border-[#D9E5F2]">
+                        <MapPin className="w-3.5 h-3.5 text-[#1677F8]" />
+                        {machine.location || 'Diagnostic Wing'}
+                      </span>
+                    </div>
+
+                    {/* Metric counts */}
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-[#647A96] pt-1">
+                      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#F4F8FE] border border-[#D9E5F2]/70">
+                        <Video className="w-3.5 h-3.5 text-[#1677F8]" />
+                        <span className="font-medium text-[#102844]">{machine.counts.video}</span> videos
+                      </div>
+                      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#F4F8FE] border border-[#D9E5F2]/70">
+                        <FileText className="w-3.5 h-3.5 text-[#1677F8]" />
+                        <span className="font-medium text-[#102844]">{machine.counts.document}</span> documents
+                      </div>
+                      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#F4F8FE] border border-[#D9E5F2]/70">
+                        <ImageIcon className="w-3.5 h-3.5 text-[#1677F8]" />
+                        <span className="font-medium text-[#102844]">{machine.counts.image}</span> photos
+                      </div>
+                      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#F4F8FE] border border-[#D9E5F2]/70">
+                        <ClipboardList className="w-3.5 h-3.5 text-[#1677F8]" />
+                        <span className="font-medium text-[#102844]">{machine.counts.notes}</span> notes
+                      </div>
+                    </div>
+
+                    {/* Footer Row */}
+                    <div className="pt-3 border-t border-[#D9E5F2] flex items-center justify-between text-xs font-semibold text-[#1677F8] w-full">
+                      <span className="inline-flex items-center gap-1 group-hover:underline">
+                        <span>View Details</span>
+                        <ArrowRight size={14} />
+                      </span>
+                      <span className="text-[11px] text-[#647A96] font-normal">
+                        {entryCountLabel}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+
+            {/* Missing a machine? Card (Reference Image 2) */}
+            <div className="rounded-2xl border border-dashed border-[#BCD7F5] bg-[#F4F8FE] p-6 flex flex-col items-center justify-center text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-white border border-[#D9E5F2] flex items-center justify-center text-[#1677F8] shadow-xs">
+                <Plus size={22} />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-[#102844]">Missing a machine?</h4>
+                <p className="text-xs text-[#647A96] mt-1 max-w-[220px]">
+                  Capture knowledge for a new machine or equipment.
+                </p>
+              </div>
+              <Link
+                to="/app/machines"
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-xl border border-[#1677F8] bg-white text-[#1677F8] hover:bg-[#1677F8] hover:text-white text-xs font-bold transition-all shadow-xs"
+              >
+                Add Machine
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ─── PUBLISHED PROCEDURES & KNOWLEDGE ─── */}
+      <section className="space-y-4" aria-label="Published procedures and knowledge">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight text-[#102844]">Published Procedures &amp; Knowledge</h2>
+            <p className="text-xs text-[#647A96]">Current approved versions available for study.</p>
+          </div>
+          {!knowledgeLoading && !knowledgeError && <span className="text-xs text-[#647A96]">{visibleKnowledgeItems.length} shown</span>}
+        </div>
+        
+        {knowledgeLoading && <div role="status" aria-live="polite" className="rounded-2xl border border-[#D9E5F2] bg-white p-5 text-sm text-[#647A96]">Loading published procedures…</div>}
+        {knowledgeError && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-800" role="alert">
+            <p className="font-semibold">Published knowledge could not be loaded.</p>
+            <p className="mt-1 text-sm text-rose-700">{knowledgeError}</p>
+            <button type="button" onClick={loadPublishedItems} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium hover:bg-rose-100">
+              <RefreshCw size={15} /> Try again
+            </button>
+          </div>
+        )}
+        {!knowledgeLoading && !knowledgeError && visibleKnowledgeItems.length === 0 && (
+          <div className="rounded-2xl border border-[#D9E5F2] bg-white px-6 py-10 text-center">
+            <BookOpen className="mx-auto text-[#1677F8]" size={30} />
+            <h3 className="mt-3 text-base font-semibold text-[#102844]">{knowledgeItems.length === 0 ? 'No published procedures yet' : 'No published knowledge matches those filters'}</h3>
+            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#647A96]">{knowledgeItems.length === 0 ? 'Approved SOPs and learning documents will appear here when they are published.' : 'Try another search or choose a different machine or category.'}</p>
+          </div>
+        )}
+        {!knowledgeLoading && !knowledgeError && visibleKnowledgeItems.length > 0 && (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {visibleKnowledgeItems.map(item => {
               const associatedMachine = machines.find(machine => machine.id === item.machine_id);
               const machineName = associatedMachine?.name || item.machine?.name || 'General procedure';
               const category = machineCategory(associatedMachine) || item.machine?.category || '';
-              return <article key={item.version_id} className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-3"><h3 className="min-w-0 text-base font-semibold text-[#173B5E]">{item.title}</h3><span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[.68rem] font-semibold text-emerald-800">Published</span></div>
-                <p className="mt-2 line-clamp-3 min-h-10 text-sm leading-5 text-[#536779]">{item.version_summary || 'Published learning procedure'}</p>
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[#536779]"><span className="inline-flex items-center gap-1"><Cpu size={13} />{machineName}</span>{category && <span className="rounded-full bg-[#F1F5F9] px-2 py-1">{category}</span>}<span className="rounded-full bg-[#F1F5F9] px-2 py-1 font-mono">v{item.version_no}</span></div>
-                <Link className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#1976C9]/20 bg-[#EFF6FF] px-3.5 py-2 text-sm font-semibold text-[#125EA3] hover:bg-[#DBEAFE]" to={`/app/knowledge/${encodeURIComponent(item.id)}?version_id=${encodeURIComponent(item.version_id)}`}>Open procedure <ArrowUpRight size={15} /></Link>
-              </article>;
+              return (
+                <article key={item.version_id} className="rounded-2xl border border-[#D9E5F2] bg-white p-5 shadow-sm space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="min-w-0 text-base font-bold text-[#102844]">{item.title}</h3>
+                    <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[.68rem] font-bold text-emerald-800 uppercase">Published</span>
+                  </div>
+                  <p className="line-clamp-2 text-xs leading-5 text-[#647A96]">{item.version_summary || 'Published learning procedure'}</p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[#647A96]">
+                    <span className="inline-flex items-center gap-1 font-semibold text-[#102844]"><Cpu size={13} className="text-[#1677F8]" />{machineName}</span>
+                    {category && <span className="rounded-full bg-[#F4F8FE] border border-[#D9E5F2] px-2 py-0.5 text-[11px]">{category}</span>}
+                    <span className="rounded-full bg-[#F4F8FE] border border-[#D9E5F2] px-2 py-0.5 font-mono text-[11px]">v{item.version_no}</span>
+                  </div>
+                  <div className="pt-2 border-t border-[#D9E5F2]">
+                    <Link className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1677F8] hover:underline" to={`/app/knowledge/${encodeURIComponent(item.id)}?version_id=${encodeURIComponent(item.version_id)}`}>
+                      <span>Open procedure</span>
+                      <ArrowUpRight size={14} />
+                    </Link>
+                  </div>
+                </article>
+              );
             })}
-          </div>}
-        </section>
-      </div>
+          </div>
+        )}
+      </section>
+
+      {/* ─── TRUST INDICATORS FOOTER (Reference Image 2) ─── */}
+      <footer className="rounded-2xl border border-[#D9E5F2] bg-white p-6 shadow-sm">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#EAF3FF] text-[#1677F8] flex items-center justify-center shrink-0">
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-[#102844]">Expert Reviewed</div>
+              <div className="text-[11px] text-[#647A96]">Validated by domain experts</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#EAF3FF] text-[#1677F8] flex items-center justify-center shrink-0">
+              <Cloud size={20} />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-[#102844]">Available Offline</div>
+              <div className="text-[11px] text-[#647A96]">Access anytime, anywhere</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#EAF3FF] text-[#1677F8] flex items-center justify-center shrink-0">
+              <Lock size={20} />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-[#102844]">Secure &amp; Compliant</div>
+              <div className="text-[11px] text-[#647A96]">Enterprise-grade security</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#EAF3FF] text-[#1677F8] flex items-center justify-center shrink-0">
+              <Clock size={20} />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-[#102844]">Always Up to Date</div>
+              <div className="text-[11px] text-[#647A96]">Updated by your team</div>
+            </div>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 };

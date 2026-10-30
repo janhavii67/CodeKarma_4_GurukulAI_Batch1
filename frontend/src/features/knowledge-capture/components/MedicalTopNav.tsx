@@ -47,7 +47,7 @@ export const MedicalTopNav: React.FC = () => {
 
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-[#DCE8F5] shadow-[0_2px_8px_rgba(20,115,230,0.04)]">
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+      <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
         {/* Left: Brand Logo & Wordmark */}
         <div
           className="flex items-center gap-3 cursor-pointer select-none shrink-0"

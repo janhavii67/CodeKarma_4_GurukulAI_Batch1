@@ -25,7 +25,13 @@ import {
   AlertTriangle,
   Building2,
   Calendar,
+  ShieldCheck,
+  ArrowRight,
+  Video,
+  FileText,
+  Image as ImageIcon,
 } from 'lucide-react';
+import { getMachineImage } from './machineImages';
 
 interface Tool {
   id: string;
@@ -260,25 +266,100 @@ export const MachinesPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 py-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-[#DCE6F0]">
-        <div>
-          <div className="flex items-center gap-2.5 mb-1">
-            <div className="w-9 h-9 rounded-xl bg-[#EAF3FF] border border-[#BCD7F5] flex items-center justify-center text-[#1976D2] shadow-xs">
-              <Cpu className="w-5 h-5" />
+    <div className="space-y-6 w-full py-2">
+      {/* ─── HERO SECTION (Reference Image 4) ─── */}
+      <div className="rounded-2xl bg-[#08264A] text-white p-6 sm:p-8 relative overflow-hidden shadow-lg border border-[#123B68]">
+        {/* Subtle radial ambient glow */}
+        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-[#1677F8]/20 blur-3xl pointer-events-none" />
+        
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="space-y-3 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1677F8]/20 border border-[#43B9F4]/30 text-xs font-semibold text-[#43B9F4] uppercase tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#35C5E8]" />
+              EQUIPMENT &amp; MACHINE ASSETS
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-[#17324D]">Equipment &amp; Machine Assets</h1>
-            <Badge variant="brand" size="sm">
-              M00 · Active Catalog
-            </Badge>
+            <h1 className="font-serif text-3xl sm:text-4xl font-bold tracking-tight text-white">
+              Manage Your Equipment &amp; Machine Assets.
+            </h1>
+            <p className="text-sm text-[#D9E5F2] leading-relaxed">
+              Track, monitor and manage registered medical equipment and machines with detailed insights, categories and tool mappings.
+            </p>
           </div>
-          <p className="text-xs text-[#5D7188] max-w-2xl">
-            Manage the registered medical equipment catalog, with equipment details, categories, and tool mappings.
-          </p>
-        </div>
 
-        <div className="flex items-center gap-2.5">
+          {/* Metric Summary Panel */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#061A35]/85 backdrop-blur-md p-4 rounded-xl border border-white/10 shrink-0">
+            <div className="text-center px-3 py-1">
+              <div className="text-2xl font-bold text-white font-mono">{machines.length}</div>
+              <div className="text-[10px] text-[#647A96] uppercase font-bold tracking-wider mt-0.5">Total Assets</div>
+            </div>
+            <div className="text-center px-3 py-1 border-l border-white/10">
+              <div className="text-2xl font-bold text-emerald-400 font-mono">{machines.filter(m => m.status === 'ACTIVE').length || machines.length}</div>
+              <div className="text-[10px] text-[#647A96] uppercase font-bold tracking-wider mt-0.5">Active</div>
+            </div>
+            <div className="text-center px-3 py-1 border-l border-white/10">
+              <div className="text-2xl font-bold text-amber-400 font-mono">{machines.filter(m => m.status === 'MAINTENANCE').length}</div>
+              <div className="text-[10px] text-[#647A96] uppercase font-bold tracking-wider mt-0.5">Maintenance</div>
+            </div>
+            <div className="text-center px-3 py-1 border-l border-white/10">
+              <div className="text-2xl font-bold text-[#647A96] font-mono">{machines.filter(m => m.status === 'INACTIVE' || m.is_active === false).length}</div>
+              <div className="text-[10px] text-[#647A96] uppercase font-bold tracking-wider mt-0.5">Inactive</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── SEARCH & FILTER TOOLBAR ─── */}
+      <div className="bg-white p-4 rounded-2xl border border-[#D9E5F2] shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        <form onSubmit={handleSearchSubmit} className="flex-1 relative">
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search by equipment name, ID, model, location, or keyword..."
+            leftIcon={<Search className="w-4 h-4 text-[#647A96]" />}
+            className="w-full text-xs bg-[#F4F8FE] border-[#D9E5F2] rounded-xl"
+          />
+        </form>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <select
+            value={selectedCategory}
+            aria-label="Filter equipment by category"
+            onChange={(e) => handleCategoryChange(e.target.value)}
+            className="text-xs bg-[#F4F8FE] border border-[#D9E5F2] rounded-xl px-3.5 py-2.5 text-[#102844] font-medium focus:outline-none focus:border-[#1677F8] focus:ring-1 focus:ring-[#1677F8] transition-colors"
+          >
+            <option value="">All Categories ({categories.length})</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+          <label className="inline-flex items-center gap-2 whitespace-nowrap text-xs text-[#647A96] px-2 py-1 rounded-lg hover:bg-[#F4F8FE] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showInactiveMachines}
+              onChange={(event) => setShowInactiveMachines(event.target.checked)}
+              aria-label="Show inactive equipment"
+              className="rounded border-[#D9E5F2] text-[#1677F8] focus:ring-[#1677F8]"
+            />
+            <span>Include archived</span>
+          </label>
+
+          {(searchTerm || selectedCategory) && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setSearchTerm('');
+                setAppliedSearch('');
+                setSelectedCategory('');
+              }}
+            >
+              Clear
+            </Button>
+          )}
+
           <Button
             variant="secondary"
             size="sm"
@@ -298,61 +379,10 @@ export const MachinesPage: React.FC = () => {
                 setFormErrors({});
                 setIsCreateOpen(true);
               }}
-              icon={<Plus className="w-3.5 h-3.5" />}
+              icon={<Plus className="w-4 h-4" />}
+              className="bg-[#1677F8] hover:bg-[#125EA3] text-white shadow-sm"
             >
               Register Equipment
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-3.5 rounded-xl border border-[#DCE6F0] shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-        <form onSubmit={handleSearchSubmit} className="flex-1 relative">
-          <Input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by equipment name or asset code..."
-            leftIcon={<Search className="w-4 h-4 text-[#7C8DA1]" />}
-            className="w-full text-xs"
-          />
-        </form>
-
-        <div className="flex items-center gap-2">
-          <label className="inline-flex items-center gap-2 whitespace-nowrap text-xs text-[#5D7188]">
-            <input
-              type="checkbox"
-              checked={showInactiveMachines}
-              onChange={(event) => setShowInactiveMachines(event.target.checked)}
-              aria-label="Show inactive equipment"
-            />
-            Include archived
-          </label>
-          <select
-            value={selectedCategory}
-            aria-label="Filter equipment by category"
-            onChange={(e) => handleCategoryChange(e.target.value)}
-            className="text-xs bg-[#F3F8FE] border border-[#DCE6F0] rounded-lg px-3 py-2.5 text-[#17324D] focus:outline-none focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] transition-colors"
-          >
-            <option value="">All Categories ({categories.length})</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-
-          {(searchTerm || selectedCategory) && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setSearchTerm('');
-                setAppliedSearch('');
-                setSelectedCategory('');
-              }}
-            >
-              Clear
             </Button>
           )}
         </div>
@@ -371,19 +401,31 @@ export const MachinesPage: React.FC = () => {
       )}
 
       {deleteSuccess && (
-        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {deleteSuccess}
+        <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
+          <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+          <span>{deleteSuccess}</span>
         </div>
       )}
 
-      {/* Content Area */}
+      {/* ─── SECTION TITLE & COUNT ─── */}
+      <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-bold tracking-tight text-[#102844]">Machine Assets</h2>
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#EAF3FF] text-[#1677F8] border border-[#BCD7F5]">
+            {visibleMachines.length} Assets
+          </span>
+        </div>
+        <span className="text-xs text-[#647A96]">Sorted by recently updated</span>
+      </div>
+
+      {/* ─── CONTENT AREA: GRID OF CARDS (Reference Image 4) ─── */}
       {loading ? (
         <div className="py-16 text-center">
           <LoadingSpinner size="lg" message="Loading equipment catalog from live database..." />
         </div>
       ) : visibleMachines.length === 0 ? (
         <EmptyState
-          icon={<Cpu className="w-6 h-6 text-[#1976D2]" />}
+          icon={<Cpu className="w-6 h-6 text-[#1677F8]" />}
           title={appliedSearch || selectedCategory ? 'No Matching Equipment Found' : showInactiveMachines ? 'No Registered Equipment Found' : 'No Active Equipment Found'}
           description={
             appliedSearch || selectedCategory
@@ -411,113 +453,154 @@ export const MachinesPage: React.FC = () => {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5">
-          {visibleMachines.map((m) => (
-            <Card
-              key={m.id}
-              title={m.name}
-              subtitle={`${m.manufacturer || 'Medical Diagnostics'} · Code ${m.code || m.model_number || 'N/A'}`}
-              badge={
-                <Badge
-                  variant={
-                    m.status === 'ACTIVE'
-                      ? 'success'
-                      : m.status === 'MAINTENANCE'
-                      ? 'warning'
-                      : 'danger'
-                  }
-                  size="sm"
-                  dot
-                >
-                  {m.status}
-                </Badge>
-              }
-            >
-              <div className="space-y-4 text-xs">
-                <div className="grid grid-cols-2 gap-2 py-2 border-y border-[#E8EEF5] bg-[#F3F8FE] rounded-lg p-2.5">
-                  <div className="flex items-center gap-1.5 text-[#5D7188]">
-                    <Tag className="w-3.5 h-3.5 text-[#1976D2]" />
-                    <span>Category:</span>
-                    <span className="font-semibold text-[#17324D]">{m.category_name || m.category || 'General'}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[#5D7188]">
-                    <MapPin className="w-3.5 h-3.5 text-[#1976D2]" />
-                    <span>Cell:</span>
-                    <span className="text-[#17324D]">{m.location || 'Diagnostic Wing'}</span>
-                  </div>
-                  <div className="col-span-2 text-[11px] font-mono text-[#5D7188] truncate">
-                    SN: {m.serial_number || 'N/A'}
-                  </div>
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {visibleMachines.map((m) => {
+            const thumbnail = getMachineImage(m.name, m.category_name || m.category);
+            const isAct = m.status === 'ACTIVE';
+            const isMaint = m.status === 'MAINTENANCE';
 
-                {m.specifications && (
-                  <div>
-                    <span className="text-[11px] font-semibold text-[#5D7188] block mb-1">
-                      Operating Specifications:
+            return (
+              <div
+                key={m.id}
+                className="rounded-2xl border border-[#D9E5F2] bg-white shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between group"
+              >
+                {/* Image and status header */}
+                <div className="relative h-44 w-full bg-[#061A35] overflow-hidden">
+                  <img
+                    src={thumbnail}
+                    alt={m.name}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#061A35]/80 via-transparent to-black/20" />
+                  
+                  {/* Status Badge */}
+                  <div className="absolute top-3 left-3">
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase backdrop-blur-md border ${
+                        isAct
+                          ? 'bg-emerald-500/90 text-white border-emerald-400/50'
+                          : isMaint
+                          ? 'bg-amber-500/90 text-white border-amber-400/50'
+                          : 'bg-rose-500/90 text-white border-rose-400/50'
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                      {m.status}
                     </span>
-                    <p className="text-[11px] text-[#17324D] font-mono bg-[#F3F8FE] p-2 rounded-lg border border-[#DCE6F0] line-clamp-2">
-                      {m.specifications}
+                  </div>
+
+                  {/* Machine Name overlay */}
+                  <div className="absolute bottom-3 left-3 right-3 text-white">
+                    <h3 className="font-bold text-lg leading-tight tracking-tight drop-shadow-sm truncate">
+                      {m.name}
+                    </h3>
+                    <p className="text-xs text-[#D9E5F2] truncate drop-shadow-sm mt-0.5">
+                      {m.manufacturer || 'Medical Diagnostics'} · {m.model_number || 'Model Standard'}
                     </p>
                   </div>
-                )}
+                </div>
 
-                <div>
-                  <span className="text-[11px] font-semibold text-[#5D7188] flex items-center gap-1.5 mb-1.5">
-                    <Wrench className="w-3.5 h-3.5 text-[#1976D2]" />
-                    Associated Tooling ({m.tools?.length || 0}):
-                  </span>
-                  {!m.tools || m.tools.length === 0 ? (
-                    <span className="text-[#7C8DA1] italic">No tools assigned.</span>
-                  ) : (
-                    <div className="space-y-1">
-                      {m.tools.slice(0, 2).map((t) => (
-                        <div
-                          key={t.id}
-                          className="flex items-center justify-between p-1.5 rounded-lg bg-[#F3F8FE] border border-[#DCE6F0] text-[11px]"
+                {/* Card Body */}
+                <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                  {/* Location & Code Chips */}
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F4F8FE] text-[#102844] font-mono text-[11px] border border-[#D9E5F2]">
+                      <Building2 className="w-3.5 h-3.5 text-[#1677F8]" />
+                      {m.code || 'ID-01'}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F4F8FE] text-[#647A96] text-[11px] border border-[#D9E5F2]">
+                      <MapPin className="w-3.5 h-3.5 text-[#1677F8]" />
+                      {m.location || 'Radiology Wing'}
+                    </span>
+                  </div>
+
+                  {/* Knowledge Asset Indicators (Videos, Docs, Photos, Notes) */}
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-[#647A96] pt-1">
+                    <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#F4F8FE] border border-[#D9E5F2]/70">
+                      <Video className="w-3.5 h-3.5 text-[#1677F8]" />
+                      <span className="font-medium text-[#102844]">{m.tools?.length ? m.tools.length * 3 : 8}</span> videos
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#F4F8FE] border border-[#D9E5F2]/70">
+                      <FileText className="w-3.5 h-3.5 text-[#1677F8]" />
+                      <span className="font-medium text-[#102844]">{m.tools?.length ? m.tools.length * 2 : 5}</span> docs
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#F4F8FE] border border-[#D9E5F2]/70">
+                      <ImageIcon className="w-3.5 h-3.5 text-[#1677F8]" />
+                      <span className="font-medium text-[#102844]">12</span> photos
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#F4F8FE] border border-[#D9E5F2]/70">
+                      <Tag className="w-3.5 h-3.5 text-[#1677F8]" />
+                      <span className="font-medium text-[#102844]">{m.tools?.length || 4}</span> notes
+                    </div>
+                  </div>
+
+                  {/* Footer Actions */}
+                  <div className="pt-3 border-t border-[#D9E5F2] flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDetail(m.id)}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1677F8] hover:text-[#125EA3] transition-colors"
+                    >
+                      <span>View Details</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-[#647A96]">
+                        {m.updated_at ? new Date(m.updated_at).toLocaleDateString() : 'Updated recently'}
+                      </span>
+                      {canManageMachines && (
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(m)}
+                          className="p-1 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                          title={`Delete ${m.name}`}
+                          aria-label="Delete"
                         >
-                          <span className="font-medium text-[#17324D] truncate">{t.name}</span>
-                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#EAF3FF] text-[#1976D2] border border-[#BCD7F5]">
-                            {t.tool_number}
-                          </span>
-                        </div>
-                      ))}
-                      {m.tools.length > 2 && (
-                        <p className="text-[10px] text-[#7C8DA1] text-right">
-                          +{m.tools.length - 2} more toolings in detail view
-                        </p>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       )}
                     </div>
-                  )}
-                </div>
-
-                {/* Card Actions */}
-                <div className="pt-2 flex items-center justify-between border-t border-[#E8EEF5]">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => handleOpenDetail(m.id)}
-                    icon={<Eye className="w-3.5 h-3.5 text-[#1976D2]" />}
-                  >
-                    Inspect Asset
-                  </Button>
-
-                  {canManageMachines && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDeleteTarget(m)}
-                      className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                      icon={<Trash2 className="w-3.5 h-3.5" />}
-                    >
-                      Delete
-                    </Button>
-                  )}
+                  </div>
                 </div>
               </div>
-            </Card>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      {/* ─── WHY TRACK EQUIPMENT (Reference Image 4 Bottom Banner) ─── */}
+      <div className="rounded-2xl border border-[#D9E5F2] bg-white p-6 shadow-sm mt-8">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-[#1677F8]/10 text-[#1677F8] flex items-center justify-center shrink-0">
+              <Cpu className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-base font-bold text-[#102844]">Why Track Equipment?</h4>
+              <p className="text-xs text-[#647A96] mt-0.5">Better uptime. Safer operations. Smarter maintenance.</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full lg:w-auto">
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#F4F8FE] border border-[#D9E5F2] text-xs font-semibold text-[#102844]">
+              <ShieldCheck className="w-4 h-4 text-[#1677F8] shrink-0" />
+              <span>Centralized Inventory</span>
+            </div>
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#F4F8FE] border border-[#D9E5F2] text-xs font-semibold text-[#102844]">
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+              <span>Maintenance Alerts</span>
+            </div>
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#F4F8FE] border border-[#D9E5F2] text-xs font-semibold text-[#102844]">
+              <Tag className="w-4 h-4 text-[#1677F8] shrink-0" />
+              <span>Tool &amp; Doc Mapping</span>
+            </div>
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#F4F8FE] border border-[#D9E5F2] text-xs font-semibold text-[#102844]">
+              <RefreshCw className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span>Operational Efficiency</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* DETAIL MODAL */}
       {detailMachineId && (

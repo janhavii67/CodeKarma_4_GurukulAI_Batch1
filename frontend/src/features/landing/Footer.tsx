@@ -1,92 +1,133 @@
 import React from 'react';
-import { Sun, Moon, Pause, Play } from 'lucide-react';
-import { useTheme } from './ThemeContext';
+import { Phone, Mail, Linkedin, Youtube, Twitter, Github } from 'lucide-react';
 
-export const Footer: React.FC<{ onCTA: () => void }> = ({ onCTA }) => {
-  const { theme, toggle, animationsPaused, toggleAnimations } = useTheme();
+interface Props {
+  onCTA: () => void;
+}
 
+export const Footer: React.FC<Props> = ({ onCTA }) => {
   return (
-    <footer className="bg-slate-950 text-slate-400 pt-16 pb-8">
+    <footer className="bg-[#070e1c] text-slate-400 pt-16 pb-8 border-t border-slate-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
-          {/* Brand */}
-          <div className="lg:col-span-1">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-brand-500 flex items-center justify-center">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-10 mb-14">
+          {/* Brand Logo & Subtitle */}
+          <div className="md:col-span-3">
+            <a href="#" className="flex items-center gap-3 mb-4 group">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#1677F8] to-[#0ea5e9] flex items-center justify-center shadow-md shadow-[#1677F8]/25 ring-1 ring-white/20">
                 <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-                  <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-                  <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                  <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                  <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
                 </svg>
               </div>
-              <span className="text-white font-bold text-base">Gurukul<span className="text-cyan-400">AI</span></span>
+              <div className="flex flex-col text-left">
+                <span className="text-base font-extrabold text-white tracking-tight leading-none">
+                  Gurukul AI
+                </span>
+                <span className="text-[9px] font-bold tracking-widest text-[#38bdf8] uppercase mt-1">
+                  TACIT ENGINEERING CORE
+                </span>
+              </div>
+            </a>
+          </div>
+
+          {/* Quick Links */}
+          <div className="md:col-span-2">
+            <h3 className="text-white font-semibold text-sm mb-4">Quick Links</h3>
+            <ul className="space-y-2.5 text-xs text-slate-400">
+              {['Home', 'Problem', 'How It Works', 'Capabilities', 'Demos', 'Industries'].map((link) => (
+                <li key={link}>
+                  <a
+                    href={`#${link.toLowerCase().replace(/\s+/g, '-')}`}
+                    className="hover:text-white transition-colors"
+                  >
+                    {link}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Resources */}
+          <div className="md:col-span-2">
+            <h3 className="text-white font-semibold text-sm mb-4">Resources</h3>
+            <ul className="space-y-2.5 text-xs text-slate-400">
+              <li>
+                <a href="#how-it-works" className="hover:text-white transition-colors">
+                  Help Center
+                </a>
+              </li>
+              <li>
+                <a href="#capabilities" className="hover:text-white transition-colors">
+                  Documentation
+                </a>
+              </li>
+              <li>
+                <a href="#demos" className="hover:text-white transition-colors">
+                  Blog
+                </a>
+              </li>
+              <li>
+                <button onClick={onCTA} className="hover:text-white transition-colors text-left">
+                  Contact Us
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          {/* Connect */}
+          <div className="md:col-span-3">
+            <h3 className="text-white font-semibold text-sm mb-4">Connect</h3>
+            <div className="space-y-2.5 text-xs text-slate-400 mb-4">
+              <div className="flex items-center gap-2">
+                <Phone className="w-3.5 h-3.5 text-[#38bdf8]" />
+                <span>+91 13 545 67890</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Mail className="w-3.5 h-3.5 text-[#38bdf8]" />
+                <a href="mailto:info@gurukulai.com" className="hover:text-white transition-colors">
+                  info@gurukulai.com
+                </a>
+              </div>
             </div>
-            <p className="text-sm leading-relaxed mb-4">
-              AI-powered industrial knowledge preservation for medical equipment, precision manufacturing, and industrial service operations.
+            {/* Social Icons */}
+            <div className="flex items-center gap-3 pt-1">
+              <a href="#" className="w-7 h-7 rounded-lg bg-slate-800/80 flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#1677f8] transition-colors">
+                <Linkedin className="w-3.5 h-3.5" />
+              </a>
+              <a href="#" className="w-7 h-7 rounded-lg bg-slate-800/80 flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#1677f8] transition-colors">
+                <Youtube className="w-3.5 h-3.5" />
+              </a>
+              <a href="#" className="w-7 h-7 rounded-lg bg-slate-800/80 flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#1677f8] transition-colors">
+                <Twitter className="w-3.5 h-3.5" />
+              </a>
+              <a href="#" className="w-7 h-7 rounded-lg bg-slate-800/80 flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#1677f8] transition-colors">
+                <Github className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+
+          {/* Tagline */}
+          <div className="md:col-span-2 flex flex-col justify-center md:text-right">
+            <p className="text-sm font-semibold text-slate-300 leading-snug">
+              Knowledge Today.<br />
+              <span className="text-[#38bdf8]">Better Tomorrow.</span>
             </p>
-            <div className="flex gap-2">
-              <button onClick={toggle} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors" title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
-                {theme === 'dark' ? <Sun className="w-4 h-4 text-slate-300" /> : <Moon className="w-4 h-4 text-slate-300" />}
-              </button>
-              <button onClick={toggleAnimations} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors" title={animationsPaused ? 'Resume animations' : 'Pause animations'}>
-                {animationsPaused ? <Play className="w-4 h-4 text-slate-300" /> : <Pause className="w-4 h-4 text-slate-300" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Capabilities */}
-          <div>
-            <h3 className="text-white font-semibold text-sm mb-4">Capabilities</h3>
-            <ul className="space-y-2 text-sm">
-              {['Expert Knowledge Capture', 'AI Knowledge Assistant', 'Guided Procedures', 'Voice-to-Knowledge', 'Sound Intelligence', 'Knowledge Validation'].map(c => (
-                <li key={c}><span className="hover:text-slate-200 transition-colors cursor-default">{c}</span></li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Industries */}
-          <div>
-            <h3 className="text-white font-semibold text-sm mb-4">Industries</h3>
-            <ul className="space-y-2 text-sm">
-              {['Medical Equipment', 'Precision Manufacturing', 'Industrial Service Ops', 'Energy & Utilities'].map(i => (
-                <li key={i}><span className="hover:text-slate-200 transition-colors cursor-default">{i}</span></li>
-              ))}
-            </ul>
-            <h3 className="text-white font-semibold text-sm mt-6 mb-4">Platform</h3>
-            <ul className="space-y-2 text-sm">
-              {[
-                { label: 'Sign In', href: '/login' },
-                { label: 'Register', href: '/register' },
-              ].map(l => (
-                <li key={l.label}><a href={l.href} className="hover:text-slate-200 transition-colors">{l.label}</a></li>
-              ))}
-            </ul>
-          </div>
-
-          {/* CTA */}
-          <div>
-            <h3 className="text-white font-semibold text-sm mb-4">Get Started</h3>
-            <p className="text-sm mb-4">Ready to preserve your team's expertise? Let's talk.</p>
-            <button
-              onClick={onCTA}
-              className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-brand-500 to-cyan-500 hover:shadow-lg hover:shadow-brand-500/30 transition-all"
-            >
-              Contact Us
-            </button>
           </div>
         </div>
 
-        <div className="border-t border-white/10 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs">© 2026 Gurukul AI. All rights reserved.</p>
-          <div className="flex gap-6 text-xs">
-            <span className="hover:text-slate-200 cursor-default transition-colors">Privacy Policy</span>
-            <span className="hover:text-slate-200 cursor-default transition-colors">Terms of Service</span>
-            <span className="hover:text-slate-200 cursor-default transition-colors">Security</span>
+        {/* Bottom bar */}
+        <div className="border-t border-slate-800/70 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <p>© 2025 Gurukul AI. All rights reserved.</p>
+          <div className="flex gap-4">
+            <span className="hover:text-slate-300 cursor-pointer transition-colors">Privacy</span>
+            <span>|</span>
+            <span className="hover:text-slate-300 cursor-pointer transition-colors">Terms</span>
+            <span>|</span>
+            <span className="hover:text-slate-300 cursor-pointer transition-colors">Security</span>
           </div>
-          <p className="text-xs text-slate-600">Gurukul AI — Industrial Knowledge Intelligence Platform</p>
         </div>
       </div>
     </footer>
   );
 };
-

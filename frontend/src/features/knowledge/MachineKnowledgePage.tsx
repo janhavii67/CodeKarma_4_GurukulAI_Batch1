@@ -8,7 +8,20 @@ import { uploadWithProgress } from '../knowledge-capture/media/uploadWithProgres
 import { MediaAsset } from '../knowledge-capture/media/types';
 import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
-import { MediaShowcase } from '../workflows/MediaShowcase';
+import {
+  Video,
+  Mic,
+  FileText,
+  Image as ImageIcon,
+  Layers,
+  Search,
+  PlusCircle,
+  ArrowRight,
+  Cpu,
+  CheckCircle2,
+  Tag,
+  MessageSquare,
+} from 'lucide-react';
 
 type Kind = 'video' | 'image' | 'audio' | 'document' | 'notes';
 const accepts: Record<Exclude<Kind, 'notes'>, string> = {
@@ -300,23 +313,352 @@ export const MachineKnowledgePage: React.FC = () => {
     }
   };
 
-  return <main className="max-w-5xl mx-auto p-5 md:p-8 space-y-6">
-    <header className="flex items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-widest text-blue-600 font-bold">Machine Knowledge</p><h1 className="text-2xl font-bold text-slate-900 mt-1">Capture and browse knowledge</h1><p className="text-sm text-slate-600 mt-2">Knowledge assets are stored independently from procedures.</p></div><Link className="rounded-lg bg-slate-900 text-white text-sm px-4 py-2" to="/app/procedures/new">Create Procedure</Link></header>
-    <section className="bg-white border rounded-2xl p-5 space-y-4">
-      <div className="flex flex-wrap gap-2">{(['video','audio','notes','image','document'] as Kind[]).map(k => <button key={k} onClick={() => changeKind(k)} className={`px-4 py-2 rounded-full text-sm capitalize ${kind===k?'bg-blue-600 text-white':'bg-slate-100 text-slate-700'}`}>{k==='image'?'Photos':k==='document'?'Documents':k}</button>)}</div>
-      <label className="block text-sm font-semibold">Which machine or equipment is this knowledge related to?
-        <input aria-label="Search registered machines" value={machineSearch} onChange={e=>setMachineSearch(e.target.value)} placeholder="Search registered machines…" className="block w-full mt-2 border rounded-lg p-3" />
-        <select aria-label="Machine" value={machineId} disabled={machineQuery.isLoading || machineQuery.isError} onChange={e => changeMachine(e.target.value)} className="block w-full mt-2 border rounded-lg p-3 bg-white disabled:cursor-not-allowed disabled:opacity-60"><option value="">Select a registered machine…</option>{diaryMachines.filter(machine => !machineSearch.trim() || `${machine.name} ${machine.code || ''} ${machine.category_name || machine.category || ''}`.toLowerCase().includes(machineSearch.toLowerCase())).map(machine => <option key={machine.id} value={machine.id}>{machineOptionLabel(machine)}</option>)}</select>
-      </label>
-      <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Knowledge title" className="w-full border rounded-lg p-3" />
-      <input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Optional description or observation" className="w-full border rounded-lg p-3" />
-      <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Optional tags, comma separated" className="w-full border rounded-lg p-3" />
-      {kind==='notes' ? <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Write a machine observation or practical tip…" rows={5} className="w-full border rounded-lg p-3"/> : kind==='audio' ? <div className="space-y-3"><div className="flex flex-wrap gap-2">{!recording && !recorded && <Button type="button" disabled={busy} onClick={startRecording}>Start recording</Button>}{recording && <><Button type="button" onClick={paused ? resumeRecording : pauseRecording}>{paused?'Resume':'Pause'}</Button><Button type="button" onClick={stopRecording}>Stop recording</Button><Button type="button" variant="secondary" onClick={cancelRecording}>Cancel recording</Button><span role="status" className="self-center text-sm tabular-nums">{Math.floor(recordDuration/60)}:{String(recordDuration%60).padStart(2,'0')} {paused?'Paused':'Recording'}</span></>}{recorded && <Button type="button" onClick={()=>{cancelRecording();setFile(null);if(inputRef.current)inputRef.current.value='';}}>Discard and record again</Button>}<input ref={inputRef} type="file" accept={accepts.audio} disabled={recording||busy} onChange={e=>setFile(e.target.files?.[0]||null)} /></div>{recorded && recordedPreview && <audio aria-label="Recorded audio preview" controls src={recordedPreview} className="w-full"/>}</div> : <><input ref={inputRef} type="file" accept={accepts[kind]} onChange={e=>setFile(e.target.files?.[0]||null)} className="block w-full"/>{file && <div className="text-sm">{file.name}{kind==='image' && filePreview && <img className="mt-2 max-h-56 rounded-lg" src={filePreview} alt="Upload preview"/>}{kind==='video' && filePreview && <video controls className="mt-2 max-h-56" src={filePreview}/>}</div>}</>}
-      {busy && kind!=='notes' && <div className="space-y-1" role="status"><div className="flex justify-between text-xs text-slate-600"><span>Uploading to machine knowledge…</span><span>{uploadProgress}%</span></div><div className="h-2 rounded bg-slate-100 overflow-hidden"><div className="h-full bg-blue-600 transition-all" style={{width:`${uploadProgress}%`}}/></div></div>}
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}{status && <p role="status" className="text-sm text-emerald-700">{status}</p>}
-      <Button type="button" disabled={busy || machineQuery.isLoading || machineQuery.isError || !machineId || (kind === 'audio' && recording)} onClick={save}>{busy?'Saving…':recording?'Stop recording before saving':'Save to machine knowledge'}</Button>
+  return <main className="w-full p-4 sm:p-6 lg:p-8 space-y-8">
+    {/* ─── HERO BANNER (Reference Image 1) ─── */}
+    <div className="rounded-2xl bg-[#08264A] text-white p-6 sm:p-8 relative overflow-hidden shadow-lg border border-[#123B68]">
+      <div className="absolute top-0 right-0 -mr-16 -mt-16 w-72 h-72 rounded-full bg-[#1677F8]/20 blur-3xl pointer-events-none" />
+      
+      <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div className="space-y-3 max-w-2xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1677F8]/20 border border-[#43B9F4]/30 text-xs font-semibold text-[#43B9F4] uppercase tracking-wider">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#35C5E8]" />
+            MACHINE KNOWLEDGE
+          </div>
+          <h1 className="font-serif text-3xl sm:text-4xl font-bold tracking-tight text-white">
+            Capture and browse <span className="text-[#35C5E8]">knowledge</span>
+          </h1>
+          <p className="text-sm text-[#D9E5F2] leading-relaxed">
+            Knowledge assets are stored independently from procedures.
+          </p>
+        </div>
+
+        <Link
+          className="inline-flex items-center gap-2 rounded-xl bg-[#1677F8] hover:bg-[#125EA3] text-white text-sm font-semibold px-5 py-2.5 shadow-sm transition-colors shrink-0 self-start md:self-auto"
+          to="/app/procedures/new"
+        >
+          <PlusCircle size={17} />
+          <span>Create Procedure</span>
+        </Link>
+      </div>
+    </div>
+
+    {/* ─── KNOWLEDGE CAPTURE FORM (Reference Image 1) ─── */}
+    <section className="bg-white border border-[#D9E5F2] rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
+      {/* Capture Mode Tabs */}
+      <div className="flex flex-wrap items-center gap-2.5 p-1.5 rounded-2xl bg-[#F4F8FE] border border-[#D9E5F2] w-fit">
+        {(['video','audio','notes','image','document'] as Kind[]).map(k => {
+          const isSelected = kind === k;
+          const label = k === 'image' ? 'Photos' : k === 'document' ? 'Documents' : k;
+          const icon = k === 'video' ? <Video size={16} /> : k === 'audio' ? <Mic size={16} /> : k === 'image' ? <ImageIcon size={16} /> : <FileText size={16} />;
+          
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => changeKind(k)}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold capitalize transition-all ${
+                isSelected
+                  ? 'bg-[#1677F8] text-white shadow-sm'
+                  : 'text-[#647A96] hover:text-[#102844] hover:bg-white/60'
+              }`}
+            >
+              {icon}
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Machine Selector */}
+      <div className="space-y-2">
+        <label className="block text-xs font-bold uppercase tracking-wider text-[#102844]">
+          Which machine or equipment is this knowledge related to?
+        </label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="relative">
+            <Search className="w-4 h-4 text-[#647A96] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              aria-label="Search registered machines"
+              value={machineSearch}
+              onChange={e => setMachineSearch(e.target.value)}
+              placeholder="Search registered machines…"
+              className="w-full bg-[#F4F8FE] border border-[#D9E5F2] rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-[#102844] outline-none focus:border-[#1677F8] focus:bg-white transition-colors"
+            />
+          </div>
+          <div className="relative">
+            <Cpu className="w-4 h-4 text-[#647A96] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <select
+              aria-label="Machine"
+              value={machineId}
+              disabled={machineQuery.isLoading || machineQuery.isError}
+              onChange={e => changeMachine(e.target.value)}
+              className="w-full bg-[#F4F8FE] border border-[#D9E5F2] rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-[#102844] outline-none focus:border-[#1677F8] focus:bg-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">Select a registered machine…</option>
+              {diaryMachines
+                .filter(machine => !machineSearch.trim() || `${machine.name} ${machine.code || ''} ${machine.category_name || machine.category || ''}`.toLowerCase().includes(machineSearch.toLowerCase()))
+                .map(machine => (
+                  <option key={machine.id} value={machine.id}>
+                    {machineOptionLabel(machine)}
+                  </option>
+                ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Knowledge Form Fields */}
+      <div className="space-y-3.5">
+        <div className="relative">
+          <input
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Knowledge title"
+            className="w-full bg-[#F4F8FE] border border-[#D9E5F2] rounded-xl px-4 py-2.5 text-xs text-[#102844] outline-none focus:border-[#1677F8] focus:bg-white transition-colors placeholder:text-[#647A96]/60"
+          />
+        </div>
+
+        <div className="relative">
+          <input
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Optional description or observation"
+            className="w-full bg-[#F4F8FE] border border-[#D9E5F2] rounded-xl px-4 py-2.5 text-xs text-[#102844] outline-none focus:border-[#1677F8] focus:bg-white transition-colors placeholder:text-[#647A96]/60"
+          />
+        </div>
+
+        <div className="relative">
+          <input
+            value={tags}
+            onChange={e => setTags(e.target.value)}
+            placeholder="Optional tags, comma separated"
+            className="w-full bg-[#F4F8FE] border border-[#D9E5F2] rounded-xl px-4 py-2.5 text-xs text-[#102844] outline-none focus:border-[#1677F8] focus:bg-white transition-colors placeholder:text-[#647A96]/60"
+          />
+        </div>
+
+        {kind === 'notes' ? (
+          <textarea
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            placeholder="Write a machine observation or practical tip…"
+            rows={5}
+            className="w-full bg-[#F4F8FE] border border-[#D9E5F2] rounded-xl p-3.5 text-xs text-[#102844] outline-none focus:border-[#1677F8] focus:bg-white transition-colors placeholder:text-[#647A96]/60"
+          />
+        ) : kind === 'audio' ? (
+          <div className="space-y-3 p-4 rounded-xl border border-[#D9E5F2] bg-[#F4F8FE]">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {!recording && !recorded && (
+                <Button type="button" disabled={busy} onClick={startRecording} icon={<Mic size={14} />}>
+                  Start recording
+                </Button>
+              )}
+              {recording && (
+                <>
+                  <Button type="button" onClick={paused ? resumeRecording : pauseRecording}>
+                    {paused ? 'Resume' : 'Pause'}
+                  </Button>
+                  <Button type="button" onClick={stopRecording}>
+                    Stop recording
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={cancelRecording}>
+                    Cancel recording
+                  </Button>
+                  <span role="status" className="self-center text-xs font-mono tabular-nums text-rose-600 font-bold animate-pulse">
+                    {Math.floor(recordDuration / 60)}:{String(recordDuration % 60).padStart(2, '0')} {paused ? 'Paused' : 'Recording'}
+                  </span>
+                </>
+              )}
+              {recorded && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    cancelRecording();
+                    setFile(null);
+                    if (inputRef.current) inputRef.current.value = '';
+                  }}
+                >
+                  Discard and record again
+                </Button>
+              )}
+              <input
+                ref={inputRef}
+                type="file"
+                accept={accepts.audio}
+                disabled={recording || busy}
+                onChange={e => setFile(e.target.files?.[0] || null)}
+                className="text-xs text-[#647A96]"
+              />
+            </div>
+            {recorded && recordedPreview && <audio aria-label="Recorded audio preview" controls src={recordedPreview} className="w-full mt-2" />}
+          </div>
+        ) : (
+          <div className="p-4 rounded-xl border border-[#D9E5F2] bg-[#F4F8FE]">
+            <input
+              ref={inputRef}
+              type="file"
+              accept={accepts[kind]}
+              onChange={e => setFile(e.target.files?.[0] || null)}
+              className="block w-full text-xs text-[#647A96]"
+            />
+            {file && (
+              <div className="text-xs text-[#102844] mt-2 font-medium">
+                Selected: {file.name}
+                {kind === 'image' && filePreview && <img className="mt-2 max-h-56 rounded-xl border border-[#D9E5F2]" src={filePreview} alt="Upload preview" />}
+                {kind === 'video' && filePreview && <video controls className="mt-2 max-h-56 rounded-xl border border-[#D9E5F2]" src={filePreview} />}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {busy && kind !== 'notes' && (
+        <div className="space-y-1.5" role="status">
+          <div className="flex justify-between text-xs text-[#647A96]">
+            <span>Uploading to machine knowledge…</span>
+            <span className="font-bold text-[#102844]">{uploadProgress}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-[#E0EBF7] overflow-hidden">
+            <div className="h-full bg-[#1677F8] transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+          </div>
+        </div>
+      )}
+
+      {error && <p role="alert" className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2.5">{error}</p>}
+      {status && <p role="status" className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">{status}</p>}
+
+      <div>
+        <Button
+          type="button"
+          disabled={busy || machineQuery.isLoading || machineQuery.isError || !machineId || (kind === 'audio' && recording)}
+          onClick={save}
+          className="bg-[#1677F8] hover:bg-[#125EA3] text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm"
+          icon={<ArrowRight size={15} />}
+        >
+          {busy ? 'Saving…' : recording ? 'Stop recording before saving' : 'Save to machine knowledge'}
+        </Button>
+      </div>
     </section>
-    <section className="space-y-3"><h2 className="text-lg font-bold">Knowledge assets {machineId && `· ${machines.find(m=>m.id===machineId)?.name || ''}`}</h2>{machineId && <><input className="w-full border rounded-lg p-3" placeholder="Search this machine’s knowledge" value={search} onChange={e=>setSearch(e.target.value)}/><div className="flex flex-wrap gap-2">{[['all','All'],['video','Videos'],['audio','Audio Recordings'],['transcript','Transcripts'],['image','Images'],['notes','Notes'],['document','Documents']].map(([key,label])=><button key={key} onClick={()=>setFilter(key)} className={`px-3 py-1.5 rounded-full text-xs ${filter===key?'bg-slate-900 text-white':'bg-slate-100'}`}>{label}</button>)}<select aria-label="Verification status" className="border rounded-full px-3 py-1.5 text-xs" value={verificationFilter} onChange={e=>setVerificationFilter(e.target.value)}><option value="all">All verification states</option><option value="pending_review">Pending review</option></select></div></>}{!machineId ? machineQuery.isLoading ? <p role="status" className="text-sm text-slate-500">Loading registered equipment…</p> : diaryMachines.length===0 ? <p className="text-sm text-slate-600">No active equipment is registered. <Link className="font-semibold text-blue-700 underline" to="/app/machines">Register equipment</Link> before capturing machine knowledge.</p> : <p className="text-sm text-slate-500">Select a machine to browse its knowledge.</p> : loadingAssets ? <p role="status" className="text-sm text-slate-500">Loading machine knowledge…</p> : filteredAssets.length===0 ? <p className="text-sm text-slate-500">No {filter==='all'?'knowledge assets':filter==='video'?'videos':filter==='audio'?'audio recordings':filter==='transcript'?'transcripts':filter==='image'?'images':filter==='notes'?'notes':'documents'} have been added to this machine yet.</p> : <div className="grid gap-3 sm:grid-cols-2">{filteredAssets.map(a=><article key={a.id} className="bg-white border rounded-xl p-4"><button className="font-semibold text-left" onClick={()=>setSelectedAsset(a)}>{a.title || a.original_name}</button><div className="text-xs text-slate-500 mt-1">{a.kind} · {new Date(a.created_at).toLocaleDateString()} · {a.author_name || 'Unknown author'} · {a.verification_status || 'Pending review'}</div>{a.description && <p className="text-sm mt-2">{a.description}</p>}<div className="flex gap-3 mt-3"><button className="text-sm text-blue-700 underline" onClick={()=>setSelectedAsset(a)}>Details / Preview</button>{a.kind!=='transcript' && <><button className="text-sm text-blue-700 underline" onClick={()=>editAsset(a)}>Edit</button><button className="text-sm text-red-700 underline" onClick={()=>removeAsset(a)}>Delete</button></>}</div>{a.transcript_id && <button className="text-xs text-indigo-700 underline mt-2" onClick={()=>loadTranscript(a)}>Transcript · {a.transcript_status || 'Processing'}</button>}</article>)}</div>}</section>
+
+    {/* ─── KNOWLEDGE ASSETS SECTION (Reference Image 1) ─── */}
+    <section className="space-y-4">
+      <div className="rounded-2xl border border-[#D9E5F2] bg-[#F4F8FE] p-4 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-white border border-[#D9E5F2] flex items-center justify-center text-[#1677F8] shadow-xs">
+          <Layers size={20} />
+        </div>
+        <div>
+          <h2 className="text-sm font-bold text-[#102844]">
+            Knowledge assets {machineId && `· ${machines.find(m => m.id === machineId)?.name || ''}`}
+          </h2>
+          {!machineId && (
+            <p className="text-xs text-[#647A96]">Select a machine to browse its knowledge.</p>
+          )}
+        </div>
+      </div>
+
+      {machineId && (
+        <div className="bg-white border border-[#D9E5F2] rounded-2xl p-4 shadow-sm space-y-3">
+          <input
+            className="w-full bg-[#F4F8FE] border border-[#D9E5F2] rounded-xl px-3.5 py-2 text-xs text-[#102844] outline-none focus:border-[#1677F8]"
+            placeholder="Search this machine’s knowledge"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              ['all', 'All'],
+              ['video', 'Videos'],
+              ['audio', 'Audio Recordings'],
+              ['transcript', 'Transcripts'],
+              ['image', 'Images'],
+              ['notes', 'Notes'],
+              ['document', 'Documents'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setFilter(key)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                  filter === key ? 'bg-[#08264A] text-white' : 'bg-[#F4F8FE] text-[#647A96] hover:text-[#102844]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <select
+              aria-label="Verification status"
+              className="border border-[#D9E5F2] rounded-xl px-3 py-1.5 text-xs bg-[#F4F8FE] text-[#102844]"
+              value={verificationFilter}
+              onChange={e => setVerificationFilter(e.target.value)}
+            >
+              <option value="all">All verification states</option>
+              <option value="pending_review">Pending review</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      {!machineId ? (
+        machineQuery.isLoading ? (
+          <p role="status" className="text-xs text-[#647A96] p-4 text-center">Loading registered equipment…</p>
+        ) : diaryMachines.length === 0 ? (
+          <p className="text-xs text-[#647A96] p-4">
+            No active equipment is registered.{' '}
+            <Link className="font-semibold text-[#1677F8] underline" to="/app/machines">
+              Register equipment
+            </Link>{' '}
+            before capturing machine knowledge.
+          </p>
+        ) : null
+      ) : loadingAssets ? (
+        <p role="status" className="text-xs text-[#647A96] p-4 text-center">Loading machine knowledge…</p>
+      ) : filteredAssets.length === 0 ? (
+        <p className="text-xs text-[#647A96] p-4 bg-white border border-[#D9E5F2] rounded-2xl text-center">
+          No {filter === 'all' ? 'knowledge assets' : filter === 'video' ? 'videos' : filter === 'audio' ? 'audio recordings' : filter === 'transcript' ? 'transcripts' : filter === 'image' ? 'images' : filter === 'notes' ? 'notes' : 'documents'} have been added to this machine yet.
+        </p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {filteredAssets.map(a => (
+            <article key={a.id} className="bg-white border border-[#D9E5F2] rounded-2xl p-5 shadow-sm space-y-2.5">
+              <button type="button" className="font-bold text-sm text-[#102844] hover:text-[#1677F8] text-left transition-colors" onClick={() => setSelectedAsset(a)}>
+                {a.title || a.original_name}
+              </button>
+              <div className="text-[11px] text-[#647A96] flex items-center gap-2">
+                <span className="uppercase font-semibold tracking-wider px-2 py-0.5 rounded bg-[#F4F8FE] text-[#1677F8] border border-[#D9E5F2]">
+                  {a.kind}
+                </span>
+                <span>{new Date(a.created_at).toLocaleDateString()}</span>
+                <span>•</span>
+                <span>{a.author_name || 'Unknown author'}</span>
+                <span>•</span>
+                <span className="text-emerald-600 font-medium">{a.verification_status || 'Pending review'}</span>
+              </div>
+              {a.description && <p className="text-xs text-[#647A96] line-clamp-2">{a.description}</p>}
+              <div className="flex items-center gap-3 pt-2 border-t border-[#D9E5F2]">
+                <button type="button" className="text-xs font-semibold text-[#1677F8] hover:underline" onClick={() => setSelectedAsset(a)}>
+                  Details / Preview
+                </button>
+                {a.kind !== 'transcript' && (
+                  <>
+                    <button type="button" className="text-xs font-semibold text-[#647A96] hover:text-[#102844] hover:underline" onClick={() => editAsset(a)}>
+                      Edit
+                    </button>
+                    <button type="button" className="text-xs font-semibold text-rose-600 hover:underline" onClick={() => removeAsset(a)}>
+                      Delete
+                    </button>
+                  </>
+                )}
+              </div>
+              {a.transcript_id && (
+                <button type="button" className="text-xs text-indigo-700 underline block mt-1" onClick={() => loadTranscript(a)}>
+                  Transcript · {a.transcript_status || 'Processing'}
+                </button>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
     {selectedAsset && <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div className="bg-white rounded-2xl max-w-2xl w-full p-5 space-y-3">
         <div className="flex justify-between gap-3"><h2 className="font-bold text-lg">{selectedAsset.title || selectedAsset.original_name}</h2><button onClick={() => setSelectedAsset(null)} aria-label="Close details">×</button></div>

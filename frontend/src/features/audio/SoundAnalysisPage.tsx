@@ -1073,7 +1073,7 @@ export const SoundAnalysisPage: React.FC = () => {
 
       {/* ── 2. CLINICAL DIAGNOSTIC DISCLAIMER ─────────────────────────────────── */}
       <div className="bg-amber-50/70 border-b border-amber-200/80 px-4 py-2.5 text-xs text-amber-950 font-medium">
-        <div className="mx-auto max-w-7xl flex items-center justify-between gap-3">
+        <div className="w-full flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 shrink-0 text-amber-600" />
             <span>
@@ -1089,7 +1089,7 @@ export const SoundAnalysisPage: React.FC = () => {
         </div>
       </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
+      <main className="w-full px-4 py-6 sm:px-6 space-y-6">
         {/* Banner Notifications */}
         {error && (
           <div className="flex items-start justify-between gap-3 rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm font-medium text-rose-900 shadow-xs">

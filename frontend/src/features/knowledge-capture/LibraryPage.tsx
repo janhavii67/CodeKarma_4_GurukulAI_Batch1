@@ -102,7 +102,7 @@ export const LibraryPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#F7FAFE] text-[#12345A] font-sans">
 
-      <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <main className="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Dynamic Role Perspective Hero Banner */}
         {isTrainee && (
           <div className="rounded-2xl p-6 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-white border border-emerald-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

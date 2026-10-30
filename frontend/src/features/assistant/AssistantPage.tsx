@@ -519,7 +519,7 @@ export const AssistantPage: React.FC = () => {
 
         {/* Bottom Input Area */}
         <footer className="shrink-0 border-t border-slate-200/80 bg-white px-3 py-3 sm:px-5 lg:px-7">
-          <div className="mx-auto max-w-4xl space-y-2">
+          <div className="mx-auto max-w-5xl space-y-2">
             {audioError && (
               <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">{audioError}</p>
             )}

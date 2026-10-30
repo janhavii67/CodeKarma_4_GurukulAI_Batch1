@@ -57,7 +57,7 @@ export const DashboardPage: React.FC = () => {
   }, [fetchDashboardData, isTrainee]);
 
   return (
-    <div className="space-y-7 max-w-[1440px] mx-auto pb-8">
+    <div className="space-y-7 w-full pb-8">
       {isTrainee ? (
         <TraineeDashboard user={user} hasPermission={hasPermission} />
       ) : isExpert ? (

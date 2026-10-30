@@ -57,9 +57,9 @@ const fileExtensionMime: Record<string, string> = {
 };
 
 const theme = {
-  page: 'min-h-full bg-[#F5F8FC] text-[#173B5E]',
-  panel: 'rounded-2xl border border-[#E2E8F0] bg-white shadow-sm',
-  muted: 'text-[#536779]',
+  page: 'min-h-full bg-[#F3F7FC] text-[#102844]',
+  panel: 'rounded-2xl border border-[#D9E5F2] bg-white shadow-sm',
+  muted: 'text-[#647A96]',
 };
 
 function newStep(): ProcedureStepDraft {
@@ -336,17 +336,17 @@ export const ProcedureCreatePage: React.FC = () => {
   const allReferencedAssetIds = useMemo(() => new Set([...assetIds, ...steps.flatMap(step => step.asset_ids)]), [assetIds, steps]);
   const referencedAssets = useMemo(() => assets.filter(asset => allReferencedAssetIds.has(asset.id)), [allReferencedAssetIds, assets]);
 
-  return <main className={`${theme.page} mx-auto w-full max-w-5xl space-y-6 px-4 py-6 font-sans sm:px-6 lg:px-8`}>
+  return <main className={`${theme.page} w-full space-y-6 px-4 py-6 font-sans sm:px-6 lg:px-8`}>
     <header>
       <Link to="/app/knowledge-assets" className="text-sm font-semibold text-[#1976C9] underline">← Machine knowledge</Link>
       <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <span className="inline-flex rounded-full border border-[#1976C9]/20 bg-[#EFF4FF] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#1976C9]">Expert workspace · Procedure authoring</span>
-          <h1 className="mt-3 text-2xl font-bold sm:text-3xl">Create a machine procedure</h1>
+          <span className="inline-flex rounded-full border border-[#1677F8]/20 bg-[#F4F8FE] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#1677F8]">Expert workspace · Procedure authoring</span>
+          <h1 className="mt-3 text-2xl font-serif text-[#08264A] sm:text-3xl font-normal">Create a machine procedure</h1>
           <p className={`mt-1 max-w-2xl text-sm leading-6 ${theme.muted}`}>Build and review an ordered procedure using registered equipment and its existing knowledge assets.</p>
-          <Link to="/app/guided-workflows" className="mt-3 inline-block text-sm font-semibold text-[#1976C9] underline">Open guided workflows</Link>
+          <Link to="/app/guided-workflows" className="mt-3 inline-block text-sm font-semibold text-[#1677F8] hover:underline">Open guided workflows</Link>
         </div>
-        {editorStage === 'review' && <div className="rounded-full border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#536779]">Review before saving</div>}
+        {editorStage === 'review' && <div className="rounded-full border border-[#D9E5F2] bg-white px-4 py-2 text-sm font-semibold text-[#647A96]">Review before saving</div>}
       </div>
     </header>
 
